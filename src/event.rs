@@ -1,5 +1,3 @@
-use std::thread;
-use std::time::Duration;
 
 pub fn run_zmq_listener<F>(host: &str, port: usize, mut callback: F)
 where F: FnMut(String)
@@ -13,19 +11,20 @@ where F: FnMut(String)
         .set_subscribe(b"")
         .unwrap();
     
+    // TODO: 
     // sync with publisher
-    let sync_uri = format!("tcp://{}:{}", host, &(port+1).to_string());
-    println!("{}", &sync_uri);
-    let syncclient = context.socket(zmq::REQ).unwrap();
-    syncclient
-        .connect(&sync_uri)
-        .expect("failed connect syncclient");
+    // let sync_uri = format!("tcp://{}:{}", host, &(port+1).to_string());
+    // println!("{}", &sync_uri);
+    // let syncclient = context.socket(zmq::REQ).unwrap();
+    // syncclient
+    //     .connect(&sync_uri)
+    //     .expect("failed connect syncclient");
 
-    syncclient.send("", 0).expect("failed sending sync request");
-    println!("Awaiting sync from publisher");
+    // syncclient.send("", 0).expect("failed sending sync request");
+    // println!("Awaiting sync from publisher");
 
-    syncclient.recv_msg(0).expect("failed receiving sync reply");
-    println!("Synced with pub");
+    // syncclient.recv_msg(0).expect("failed receiving sync reply");
+    // println!("Synced with pub");
 
     // let mut msg = zmq::Message::new();
     println!("Started ZMQ Event Listener on tcp://{}:{}", host, &port.to_string());

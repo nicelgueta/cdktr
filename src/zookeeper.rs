@@ -1,7 +1,10 @@
 
 use std::{path::Component, thread, time};
 use std::sync::{Arc, Mutex};
-use crate::executor::{Executor, FlowExecutionResult};
+use crate::{
+    executor::{Executor, FlowExecutionResult},
+    event::run_zmq_listener
+};
 
 #[derive(Debug)]
 pub struct Zookeeper {
@@ -36,7 +39,7 @@ impl Zookeeper {
             drop(counter); // release the lock
 
             let executor = Executor::new(&cmd, Some(args));
-            let _flow_result = executor.run(|x|println!("{}", x));
+            let _flow_result = executor.run(|x|println!("stdout from executor: {}", x));
             // TODO: handle the result
 
             // inform zookeeper process has terminated
@@ -56,8 +59,21 @@ impl Zookeeper {
             }
         }
     }
-
-    
+    /// blocks main thread to run an event loop bound to a zmq
+    /// feed. TODO: outline the basic loop here but switch
+    /// to using dependency injection so as to swtich the type
+    /// of event handler this loop will use
+    pub fn main_event_loop(&mut self, host: &str, port: usize) {
+        let callback = |msg: String| {
+            let splits: Vec<&str> = msg.split("|").collect();
+            let cmd = splits[0];
+            let arg = splits[1];
+            self.run_in_executor(cmd.to_string(), vec![
+                arg.to_string()
+            ]).unwrap();
+        };
+        run_zmq_listener(host, port, callback);
+    }   
 
 
 }

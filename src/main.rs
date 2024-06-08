@@ -1,10 +1,12 @@
-// mod executor;
-// mod zookeeper;
+
+mod executor;
+mod zookeeper;
 mod event;
 
+use zookeeper::Zookeeper;
 
 // // #[tokio::main]
 fn main() {
-    let callback = |s| println!("GOT FROM ZMQ: {}", s);
-    event::run_zmq_listener("0.0.0.0", 5561, callback)
+    let  mut zk = Zookeeper::new(2);
+    zk.main_event_loop("0.0.0.0", 5561)
 }

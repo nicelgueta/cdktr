@@ -24,10 +24,14 @@ print("Connecting to hello world server…")
 socket = context.socket(zmq.PUB)
 socket.bind(f"tcp://0.0.0.0:{PORT}")
 
-# sync_to_subscriber(PORT+1)
+sync_to_subscriber(PORT+1)
 
 
 time.sleep(2)
-for slug in rustyrs.generate_slugs(2, 10):
-    time.sleep(random.random())
-    socket.send(bytes(slug, 'utf-8'))
+# for slug in rustyrs.generate_slugs(2, 10):
+#     time.sleep(random.random())
+#     socket.send(bytes(slug, 'utf-8'))c
+
+while True:
+    msg = input("Enter message: ")
+    socket.send(bytes(msg, 'utf-8'))
