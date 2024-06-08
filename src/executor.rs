@@ -1,6 +1,6 @@
-use tokio::process::{Command, ChildStdout};
+use std::process::Command;
 use std::process::Stdio;
-use tokio::io::{BufReader, AsyncBufReadExt};
+use std::io::{BufRead, BufReader};
 
 #[derive(Debug, PartialEq)]
 pub enum FlowExecutionResult {
@@ -31,7 +31,7 @@ impl Executor {
             command: command.to_string(), args
         }
     }
-    pub async fn run<F>(self, mut stream_callback: F) -> FlowExecutionResult 
+    pub fn run<F>(self, mut stream_callback: F) -> FlowExecutionResult 
     where 
         F: FnMut(String)
     {
@@ -46,21 +46,16 @@ impl Executor {
         let child_process = cmd.spawn();
 
         match child_process {
-            Ok(mut child) => {
-                // handle process
-                let stdout = child.stdout.take().expect("Failed to get stdout handle");     
-                let mut reader = BufReader::new(stdout).lines();
+            Ok(child) => {
+                // handle process 
+                let stdout = child.stdout.expect("unable to acquire stdout");
+                let reader = BufReader::new(stdout);
 
-                println!("here 1");
-                tokio::spawn(async move {
-                    let status = child.wait().await
-                        .expect("child process encountered an error");
-            
-                    println!("child status was: {}", status);
-                });
-                while let Some(line) = reader.next_line().await.expect("failed to read line") {
-                    stream_callback(line)
-                };               
+                reader
+                    .lines()
+                    .filter_map(|line| line.ok())
+                    .for_each(|line| stream_callback(line));
+
                 FlowExecutionResult::SUCCESS
             },
             Err(e) => {
@@ -80,20 +75,22 @@ impl Executor {
 mod tests {
     use super::Executor;
 
-    #[tokio::test]
-    async fn test_run_flow() {
+    // #[tokio::test]
+    #[test]
+    fn test_run_flow() {
 
         let exec = Executor::new("echo", Some(vec!["Running test_run_flow".to_string()]));
-        let exec_result = exec.run(|x|println!("{}", x)).await.to_string();
+        let exec_result = exec.run(|x|println!("{}", x)).to_string();
         assert_eq!(exec_result, "".to_string())
     }
 
-    #[tokio::test]
-    async fn test_run_flow_with_callback() {
+    // #[tokio::test]
+    #[test]
+    fn test_run_flow_with_callback() {
         let mut outputs: Vec<String> = Vec::new();
         let exec: Executor = Executor::new("printf", Some(vec!["item1\nitem2\nitem3".to_string()]));
         let callback_closure = |x| outputs.push(x);
-        exec.run(callback_closure).await.to_string();
+        exec.run(callback_closure).to_string();
         assert_eq!(outputs, vec!["item1", "item2", "item3"])
     }
 
