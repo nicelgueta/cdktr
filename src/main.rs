@@ -1,18 +1,10 @@
-mod executor;
-mod zookeeper;
+// mod executor;
+// mod zookeeper;
+mod event;
 
-use std::{time, thread};
-use zookeeper::Zookeeper;
 
 // // #[tokio::main]
 fn main() {
-    let mut zk = Zookeeper::new(2);
-
-    zk.run_in_executor("python".to_string(), vec!["s.py".to_string(), "3".to_string()]).unwrap();
-
-    zk.run_in_executor("python".to_string(), vec!["s.py".to_string(), "6".to_string()]).unwrap();
-
-    let second = time::Duration::from_secs(1);
-    thread::sleep(second);
-    zk.wait_on_threads();
+    let callback = |s| println!("GOT FROM ZMQ: {}", s);
+    event::run_zmq_listener("0.0.0.0", 5561, callback)
 }
