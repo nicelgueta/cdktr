@@ -17,6 +17,12 @@ impl FlowExecutionResult {
     }
 }
 
+#[derive(Debug)]
+pub struct Task {
+    pub command: String,
+    pub args: Option<Vec<String>>
+}
+
 pub mod traits {
     use tokio::sync::mpsc::Sender;
 

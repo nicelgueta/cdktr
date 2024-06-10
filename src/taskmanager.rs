@@ -1,11 +1,14 @@
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use tokio::sync::mpsc;
+use zeromq::{Socket, SocketRecv};
 
 use crate::{
     executor::ProcessExecutor,
-    interfaces::traits::Executor,
+    interfaces::{
+        Task,
+        traits::Executor
+    },
 };
 
 #[derive(Debug)]
@@ -20,19 +23,6 @@ pub enum TaskManagerError {
     FlowError(String),
     Other
 }
-#[derive(Debug)]
-struct Task {
-    command: String,
-    args: Option<Vec<String>>
-}
-impl Task {
-    fn new(command: String, args: Option<Vec<String>>) -> Self {
-        Self {
-            command, args
-        }
-    }
-}
-
 
 // type TaskQueue: Arc<VecDeque<Task>>;
 
@@ -86,16 +76,71 @@ impl TaskManager {
         Ok(rx)
     }
 
-    pub fn start(&self) {
+    pub async fn start(&mut self, host: String, port: usize) {
         // create task queue
-        // spawn_zmq_loop(task_queue)
+        let task_queue: Arc<Mutex<VecDeque<Task>>> = Arc::new(Mutex::new(VecDeque::new()));
+        let tqclone = task_queue.clone();
+        tokio::spawn(
+            async move {
+                zmq_loop(host, port, tqclone).await
+            }
+        );
         // spawn_task_execution_loop(task_queue)
+        println!("Beginning task execution loop");
+        loop {
+            while task_queue.lock().await.is_empty() || *self.thread_counter.lock().await > self.max_threads {
+                // if the queue is empty (no tasks to do) or the manager is currently running the
+                // maxium allowes concurrent threads then just hang tight
+            };
+            let task = {
+                task_queue.lock().await.pop_front().expect("Unable to pop task from queue")
+            };
+            let mut receiver_result = self.run_in_executor(task.command, task.args).await;
+            
+            // need to spawn the reading of the logs of the run task in order to free this thread
+            // to go back to looking at the queue
+            tokio::spawn(
+                async move {
+                    while let Some(msg) = receiver_result.as_mut().expect(
+                        "Unable to get receiver result"
+                    ).recv().await {
+                        println!("LOGGING: {}", msg);
+                    };
+                }
+            );
+
+        }
     }
 
-
 }
+pub async fn zmq_loop(host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
 
+    let mut socket = zeromq::SubSocket::new();
+    socket
+        .connect(&format!("tcp://{}:{}", host, &port.to_string()))
+        .await
+        .expect("Failed to connect");
 
+    socket.subscribe("").await.expect("Failed to subscribe to subscription");
+
+    println!("Starting ZMQ loop on tcp://{}:{}", host, &port.to_string());
+    loop {
+        let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
+        let msg = String::try_from(recv).unwrap();
+        let cmd: Vec<String> = msg.split("|").into_iter().map(|x| x.to_string()).collect();
+        let command = cmd[0].clone();
+        let args = if cmd.len() > 1 {
+            Some(cmd[1..].iter().map(|x| x.clone()).collect())
+        } else {
+            None
+        };
+        let task = Task {command, args};
+        {
+            let mut task_queue = task_queue_mutex.lock().await;
+            (*task_queue).push_back(task);
+        }
+    }
+}
 
 // TODO: fix the broken pipe error
 #[cfg(test)]

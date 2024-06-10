@@ -1,13 +1,12 @@
 
 mod executor;
 mod taskmanager;
-// mod event;
 mod interfaces;
 
-// use taskmanager::TaskManager;
+use taskmanager::TaskManager;
 
 #[tokio::main]
 async fn main() {
-    // let  mut zk = TaskManager::new(2);
-    // zk.main_event_loop("0.0.0.0", 5561)
+    let mut tm = TaskManager::new(2);
+    tm.start("0.0.0.0".to_string(), 5561).await
 }
