@@ -78,3 +78,6 @@ These can be set as environment variables, set in a local `conducktor.config.yam
 
 ## Current tasks
 - 
+
+## Issues
+- need to refresh zmq subscriptions to check if the pub dropped for whatever reason

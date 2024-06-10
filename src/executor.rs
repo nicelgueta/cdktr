@@ -18,8 +18,7 @@ impl traits::Executor for ProcessExecutor {
             command: command.to_string(), args
         }
     }
-    async fn run(self, tx: Sender<String>) -> FlowExecutionResult 
-    {
+    async fn run(self, tx: Sender<String>) -> FlowExecutionResult {
         let mut cmd = Command::new(self.command);
         cmd.stdout(Stdio::piped());
 
