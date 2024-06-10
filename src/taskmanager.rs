@@ -19,8 +19,8 @@ pub struct TaskManager {
 
 #[derive(Debug, PartialEq)]
 pub enum TaskManagerError {
-    SpawnError(String),
-    FlowError(String),
+    TooManyThreadsError,
+    FlowError,
     Other
 }
 
@@ -44,9 +44,7 @@ impl TaskManager {
         {
             if *self.thread_counter.lock().await >= self.max_threads {
                 return Err(
-                    TaskManagerError::SpawnError(
-                        "Cannot spawn new process - max_threads reached".to_string()
-                    )
+                    TaskManagerError::TooManyThreadsError
                 )
             };
         }
@@ -95,19 +93,24 @@ impl TaskManager {
             let task = {
                 task_queue.lock().await.pop_front().expect("Unable to pop task from queue")
             };
-            let mut receiver_result = self.run_in_executor(task.command, task.args).await;
-            
-            // need to spawn the reading of the logs of the run task in order to free this thread
-            // to go back to looking at the queue
-            tokio::spawn(
-                async move {
-                    while let Some(msg) = receiver_result.as_mut().expect(
-                        "Unable to get receiver result"
-                    ).recv().await {
-                        println!("LOGGING: {}", msg);
-                    };
+            let receiver_result = self.run_in_executor(task.command, task.args).await;
+            match receiver_result {
+                Err(e) => match e {
+                    TaskManagerError::TooManyThreadsError => break,
+                    _ => panic!("Got TaskManagerError")
+                },
+                Ok(mut rx) => {
+                    // need to spawn the reading of the logs of the run task in order to free this thread
+                    // to go back to looking at the queue
+                    tokio::spawn(
+                        async move {
+                            while let Some(msg) = rx.recv().await {
+                                println!("LOGGING: {}", msg);
+                            };
+                        }
+                    );
                 }
-            );
+            }
 
         }
     }
@@ -224,7 +227,7 @@ mod tests {
 
         match result3 {
             Ok(_handle) => panic!("Adding another thread beyond max threads should error"),
-            Err(e) => assert_eq!(e, TaskManagerError::SpawnError("Cannot spawn new process - max_threads reached".to_string()))
+            Err(e) => assert_eq!(e, TaskManagerError::TooManyThreadsError)
         }
         
         
