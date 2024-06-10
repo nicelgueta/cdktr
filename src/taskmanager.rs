@@ -16,7 +16,7 @@ use crate::{
 pub struct TaskManager {
     max_threads: usize,
     thread_counter: Arc<Mutex<usize>>,
-    task_queue: Arc<Mutex<VecDeque<Task>>>
+    pub task_queue: Arc<Mutex<VecDeque<Task>>>
 }
 
 #[derive(Debug, PartialEq)]
@@ -58,11 +58,6 @@ impl TaskManager {
             thread_counter: Arc::new(Mutex::new(0)),
             task_queue: Arc::new(Mutex::new(VecDeque::new()))
         }
-    }
-
-    pub async fn queue_task(&self, task: Task) {
-        let mut task_queue = self.task_queue.lock().await;
-        (*task_queue).push_back(task);
     }
 
     pub async fn run_in_executor(
@@ -258,13 +253,5 @@ mod tests {
             Ok(_handle) => panic!("Adding another thread beyond max threads should error"),
             Err(e) => assert_eq!(e, TaskManagerError::TooManyThreadsError)
         }
-    }
-
-    #[tokio::test]
-    async fn test_queue_task() {
-        let zk = TaskManager::new(2);
-        let task = Task {command: "echo".to_string(), args: Some(vec!["hello".to_string()]) };
-        zk.queue_task(task).await;
-        assert!(zk.task_queue.lock().await.len() > 0);
     }
 }

@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4.38"
-duckdb = { version = "0.10.2"}
+rusqlite = "0.31.0"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread", "io-std", "process", "io-util", "sync", "time"] }
 zeromq = "0.4.0"

@@ -1,14 +1,15 @@
-use duckdb::Connection;
+use rusqlite::{Connection, Result};
+
 use chrono::{DateTime, Utc};
 
 #[derive(Debug)]
-struct ScheduledTask {
-    id: i64,
-    task_name: String,
-    command: String,
-    args: String,
-    cron: String,
-    date_created: DateTime<Utc>
+pub struct ScheduledTask {
+    pub id: i64,
+    pub task_name: String,
+    pub command: String,
+    pub args: String,
+    pub cron: String,
+    pub date_created: DateTime<Utc>
 }
 
 

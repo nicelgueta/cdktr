@@ -2,7 +2,8 @@
 mod executor;
 mod taskmanager;
 mod interfaces;
-// mod db;
+mod db;
+mod scheduler;
 
 use taskmanager::TaskManager;
 
