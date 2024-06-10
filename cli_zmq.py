@@ -24,7 +24,7 @@ print("Connecting to hello world server…")
 socket = context.socket(zmq.PUB)
 socket.bind(f"tcp://0.0.0.0:{PORT}")
 
-sync_to_subscriber(PORT+1)
+# sync_to_subscriber(PORT+1)
 
 
 time.sleep(2)

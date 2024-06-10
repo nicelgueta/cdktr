@@ -1,39 +1,24 @@
-use std::process::Command;
+use tokio::{process::Command, sync::mpsc::Sender};
 use std::process::Stdio;
-use std::io::{BufRead, BufReader};
+use tokio::io::{BufReader, AsyncBufReadExt};
 
-#[derive(Debug, PartialEq)]
-pub enum FlowExecutionResult {
-    SUCCESS,
-    CRASHED(String),
-    // ABORTED(String),
-    // FAILURE(String),
-}
-impl FlowExecutionResult {
-    fn to_string(self) -> String {
-        match self {
-            Self::CRASHED(v) => v,
-            _ => "".to_string()
-            // Self::ABORTED(v) => v,
-            // Self::FAILURE(v) => v,
-        }
-    }
-}
-pub struct Executor {
+use crate::interfaces::{
+    traits, FlowExecutionResult
+};
+
+pub struct ProcessExecutor {
     command: String,
     args: Option<Vec<String>>,
 
 }
 
-impl Executor {
-    pub fn new(command: &str, args: Option<Vec<String>>) -> Self {
+impl traits::Executor for ProcessExecutor {
+    fn new(command: &str, args: Option<Vec<String>>) -> Self {
         Self {
             command: command.to_string(), args
         }
     }
-    pub fn run<F>(self, mut stream_callback: F) -> FlowExecutionResult 
-    where 
-        F: FnMut(String)
+    async fn run(self, tx: Sender<String>) -> FlowExecutionResult 
     {
         let mut cmd = Command::new(self.command);
         cmd.stdout(Stdio::piped());
@@ -49,13 +34,11 @@ impl Executor {
             Ok(child) => {
                 // handle process 
                 let stdout = child.stdout.expect("unable to acquire stdout");
-                let reader = BufReader::new(stdout);
+                let mut reader = BufReader::new(stdout).lines();
 
-                reader
-                    .lines()
-                    .filter_map(|line| line.ok())
-                    .for_each(|line| stream_callback(line));
-
+                while let Some(line) = reader.next_line().await.unwrap(){
+                    tx.send(line).await.unwrap();
+                }
                 FlowExecutionResult::SUCCESS
             },
             Err(e) => {
@@ -73,24 +56,34 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
-    use super::Executor;
+    use super::ProcessExecutor;
+    use crate::interfaces::traits::Executor;
+    use tokio::sync::mpsc;
 
-    // #[tokio::test]
-    #[test]
-    fn test_run_flow() {
+    #[tokio::test]
+    async fn test_run_flow() {
 
-        let exec = Executor::new("echo", Some(vec!["Running test_run_flow".to_string()]));
-        let exec_result = exec.run(|x|println!("{}", x)).to_string();
+        let exec = ProcessExecutor::new("echo", Some(vec!["Running test_run_flow".to_string()]));
+        let (tx, rx) = mpsc::channel(32);
+        let exec_result = exec.run(tx).await.to_string();
         assert_eq!(exec_result, "".to_string())
     }
 
-    // #[tokio::test]
-    #[test]
-    fn test_run_flow_with_callback() {
+    #[tokio::test]
+    async fn test_run_flow_with_callback() {
+        let exec: ProcessExecutor = ProcessExecutor::new("printf", Some(vec!["item1\nitem2\nitem3".to_string()]));
+        let (tx, mut rx) = mpsc::channel(32);
+        
         let mut outputs: Vec<String> = Vec::new();
-        let exec: Executor = Executor::new("printf", Some(vec!["item1\nitem2\nitem3".to_string()]));
-        let callback_closure = |x| outputs.push(x);
-        exec.run(callback_closure).to_string();
+
+        // have to spawn instead of await  in order to move on to the recv messages since for tx 
+        // to go out of scope, `run` would have to have exited
+        tokio::spawn(
+            async move {exec.run(tx).await}
+        ); 
+        while let Some(msg) = rx.recv().await {
+            outputs.push(msg);
+        }
         assert_eq!(outputs, vec!["item1", "item2", "item3"])
     }
 

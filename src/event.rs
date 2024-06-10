@@ -1,6 +1,6 @@
 
-pub fn run_zmq_listener<F>(host: &str, port: usize, mut callback: F)
-where F: FnMut(String)
+
+pub fn run_zmq_listener<F>(host: &str, port: usize, task_queue)
 {
     let context = zmq::Context::new();
     let subscriber = context.socket(zmq::SUB).unwrap();

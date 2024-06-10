@@ -1,6 +1,6 @@
 # Conducktor
 
-Super lightweight, distirubted, terminal-based workflow orchestration engine for just about anything. Think about it like a TUI for oragnised cron and event-triggered jobs across different systems.
+Super lightweight, distributed, terminal-based workflow orchestration engine for just about anything. Think about it like a TUI for oragnised cron and event-triggered jobs across different systems.
 Executors are spawned as separate processes to run flows in parallel. When a flow is triggered, the scheduler will look for a machine with available executors to run the flow and send the flow to that instance to be executed.
 
 ## Main Features
@@ -72,3 +72,9 @@ These can be set as environment variables, set in a local `conducktor.config.yam
 - `CDKTR_HOST` - The hostname of the current instance
 - `CDKTR_PORT` - The port of the current instance ZMQ event listener
 - `CDKTR_MAX_EXECUTORS` - The maximum number of executor threads to spawn for a given instance
+
+
+
+
+## Current tasks
+- 
