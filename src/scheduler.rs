@@ -1,4 +1,5 @@
 
+use std::thread;
 /// Main scheduling component. This component has an internal task queue for tasks
 /// that are to be scheduled within the next poll interval.
 /// There are two main loops that this component runs.
@@ -11,7 +12,7 @@
 /// 
 
 use std::{collections::VecDeque, sync::Arc};
-use std::sync::{Mutex as StdMutex, MutexGuard};
+use std::sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard};
 use tokio::sync::Mutex as TokioMutex;
 use crate::{
     interfaces::Task,
@@ -38,6 +39,15 @@ impl Scheduler {
         }
     }
     pub async fn start(&self, task_manager_queue: Arc<TokioMutex<VecDeque<Task>>>) {
+        let task_queue = self.task_queue.clone();
+        thread::spawn(|| {
+            poll_db(task_queue)
+        });
+        self.main_loop(task_manager_queue)
+    }
+
+    async fn main_loop(&self, task_manager_queue: Arc<TokioMutex<VecDeque<Task>>>) {
+        // main loop
         loop {
             {
                 let internal_task_q = self.task_queue.lock().unwrap();
@@ -59,14 +69,17 @@ impl Scheduler {
         }
     }
 
-    pub fn poll_db(&self) {
-        // every x seconds
-        // query db schedules
-        // if time then queue
-    }
+}
+fn poll_db(task_queue: Arc<StdMutex<VecDeque<QueuedScheduledTask>>>) {
+    let next_datetime = DateTime::from_timestamp(
+        current_datetime.timestamp() + (poll_interval_seconds as i64), 0
+    ).unwrap();
+    // every x seconds
+    // query db schedules
+    // if time then queue
 }
 
-fn first_task_is_ready(task_q: &MutexGuard<VecDeque<QueuedScheduledTask>>) -> bool {
+fn first_task_is_ready(task_q: &StdMutexGuard<VecDeque<QueuedScheduledTask>>) -> bool {
     if (*task_q).len() == 0 {
         false
     } else {
@@ -78,5 +91,6 @@ fn first_task_is_ready(task_q: &MutexGuard<VecDeque<QueuedScheduledTask>>) -> bo
 #[cfg(test)]
 mod tests {
 
-
+    #[tokio::test]
+    async fn 
 }
