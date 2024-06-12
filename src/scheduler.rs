@@ -43,7 +43,7 @@ impl Scheduler {
         thread::spawn(|| {
             poll_db(task_queue)
         });
-        self.main_loop(task_manager_queue)
+        self.main_loop(task_manager_queue).await;
     }
 
     async fn main_loop(&self, task_manager_queue: Arc<TokioMutex<VecDeque<Task>>>) {
@@ -70,10 +70,7 @@ impl Scheduler {
     }
 
 }
-fn poll_db(task_queue: Arc<StdMutex<VecDeque<QueuedScheduledTask>>>) {
-    let next_datetime = DateTime::from_timestamp(
-        current_datetime.timestamp() + (poll_interval_seconds as i64), 0
-    ).unwrap();
+fn poll_db(task_queue: Arc<StdMutex<VecDeque<QueuedScheduledTask>>>) {;
     // every x seconds
     // query db schedules
     // if time then queue
@@ -92,5 +89,7 @@ fn first_task_is_ready(task_q: &StdMutexGuard<VecDeque<QueuedScheduledTask>>) ->
 mod tests {
 
     #[tokio::test]
-    async fn 
+    async fn test_first_is_ready() {
+
+    }
 }
