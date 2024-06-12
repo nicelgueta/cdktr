@@ -16,7 +16,7 @@ use std::sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard};
 use tokio::sync::Mutex as TokioMutex;
 use crate::{
     interfaces::Task,
-    db::ScheduledTask
+    db::models::ScheduledTask
 };
 use chrono::{DateTime, Utc};
 

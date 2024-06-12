@@ -1,6 +1,7 @@
 use diesel::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Insertable, Deserialize, Serialize)]
 #[diesel(table_name = crate::db::schema::schedules)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct ScheduledTask {
