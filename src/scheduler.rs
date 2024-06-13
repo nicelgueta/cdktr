@@ -1,5 +1,4 @@
 
-use std::thread;
 /// Main scheduling component. This component has an internal task queue for tasks
 /// that are to be scheduled within the next poll interval.
 /// There are two main loops that this component runs.
@@ -12,26 +11,26 @@ use std::thread;
 /// 
 
 use std::{collections::VecDeque, sync::Arc};
-use std::sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard};
+use std::thread;
+use std::time::Duration;
+use std::sync::Mutex as StdMutex;
 use tokio::sync::Mutex as TokioMutex;
+use tokio::time::sleep;
 use crate::{
     interfaces::Task,
-    db::models::ScheduledTask
+    db::{
+        get_connection, get_queueable_schedules,
+        models::ScheduledTask
+    }
 };
-use chrono::{DateTime, Utc};
-
-struct QueuedScheduledTask {
-    scheduled_task: ScheduledTask,
-    start_time: DateTime<Utc>
-}
-
+use chrono::Utc;
 struct Scheduler {
     db_path: String,
-    poll_interval_seconds: usize,
-    task_queue: Arc<StdMutex<VecDeque<QueuedScheduledTask>>>
+    poll_interval_seconds: i32,
+    task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>>
 }
 impl Scheduler {
-    fn new(db_path: String, poll_interval_seconds: usize) -> Self {
+    fn new(db_path: String, poll_interval_seconds: i32) -> Self {
         Self {
             db_path, 
             poll_interval_seconds, 
@@ -40,20 +39,24 @@ impl Scheduler {
     }
     pub async fn start(&self, task_manager_queue: Arc<TokioMutex<VecDeque<Task>>>) {
         let task_queue = self.task_queue.clone();
-        thread::spawn(|| {
-            poll_db(task_queue)
+        let db_path: String = self.db_path.clone();
+        let poll_interval_seconds = self.poll_interval_seconds.clone();
+        let mut cnxn = get_connection(Some(&db_path));
+        thread::spawn(move || {
+            // None passed to kill_after to ensure the loop never ends
+            poll_db(task_queue, &mut cnxn, poll_interval_seconds, None)
         });
         self.main_loop(task_manager_queue).await;
     }
 
     async fn main_loop(&self, task_manager_queue: Arc<TokioMutex<VecDeque<Task>>>) {
-        // main loop
         loop {
             {
                 let internal_task_q = self.task_queue.lock().unwrap();
-                while ! first_task_is_ready(&internal_task_q) {
+                while ! first_task_is_ready(&*internal_task_q) {
                     // just hang while we wait for the first task to be ready to send
                     // to TM
+                    sleep(Duration::from_millis(100)).await;
                 }
             }
             {
@@ -62,34 +65,163 @@ impl Scheduler {
                 );
                 let mut tm_q_mut = task_manager_queue.lock().await;
                 tm_q_mut.push_back(Task{
-                    command: task.scheduled_task.command, 
-                    args: Some(task.scheduled_task.args.split("|").map(|x|x.to_string()).collect())
+                    command: task.command, 
+                    args: Some(task.args.split("|").map(|x|x.to_string()).collect())
                 })
             }
         }
     }
 
 }
-fn poll_db(task_queue: Arc<StdMutex<VecDeque<QueuedScheduledTask>>>) {;
-    // every x seconds
-    // query db schedules
-    // if time then queue
+fn poll_db(
+    task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>>, 
+    cnxn: &mut diesel::SqliteConnection,
+    poll_interval_seconds: i32,
+    kill_after: Option<i32>
+) {
+    let start = Utc::now().timestamp() as i32;
+    loop {
+        if let Some(kill_after) = kill_after {
+            if Utc::now().timestamp() as i32 - start > kill_after {
+                break;
+            }
+        };
+        let secs = Duration::from_secs(poll_interval_seconds as u64);
+        thread::sleep(secs);
+        let scheds = get_queueable_schedules(
+            cnxn, 
+            Utc::now().timestamp() as i32,
+            poll_interval_seconds
+        );
+        if scheds.len() < 1 {
+            continue;
+        } else {
+            let mut task_mutex = task_queue.lock().unwrap();
+            for task in scheds {
+                (*task_mutex).push_back(task);
+            }
+
+        }
+    }
+    println!("Polling loop has ended");
 }
 
-fn first_task_is_ready(task_q: &StdMutexGuard<VecDeque<QueuedScheduledTask>>) -> bool {
-    if (*task_q).len() == 0 {
+fn first_task_is_ready(task_q: &VecDeque<ScheduledTask>) -> bool {
+    if (task_q).len() == 0 {
         false
     } else {
         let first_task = &task_q[0];
-        Utc::now() >= first_task.start_time
+        (Utc::now().timestamp() as i32) >= first_task.next_run_timestamp
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::VecDeque, sync::Arc};
+    use chrono::Utc;
+    use std::sync::Mutex as StdMutex;
+    use crate::db::{
+        get_connection,
+        models::{ScheduledTask, NewScheduledTask}
+    };
+    use super::{first_task_is_ready, poll_db};
+
+    use diesel::RunQueryDsl;
+    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+    /// helper macro to provide a nice syntax to generate the database models from a 
+    /// json token tree
+    macro_rules! model_from_json {
+        ($model:ty, $($json:tt)+) => {
+            serde_json::from_value::<$model>(
+                serde_json::json!($($json)+)
+            ).expect(&format!("Failed to create {} from json tt", stringify!($model) ))
+        };
+    }
 
     #[tokio::test]
     async fn test_first_is_ready() {
+        let mut q: VecDeque<ScheduledTask> = VecDeque::new();
+        let curr_timestamp = Utc::now().timestamp() as i32;
+        let tasks = [
+            ScheduledTask {
+                id: 1,
+                task_name: String::from("Task 1"),
+                command: String::from("echo"),
+                args: String::from("Hello, World!"),
+                cron: String::from("0 5 * * *"),
+                timestamp_created: curr_timestamp,
+                next_run_timestamp: curr_timestamp,
+            },
+            ScheduledTask {
+                id: 2,
+                task_name: String::from("Task 2"),
+                command: String::from("ls"),
+                args: String::from("-la"),
+                cron: String::from("0 6 * * *"),
+                timestamp_created: curr_timestamp,
+                next_run_timestamp: curr_timestamp + 10000, // won't be ready
+            },
+            ScheduledTask {
+                id: 3,
+                task_name: String::from("Task 3"),
+                command: String::from("backup"),
+                args: String::from("--all"),
+                cron: String::from("0 7 * * *"),
+                timestamp_created: curr_timestamp,
+                next_run_timestamp: curr_timestamp + 10000, // won't be ready
+            },
+        ];
+        for task in tasks {
+            q.push_back(task);
+        };
+
+        assert!(first_task_is_ready(&q));
+    }
+
+    #[test]
+    fn test_poll_db() {
+        use crate::db::schema::schedules;
+        let task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>> = Arc::new(StdMutex::new(VecDeque::new()));
+        let mut cnxn = get_connection(None);
+        cnxn.run_pending_migrations(MIGRATIONS).unwrap();
+
+        // load some dummy data
+        let curr = Utc::now().timestamp() as i32;
+        let poll_interval_seconds = 1;
+        let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
+            {
+                "task_name": "echo hello",
+                "command": "echo",
+                "args": "hello",
+                "cron": "0 3 * * *", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 2 // should be found
+            },
+            {
+                "task_name": "Echo World",
+                "command": "echo",
+                "args": "world",
+                "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 3 // should be queued
+            },
+            {
+                "task_name": "Echo Jelly",
+                "command": "echo",
+                "args": "jelly",
+                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 10000 // should not be queued
+            }
+        ]);
+        diesel::insert_into(schedules::table)
+            .values(&schedule_json)
+            .execute(&mut cnxn)
+            .expect("Failed to execute insert for schedules");
+
+        // runn the test
+        poll_db(task_queue.clone(), &mut cnxn, poll_interval_seconds, Some(5));
+
+        let task_queue = task_queue.lock().unwrap();
+        assert_eq!(task_queue.len(), 2);
 
     }
 }

@@ -177,7 +177,6 @@ mod tests {
     use tokio::time::{sleep, Duration};
 
     use crate::taskmanager::TaskManagerError;
-    use crate::interfaces::Task;
 
     use super::TaskManager;
 

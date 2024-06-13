@@ -5,6 +5,6 @@ CREATE TABLE IF NOT EXISTS `schedules`(
 	`command` TEXT NOT NULL,
 	`args` TEXT NOT NULL,
 	`cron` TEXT NOT NULL,
-	`timestamp_created` INTEGER NOT NULL,
+	`timestamp_created` INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 	`next_run_timestamp` INTEGER NOT NULL
 );
