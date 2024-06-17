@@ -44,7 +44,7 @@ impl Scheduler {
         let mut cnxn = get_connection(Some(&db_path));
         thread::spawn(move || {
             // None passed to kill_after to ensure the loop never ends
-            poll_db(task_queue, &mut cnxn, poll_interval_seconds, None)
+            poll_db_loop(task_queue, &mut cnxn, poll_interval_seconds, None)
         });
         self.main_loop(task_manager_queue).await;
     }
@@ -73,7 +73,7 @@ impl Scheduler {
     }
 
 }
-fn poll_db(
+fn poll_db_loop(
     task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>>, 
     cnxn: &mut diesel::SqliteConnection,
     poll_interval_seconds: i32,
@@ -88,22 +88,31 @@ fn poll_db(
         };
         let secs = Duration::from_secs(poll_interval_seconds as u64);
         thread::sleep(secs);
-        let scheds = get_queueable_schedules(
-            cnxn, 
-            Utc::now().timestamp() as i32,
-            poll_interval_seconds
-        );
-        if scheds.len() < 1 {
-            continue;
-        } else {
-            let mut task_mutex = task_queue.lock().unwrap();
-            for task in scheds {
-                (*task_mutex).push_back(task);
-            }
-
-        }
+        let current_timestamp = Utc::now().timestamp() as i32;
+        poll_db(task_queue.clone(), cnxn, current_timestamp, poll_interval_seconds);
     }
     println!("Polling loop has ended");
+}
+fn poll_db(
+    task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>>,
+    cnxn: &mut diesel::SqliteConnection,
+    current_timestamp: i32,
+    poll_interval_seconds: i32
+) {
+    let scheds = get_queueable_schedules(
+        cnxn, 
+        current_timestamp,
+        poll_interval_seconds
+    );
+    if scheds.len() < 1 {
+        return ;
+    } else {
+        let mut task_mutex = task_queue.lock().unwrap();
+        for task in scheds {
+            (*task_mutex).push_back(task);
+        }
+
+    }
 }
 
 fn first_task_is_ready(task_q: &VecDeque<ScheduledTask>) -> bool {
@@ -188,7 +197,7 @@ mod tests {
 
         // load some dummy data
         let curr = Utc::now().timestamp() as i32;
-        let poll_interval_seconds = 1;
+        let poll_interval_seconds = 5;
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
             {
                 "task_name": "echo hello",
@@ -209,7 +218,7 @@ mod tests {
                 "command": "echo",
                 "args": "jelly",
                 "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
-                "next_run_timestamp": curr + 10000 // should not be queued
+                "next_run_timestamp": curr + 10 // should not be queued
             }
         ]);
         diesel::insert_into(schedules::table)
@@ -218,7 +227,52 @@ mod tests {
             .expect("Failed to execute insert for schedules");
 
         // runn the test
-        poll_db(task_queue.clone(), &mut cnxn, poll_interval_seconds, Some(5));
+        poll_db(task_queue.clone(), &mut cnxn, curr, poll_interval_seconds);
+
+        let task_queue = task_queue.lock().unwrap();
+        assert_eq!(task_queue.len(), 2);
+
+    }
+    #[test]
+    fn test_poll_db_loop() {
+        use crate::db::schema::schedules;
+        let task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>> = Arc::new(StdMutex::new(VecDeque::new()));
+        let mut cnxn = get_connection(None);
+        cnxn.run_pending_migrations(MIGRATIONS).unwrap();
+
+        // load some dummy data
+        let curr = Utc::now().timestamp() as i32;
+        let poll_interval_seconds = 5;
+        let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
+            {
+                "task_name": "echo hello",
+                "command": "echo",
+                "args": "hello",
+                "cron": "0 3 * * *", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 2 // should be found
+            },
+            {
+                "task_name": "Echo World",
+                "command": "echo",
+                "args": "world",
+                "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 3 // should be queued
+            },
+            {
+                "task_name": "Echo Jelly",
+                "command": "echo",
+                "args": "jelly",
+                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 10 // should not be queued
+            }
+        ]);
+        diesel::insert_into(schedules::table)
+            .values(&schedule_json)
+            .execute(&mut cnxn)
+            .expect("Failed to execute insert for schedules");
+
+        // runn the test
+        poll_db_loop(task_queue.clone(), &mut cnxn, Some(5));
 
         let task_queue = task_queue.lock().unwrap();
         assert_eq!(task_queue.len(), 2);

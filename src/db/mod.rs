@@ -11,7 +11,6 @@ pub fn get_connection(database_url: Option<&str>) -> SqliteConnection {
     SqliteConnection::establish(db_url).expect(
         &format!("Failed to establish connection to {}", db_url)
     )
-
 }
 
 pub fn get_queueable_schedules(
