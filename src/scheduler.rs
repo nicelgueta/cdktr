@@ -44,7 +44,13 @@ impl Scheduler {
         let mut cnxn = get_connection(Some(&db_path));
         thread::spawn(move || {
             // None passed to kill_after to ensure the loop never ends
-            poll_db_loop(task_queue, &mut cnxn, poll_interval_seconds, None)
+            poll_db_loop(
+                task_queue, 
+                &mut cnxn, 
+                Utc::now().timestamp() as i32,
+                poll_interval_seconds, 
+                None
+        )
         });
         self.main_loop(task_manager_queue).await;
     }
@@ -56,7 +62,7 @@ impl Scheduler {
                 while ! first_task_is_ready(&*internal_task_q) {
                     // just hang while we wait for the first task to be ready to send
                     // to TM
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(10)).await;
                 }
             }
             {
@@ -76,20 +82,26 @@ impl Scheduler {
 fn poll_db_loop(
     task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>>, 
     cnxn: &mut diesel::SqliteConnection,
+    start_timestamp: i32,
     poll_interval_seconds: i32,
     kill_after: Option<i32>
 ) {
-    let start = Utc::now().timestamp() as i32;
+    while (Utc::now().timestamp() as i32) < start_timestamp {
+        thread::sleep(Duration::from_millis(10));
+    };
+    // use start + poll interval in order not to accidentally overlap schedules with 
+    // minor microsecond differences
+    let mut current_timestamp = start_timestamp;
     loop {
         if let Some(kill_after) = kill_after {
-            if Utc::now().timestamp() as i32 - start > kill_after {
+            if current_timestamp - start_timestamp >= kill_after {
                 break;
             }
         };
         let secs = Duration::from_secs(poll_interval_seconds as u64);
         thread::sleep(secs);
-        let current_timestamp = Utc::now().timestamp() as i32;
         poll_db(task_queue.clone(), cnxn, current_timestamp, poll_interval_seconds);
+        current_timestamp += poll_interval_seconds as i32;
     }
     println!("Polling loop has ended");
 }
@@ -133,7 +145,7 @@ mod tests {
         get_connection,
         models::{ScheduledTask, NewScheduledTask}
     };
-    use super::{first_task_is_ready, poll_db};
+    use super::{first_task_is_ready, poll_db, poll_db_loop};
 
     use diesel::RunQueryDsl;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
@@ -235,6 +247,9 @@ mod tests {
     }
     #[test]
     fn test_poll_db_loop() {
+        /// Test the loop by running a poll interval of 1 second but running for 5 seconds. 
+        /// This means that 2 of the 3 scheduled tasks should be picked up since they're all <= 5
+        /// seconds of the total duration of the loop
         use crate::db::schema::schedules;
         let task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>> = Arc::new(StdMutex::new(VecDeque::new()));
         let mut cnxn = get_connection(None);
@@ -242,28 +257,51 @@ mod tests {
 
         // load some dummy data
         let curr = Utc::now().timestamp() as i32;
-        let poll_interval_seconds = 5;
+        let poll_interval_seconds = 1;
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
             {
-                "task_name": "echo hello",
+                "task_name": "echo 0",
                 "command": "echo",
-                "args": "hello",
+                "args": "0",
                 "cron": "0 3 * * *", // these don't correspond - ignore as not used for this
-                "next_run_timestamp": curr + 2 // should be found
+                "next_run_timestamp": curr // should be found
             },
             {
-                "task_name": "Echo World",
+                "task_name": "Echo 1",
                 "command": "echo",
-                "args": "world",
+                "args": "1",
                 "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
-                "next_run_timestamp": curr + 3 // should be queued
+                "next_run_timestamp": curr + 1 // should be queued
             },
             {
-                "task_name": "Echo Jelly",
+                "task_name": "Echo 2",
                 "command": "echo",
-                "args": "jelly",
+                "args": "2",
+                "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 2 // should be queued
+            },
+
+            // these should not be queued as test should end once hit 3 second mark
+            {
+                "task_name": "Echo 3",
+                "command": "echo",
+                "args": "3",
                 "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
-                "next_run_timestamp": curr + 10 // should not be queued
+                "next_run_timestamp": curr + 3 // should not be queued
+            },
+            {
+                "task_name": "Echo 4",
+                "command": "echo",
+                "args": "4",
+                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 4 // should not be queued
+            },
+            {
+                "task_name": "Echo 5",
+                "command": "echo",
+                "args": "5",
+                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "next_run_timestamp": curr + 5 // should not be queued
             }
         ]);
         diesel::insert_into(schedules::table)
@@ -272,10 +310,19 @@ mod tests {
             .expect("Failed to execute insert for schedules");
 
         // runn the test
-        poll_db_loop(task_queue.clone(), &mut cnxn, Some(5));
+        poll_db_loop(
+            task_queue.clone(), 
+            &mut cnxn, 
+            curr,
+            poll_interval_seconds, 
+            Some(3)
+        );
 
         let task_queue = task_queue.lock().unwrap();
-        assert_eq!(task_queue.len(), 2);
+        assert_eq!(task_queue.len(), 3);
+        for i in 0..3 {
+            assert_eq!(task_queue[i].args, i.to_string());
+        }
 
     }
 }

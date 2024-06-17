@@ -24,7 +24,7 @@ pub fn get_queueable_schedules(
 
     let nxt_ts = current_timestamp + poll_interval;
     let results = schedules
-        .filter(next_run_timestamp.le(nxt_ts))
+        .filter(next_run_timestamp.lt(nxt_ts))
         .filter(next_run_timestamp.ge(current_timestamp))
         .select(ScheduledTask::as_select())
         .load(cnxn)
@@ -63,24 +63,38 @@ mod tests {
         let nxt = curr + 86_400;
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
                 {
+                    "task_name": "echo start",
+                    "command": "echo",
+                    "args": "start",
+                    "cron": "0 3 * * *", 
+                    "next_run_timestamp": curr // should be found as is start
+                },
+                {
                     "task_name": "echo hello",
                     "command": "echo",
                     "args": "hello",
-                    "cron": "0 3 * * *", // these don't correspond - ignore as not used for this
+                    "cron": "0 3 * * *", 
                     "next_run_timestamp": curr + 100 // should be found
+                },
+                {
+                    "task_name": "echo nope",
+                    "command": "echo",
+                    "args": "nope",
+                    "cron": "0 3 * * *", 
+                    "next_run_timestamp": nxt // should not found as is the exact start of next timestamp window
                 },
                 {
                     "task_name": "Echo World",
                     "command": "echo",
                     "args": "world",
-                    "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
-                    "next_run_timestamp": nxt + 10 // should not be found
+                    "cron": "0 4 * * 0", 
+                    "next_run_timestamp": nxt + 10 // should not be found as beyond interval window
                 },
                 {
                     "task_name": "Echo Jelly",
                     "command": "echo",
                     "args": "jelly",
-                    "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                    "cron": "0 5 * * 0", 
                     "next_run_timestamp": nxt - 10 // should be found
                 }
         ]);
@@ -91,7 +105,7 @@ mod tests {
 
         // query part
         let results = get_queueable_schedules(&mut cnxn, curr, 86_400);
-        assert!(results.len() == 2);
+        assert!(results.len() == 3);
         
     }
 
