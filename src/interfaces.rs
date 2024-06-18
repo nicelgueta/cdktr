@@ -22,6 +22,17 @@ pub struct Task {
     pub command: String,
     pub args: Option<Vec<String>>
 }
+impl Task {
+    pub fn to_msg_string(&self) -> String {
+        match &self.args {
+            Some(args) => {
+                let arg_str = args.join("|");
+                format!("{}|{}", self.command, arg_str)
+            },
+            None => self.command.clone()
+        }
+    }
+}
 
 pub mod traits {
     use tokio::sync::mpsc::Sender;
@@ -34,4 +45,27 @@ pub mod traits {
         fn run(self, tx: Sender<String>) -> impl Future<Output = FlowExecutionResult> ;
     }
 
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::Task;
+
+    #[test]
+    fn task_to_msg_string_args(){
+        let task = Task {
+            command: "echo".to_string(),
+            args: Some(vec!["World".to_string(), "something".to_string()])
+        };
+        assert_eq!(task.to_msg_string(), "echo|World|something".to_string())
+    }
+    #[test]
+    fn task_to_msg_string_no_args(){
+        let task = Task {
+            command: "echo".to_string(),
+            args: None
+        };
+        assert_eq!(task.to_msg_string(), "echo".to_string())
+    }
 }

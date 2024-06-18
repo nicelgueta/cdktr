@@ -19,7 +19,7 @@ Flows can be defined in yaml:
 ```yaml
 
 name: my-flow
-schedule: "0 0 * * *"
+schedule: "0 0 * * * *"
 # or use an event trigger
 eventTrigger: "my-event"
 tasks:

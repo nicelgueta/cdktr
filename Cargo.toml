@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4.38"
-rusqlite = "0.31.0"
+cron = "0.12.1"
+diesel = { version = "2.2.0", features = ["sqlite", "chrono"] }
+diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread", "io-std", "process", "io-util", "sync", "time"] }
