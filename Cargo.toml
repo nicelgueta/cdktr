@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4.38"
+cron = "0.12.1"
 diesel = { version = "2.2.0", features = ["sqlite", "chrono"] }
 diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 serde = { version = "1.0.203", features = ["derive"] }

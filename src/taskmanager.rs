@@ -1,7 +1,9 @@
+use std::time::Duration;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio::time::sleep;
 use zeromq::{Socket, SocketRecv};
 
 use crate::{
@@ -16,7 +18,7 @@ use crate::{
 pub struct TaskManager {
     max_threads: usize,
     thread_counter: Arc<Mutex<usize>>,
-    pub task_queue: Arc<Mutex<VecDeque<Task>>>
+    task_queue: Arc<Mutex<VecDeque<Task>>>
 }
 
 #[derive(Debug, PartialEq)]
@@ -111,7 +113,7 @@ impl TaskManager {
             }
         );
         // spawn_task_execution_loop(task_queue)
-        println!("Beginning task execution loop");
+        println!("TASKMANAGER: Beginning task execution loop");
         self.task_execution_loop().await
     }
     async fn task_execution_loop(&mut self) {
@@ -119,15 +121,16 @@ impl TaskManager {
             while self.task_queue.lock().await.is_empty() || *self.thread_counter.lock().await > self.max_threads {
                 // if the queue is empty (no tasks to do) or the manager is currently running the
                 // maxium allowes concurrent threads then just hang tight
+                sleep(Duration::from_micros(500)).await
             };
             let task = {
-                self.task_queue.lock().await.pop_front().expect("Unable to pop task from queue")
+                self.task_queue.lock().await.pop_front().expect("TASKMANAGER: Unable to pop task from queue")
             };
             let task_exe_result = self.run_in_executor(task.command, task.args).await;
             match task_exe_result {
                 Err(e) => match e {
                     TaskManagerError::TooManyThreadsError => break,
-                    _ => panic!("Got TaskManagerError")
+                    _ => panic!("TASKMANAGER: Got TaskManagerError")
                 },
                 Ok(mut task_exe) => {
                     // need to spawn the reading of the logs of the run task in order to free this thread
@@ -148,10 +151,11 @@ impl TaskManager {
 async fn get_socket(host: &str, port: usize) -> zeromq::SubSocket {
     let mut socket = zeromq::SubSocket::new();
     socket
-        .connect(&format!("tcp://{}:{}", host, &port.to_string()))
+        .bind(&format!("tcp://{}:{}", host, port))
         .await
-        .expect("Failed to connect");
-    socket.subscribe("").await.expect("Failed to subscribe to subscription");
+        .expect("TASKMANAGER: Failed to connect");
+    println!("TASKMANAGER: connected to tcp://{}:{}", host, port);
+    socket.subscribe("").await.expect("TASKMANAGER: Failed to subscribe to subscription");
     socket
 }
 /// This function is used to listen to the ZMQ socket and push the messages to the task queue
@@ -161,10 +165,10 @@ async fn get_socket(host: &str, port: usize) -> zeromq::SubSocket {
 /// 
 pub async fn zmq_loop(host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
 
-    println!("Waiting on connection to tcp://{}:{}", host, &port.to_string());
+    println!("TASKMANAGER: Subscribing to tcp://{}:{}", host, port);
     let mut socket = get_socket(&host, port).await;
-
-    println!("Starting ZMQ loop on tcp://{}:{}", host, &port.to_string());
+    println!("TASKMANAGER: Successfully created SUB connection to tcp://{}:{}", host, port);
+    println!("TASKMANAGER: Starting listening loop");
     loop {
         let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
         let msg = String::try_from(recv).unwrap();

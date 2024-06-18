@@ -8,9 +8,16 @@ pub mod schema;
 
 pub fn get_connection(database_url: Option<&str>) -> SqliteConnection {
     let db_url = database_url.unwrap_or(":memory:");
-    SqliteConnection::establish(db_url).expect(
+    let mut cnxn = SqliteConnection::establish(db_url).expect(
         &format!("Failed to establish connection to {}", db_url)
-    )
+    );
+    if db_url == ":memory:" {
+        use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+        pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+
+        cnxn.run_pending_migrations(MIGRATIONS).unwrap();
+    };
+    cnxn
 }
 
 pub fn get_queueable_schedules(
@@ -33,10 +40,17 @@ pub fn get_queueable_schedules(
     results
 }
 
+pub fn update_next_timestamp(cnxn: &mut SqliteConnection, task_id: i32, timestamp: i32) -> Result<usize,  diesel::result::Error>{
+    use self::schema::schedules::dsl::*;
+    diesel::update(schedules.filter(id.eq(task_id)))
+        .set(next_run_timestamp.eq(timestamp))
+        .execute(cnxn)
+}
+
 #[cfg(test)]
 mod tests {
 
-    use super::{get_connection, get_queueable_schedules};
+    use super::*;
     use super::models::NewScheduledTask;
     use diesel::RunQueryDsl;
     use chrono::Utc;
@@ -66,21 +80,21 @@ mod tests {
                     "task_name": "echo start",
                     "command": "echo",
                     "args": "start",
-                    "cron": "0 3 * * *", 
+                    "cron": "0 3 * * * *", 
                     "next_run_timestamp": curr // should be found as is start
                 },
                 {
                     "task_name": "echo hello",
                     "command": "echo",
                     "args": "hello",
-                    "cron": "0 3 * * *", 
+                    "cron": "0 3 * * * *", 
                     "next_run_timestamp": curr + 100 // should be found
                 },
                 {
                     "task_name": "echo nope",
                     "command": "echo",
                     "args": "nope",
-                    "cron": "0 3 * * *", 
+                    "cron": "0 3 * * * *", 
                     "next_run_timestamp": nxt // should not found as is the exact start of next timestamp window
                 },
                 {
@@ -106,6 +120,45 @@ mod tests {
         // query part
         let results = get_queueable_schedules(&mut cnxn, curr, 86_400);
         assert!(results.len() == 3);
+        
+    }
+    
+    #[test]
+    fn test_update_next_timestamp(){
+        use super::schema::schedules;
+        let mut cnxn = get_connection(None);
+        cnxn.run_pending_migrations(MIGRATIONS).unwrap();
+
+        let curr = Utc::now().timestamp() as i32;
+
+        let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
+                {
+                    "task_name": "echo start",
+                    "command": "echo",
+                    "args": "start",
+                    "cron": "0 3 * * * *", 
+                    "next_run_timestamp": curr // should be found as is start
+                },
+        ]);
+        diesel::insert_into(schedules::table)
+            .values(&schedule_json)
+            .execute(&mut cnxn)
+            .expect("Failed to execute insert for schedules");
+        let new_ts = curr + 32;
+        update_next_timestamp(&mut cnxn, 1, new_ts).expect(
+            "Failed to update timestamp"
+        );
+        
+        let mut results: Vec<ScheduledTask> = schedules::dsl::schedules
+            .filter(schedules::id.eq(1))
+            .select(ScheduledTask::as_select())
+            .load(&mut cnxn)
+            .expect("Failed to query schedules");
+        
+        assert!(results.len() == 1);
+        assert!(results.pop().unwrap().next_run_timestamp == new_ts);
+
+
         
     }
 

@@ -13,9 +13,13 @@
 use std::{collections::VecDeque, sync::Arc};
 use std::thread;
 use std::time::Duration;
-use std::sync::Mutex as StdMutex;
-use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::Mutex;
+use zeromq::SocketSend;
 use tokio::time::sleep;
+use zeromq::Socket;
+use cron::Schedule;
+use std::str::FromStr;
+use crate::db::update_next_timestamp;
 use crate::{
     interfaces::Task,
     db::{
@@ -27,22 +31,40 @@ use chrono::Utc;
 pub struct Scheduler {
     database_url: Option<String>,
     poll_interval_seconds: i32,
-    pub task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>>
+    pub task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
+    publisher: zeromq::PubSocket
 }
 impl Scheduler {
-    pub fn new(database_url: Option<String>, poll_interval_seconds: i32) -> Self {
+    pub fn new(
+        database_url: Option<String>, 
+        poll_interval_seconds: i32,
+    ) -> Self {
+        let publisher = zeromq::PubSocket::new();
         Self {
             database_url, 
             poll_interval_seconds, 
-            task_queue: Arc::new(StdMutex::new(VecDeque::new()))
+            task_queue: Arc::new(Mutex::new(VecDeque::new())),
+            publisher: publisher
         }
     }
-    pub async fn start(&self, task_manager_queue: Arc<TokioMutex<VecDeque<Task>>>) {
+    pub async fn start(&mut self, host: String, port: usize) {
+        println!("SCHEDULER: Creating publisher on socket {}", &port);
+        self.publisher
+            .connect(
+                &format!(
+                    "tcp://{}:{}", &host, &port
+                )
+            )
+            .await
+            .expect(&format!(
+                "Unable to create publisher on {}:{}", &host, &port
+            ));
+        println!("SCHEDULER: Connected publisher to: tcp://{}:{}", &host, &port );
         let task_queue = self.task_queue.clone();
         let database_url = self.database_url.clone();
         let poll_interval_seconds = self.poll_interval_seconds.clone();
         let mut cnxn = get_connection(database_url.as_deref());
-        thread::spawn(move || {
+        tokio::spawn(async move {
             // None passed to kill_after to ensure the loop never ends
             poll_db_loop(
                 task_queue, 
@@ -50,15 +72,16 @@ impl Scheduler {
                 Utc::now().timestamp() as i32,
                 poll_interval_seconds, 
                 None
-        )
+            ).await
         });
-        self.main_loop(task_manager_queue).await;
+        println!("SCHEDULER: Starting main scheduler loop");
+        self.main_loop().await;
     }
 
-    async fn main_loop(&self, task_manager_queue: Arc<TokioMutex<VecDeque<Task>>>) {
+    async fn main_loop(&mut self) {
         loop {
             {
-                let internal_task_q = self.task_queue.lock().unwrap();
+                let internal_task_q = self.task_queue.lock().await;
                 while ! first_task_is_ready(&*internal_task_q) {
                     // just hang while we wait for the first task to be ready to send
                     // to TM
@@ -66,21 +89,25 @@ impl Scheduler {
                 }
             }
             {
-                let task = self.task_queue.lock().unwrap().pop_front().expect(
+                let task = self.task_queue.lock().await.pop_front().expect(
                     "Unable to find a task at the front of the queue"
                 );
-                let mut tm_q_mut = task_manager_queue.lock().await;
-                tm_q_mut.push_back(Task{
+                
+                let task_to_send = Task{
                     command: task.command, 
                     args: Some(task.args.split("|").map(|x|x.to_string()).collect())
-                })
+                };
+                let msg_str = task_to_send.to_msg_string();
+                self.publisher.send(msg_str.into()).await.expect(
+                    "Unable to send msg"
+                );
             }
         }
     }
 
 }
-fn poll_db_loop(
-    task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>>, 
+async fn poll_db_loop(
+    task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>, 
     cnxn: &mut diesel::SqliteConnection,
     start_timestamp: i32,
     poll_interval_seconds: i32,
@@ -100,13 +127,13 @@ fn poll_db_loop(
         };
         let secs = Duration::from_secs(poll_interval_seconds as u64);
         thread::sleep(secs);
-        poll_db(task_queue.clone(), cnxn, current_timestamp, poll_interval_seconds);
+        poll_db(task_queue.clone(), cnxn, current_timestamp, poll_interval_seconds).await;
         current_timestamp += poll_interval_seconds as i32;
     }
     println!("Polling loop has ended");
 }
-fn poll_db(
-    task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>>,
+async fn poll_db(
+    task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
     cnxn: &mut diesel::SqliteConnection,
     current_timestamp: i32,
     poll_interval_seconds: i32
@@ -119,13 +146,20 @@ fn poll_db(
     if scheds.len() < 1 {
         return ;
     } else {
-        let mut task_mutex = task_queue.lock().unwrap();
+        let mut task_mutex = task_queue.lock().await;
         for task in scheds {
-            (*task_mutex).push_back(task);
+            (*task_mutex).push_back(task.clone());
+            let schedule = Schedule::from_str(&task.cron).unwrap();
+            let next_run_ts = schedule.upcoming(Utc).next().unwrap().timestamp() as i32;
+            update_next_timestamp(cnxn, task.id, next_run_ts).expect(
+                &format!("SCHEDULER: failed to update next run timestamp for {}", &task.id)
+            );
+            
         }
 
     }
 }
+
 
 fn first_task_is_ready(task_q: &VecDeque<ScheduledTask>) -> bool {
     if (task_q).len() == 0 {
@@ -140,7 +174,7 @@ fn first_task_is_ready(task_q: &VecDeque<ScheduledTask>) -> bool {
 mod tests {
     use std::{collections::VecDeque, sync::Arc};
     use chrono::Utc;
-    use std::sync::Mutex as StdMutex;
+    use tokio::sync::Mutex;
     use crate::db::{
         get_connection,
         models::{ScheduledTask, NewScheduledTask}
@@ -170,7 +204,7 @@ mod tests {
                 task_name: String::from("Task 1"),
                 command: String::from("echo"),
                 args: String::from("Hello, World!"),
-                cron: String::from("0 5 * * *"),
+                cron: String::from("0 5 * * * *"),
                 timestamp_created: curr_timestamp,
                 next_run_timestamp: curr_timestamp,
             },
@@ -179,7 +213,7 @@ mod tests {
                 task_name: String::from("Task 2"),
                 command: String::from("ls"),
                 args: String::from("-la"),
-                cron: String::from("0 6 * * *"),
+                cron: String::from("0 6 * * * *"),
                 timestamp_created: curr_timestamp,
                 next_run_timestamp: curr_timestamp + 10000, // won't be ready
             },
@@ -188,7 +222,7 @@ mod tests {
                 task_name: String::from("Task 3"),
                 command: String::from("backup"),
                 args: String::from("--all"),
-                cron: String::from("0 7 * * *"),
+                cron: String::from("0 7 * * * *"),
                 timestamp_created: curr_timestamp,
                 next_run_timestamp: curr_timestamp + 10000, // won't be ready
             },
@@ -200,10 +234,10 @@ mod tests {
         assert!(first_task_is_ready(&q));
     }
 
-    #[test]
-    fn test_poll_db() {
+    #[tokio::test]
+    async fn test_poll_db() {
         use crate::db::schema::schedules;
-        let task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>> = Arc::new(StdMutex::new(VecDeque::new()));
+        let task_queue: Arc<Mutex<VecDeque<ScheduledTask>>> = Arc::new(Mutex::new(VecDeque::new()));
         let mut cnxn = get_connection(None);
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
 
@@ -215,21 +249,21 @@ mod tests {
                 "task_name": "echo hello",
                 "command": "echo",
                 "args": "hello",
-                "cron": "0 3 * * *", // these don't correspond - ignore as not used for this
+                "cron": "0 3 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 2 // should be found
             },
             {
                 "task_name": "Echo World",
                 "command": "echo",
                 "args": "world",
-                "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 4 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 3 // should be queued
             },
             {
                 "task_name": "Echo Jelly",
                 "command": "echo",
                 "args": "jelly",
-                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 10 // should not be queued
             }
         ]);
@@ -239,19 +273,19 @@ mod tests {
             .expect("Failed to execute insert for schedules");
 
         // runn the test
-        poll_db(task_queue.clone(), &mut cnxn, curr, poll_interval_seconds);
+        poll_db(task_queue.clone(), &mut cnxn, curr, poll_interval_seconds).await;
 
-        let task_queue = task_queue.lock().unwrap();
+        let task_queue = task_queue.lock().await;
         assert_eq!(task_queue.len(), 2);
 
     }
-    #[test]
-    fn test_poll_db_loop() {
+    #[tokio::test]
+    async fn test_poll_db_loop() {
         /// Test the loop by running a poll interval of 1 second but running for 5 seconds. 
         /// This means that 2 of the 3 scheduled tasks should be picked up since they're all <= 5
         /// seconds of the total duration of the loop
         use crate::db::schema::schedules;
-        let task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>> = Arc::new(StdMutex::new(VecDeque::new()));
+        let task_queue: Arc<Mutex<VecDeque<ScheduledTask>>> = Arc::new(Mutex::new(VecDeque::new()));
         let mut cnxn = get_connection(None);
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
 
@@ -263,21 +297,21 @@ mod tests {
                 "task_name": "echo 0",
                 "command": "echo",
                 "args": "0",
-                "cron": "0 3 * * *", // these don't correspond - ignore as not used for this
+                "cron": "0 3 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr // should be found
             },
             {
                 "task_name": "Echo 1",
                 "command": "echo",
                 "args": "1",
-                "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 4 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 1 // should be queued
             },
             {
                 "task_name": "Echo 2",
                 "command": "echo",
                 "args": "2",
-                "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 4 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 2 // should be queued
             },
 
@@ -286,21 +320,21 @@ mod tests {
                 "task_name": "Echo 3",
                 "command": "echo",
                 "args": "3",
-                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 3 // should not be queued
             },
             {
                 "task_name": "Echo 4",
                 "command": "echo",
                 "args": "4",
-                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 4 // should not be queued
             },
             {
                 "task_name": "Echo 5",
                 "command": "echo",
                 "args": "5",
-                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 5 // should not be queued
             }
         ]);
@@ -316,19 +350,19 @@ mod tests {
             curr,
             poll_interval_seconds, 
             Some(3)
-        );
+        ).await;
 
-        let task_queue = task_queue.lock().unwrap();
+        let task_queue = task_queue.lock().await;
         assert_eq!(task_queue.len(), 3);
         for i in 0..3 {
             assert_eq!(task_queue[i].args, i.to_string());
         }
 
     }
-    #[test]
-    fn test_scheduler_start() {
+    #[tokio::test]
+    async fn test_scheduler_start() {
         use crate::db::schema::schedules;
-        let task_queue: Arc<StdMutex<VecDeque<ScheduledTask>>> = Arc::new(StdMutex::new(VecDeque::new()));
+        let task_queue: Arc<Mutex<VecDeque<ScheduledTask>>> = Arc::new(Mutex::new(VecDeque::new()));
         let mut cnxn = get_connection(None);
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
 
@@ -340,21 +374,21 @@ mod tests {
                 "task_name": "echo hello",
                 "command": "echo",
                 "args": "hello",
-                "cron": "0 3 * * *", // these don't correspond - ignore as not used for this
+                "cron": "0 3 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 2 // should be found
             },
             {
                 "task_name": "Echo World",
                 "command": "echo",
                 "args": "world",
-                "cron": "0 4 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 4 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 3 // should be queued
             },
             {
                 "task_name": "Echo Jelly",
                 "command": "echo",
                 "args": "jelly",
-                "cron": "0 5 * * 0", // these don't correspond - ignore as not used for this
+                "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
                 "next_run_timestamp": curr + 10 // should not be queued
             }
         ]);
@@ -364,9 +398,9 @@ mod tests {
             .expect("Failed to execute insert for schedules");
 
         // runn the test
-        poll_db(task_queue.clone(), &mut cnxn, curr, poll_interval_seconds);
+        poll_db(task_queue.clone(), &mut cnxn, curr, poll_interval_seconds).await;
 
-        let task_queue = task_queue.lock().unwrap();
+        let task_queue = task_queue.lock().await;
         assert_eq!(task_queue.len(), 2);
 
     }

@@ -5,11 +5,12 @@ import random
 context = zmq.Context()
 
 PORT = 5561
+HOST = "0.0.0.0"
 
 def sync_to_subscriber(port: int):
     #  Socket to talk to server
     socket = context.socket(zmq.REP)
-    socket.bind(f"tcp://0.0.0.0:{port}")
+    socket.bind(f"tcp://{HOST}:{port}")
 
     print("Waiting for sync")
     socket.recv()
@@ -22,7 +23,8 @@ def sync_to_subscriber(port: int):
 print("Connecting to hello world server…")
 
 socket = context.socket(zmq.PUB)
-socket.bind(f"tcp://0.0.0.0:{PORT}")
+socket.connect(f"tcp://{HOST}:{PORT}")
+print(f"Running on tcp://{HOST}:{PORT}")
 
 # sync_to_subscriber(PORT+1)
 
