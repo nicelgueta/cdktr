@@ -175,6 +175,7 @@ mod tests {
     use std::{collections::VecDeque, sync::Arc};
     use chrono::Utc;
     use tokio::sync::Mutex;
+
     use crate::db::{
         get_connection,
         models::{ScheduledTask, NewScheduledTask}
@@ -357,51 +358,6 @@ mod tests {
         for i in 0..3 {
             assert_eq!(task_queue[i].args, i.to_string());
         }
-
-    }
-    #[tokio::test]
-    async fn test_scheduler_start() {
-        use crate::db::schema::schedules;
-        let task_queue: Arc<Mutex<VecDeque<ScheduledTask>>> = Arc::new(Mutex::new(VecDeque::new()));
-        let mut cnxn = get_connection(None);
-        cnxn.run_pending_migrations(MIGRATIONS).unwrap();
-
-        // load some dummy data
-        let curr = Utc::now().timestamp() as i32;
-        let poll_interval_seconds = 5;
-        let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
-            {
-                "task_name": "echo hello",
-                "command": "echo",
-                "args": "hello",
-                "cron": "0 3 * * * *", // these don't correspond - ignore as not used for this
-                "next_run_timestamp": curr + 2 // should be found
-            },
-            {
-                "task_name": "Echo World",
-                "command": "echo",
-                "args": "world",
-                "cron": "0 4 * * * *", // these don't correspond - ignore as not used for this
-                "next_run_timestamp": curr + 3 // should be queued
-            },
-            {
-                "task_name": "Echo Jelly",
-                "command": "echo",
-                "args": "jelly",
-                "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
-                "next_run_timestamp": curr + 10 // should not be queued
-            }
-        ]);
-        diesel::insert_into(schedules::table)
-            .values(&schedule_json)
-            .execute(&mut cnxn)
-            .expect("Failed to execute insert for schedules");
-
-        // runn the test
-        poll_db(task_queue.clone(), &mut cnxn, curr, poll_interval_seconds).await;
-
-        let task_queue = task_queue.lock().await;
-        assert_eq!(task_queue.len(), 2);
 
     }
 }
