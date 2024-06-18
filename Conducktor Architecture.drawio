@@ -1,6 +1,6 @@
-<mxfile host="app.diagrams.net" modified="2024-06-12T23:29:46.585Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" etag="fcCkM-EGAz5OmeQ_6ATj" version="24.5.2" type="device">
+<mxfile host="app.diagrams.net" modified="2024-06-18T00:42:34.757Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" etag="83rbA6DdI42nDe9zY7Zt" version="24.5.4" type="device">
   <diagram name="Page-1" id="i2lvcuTBgYAlCcFUpmUH">
-    <mxGraphModel dx="2259" dy="1930" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="2259" dy="2281" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -80,8 +80,8 @@
         <mxCell id="4t-yZNYD0nhIyF8x1905-28" value="Executor" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;" parent="1" vertex="1">
           <mxGeometry x="620" y="250" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="4t-yZNYD0nhIyF8x1905-29" value="Master Instance" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
-          <mxGeometry x="640" y="200" width="110" height="30" as="geometry" />
+        <mxCell id="4t-yZNYD0nhIyF8x1905-29" value="Principal Instance" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="635" y="200" width="120" height="30" as="geometry" />
         </mxCell>
         <mxCell id="4t-yZNYD0nhIyF8x1905-34" value="Spawns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" edge="1">
           <mxGeometry relative="1" as="geometry">
@@ -93,7 +93,7 @@
             <mxPoint x="450" y="720" as="sourcePoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="4t-yZNYD0nhIyF8x1905-43" value="Child Instance" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+        <mxCell id="4t-yZNYD0nhIyF8x1905-43" value="Agent Instance" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
           <mxGeometry x="630" y="650" width="100" height="30" as="geometry" />
         </mxCell>
         <mxCell id="IYykLfQ93kb5P3nA4hAD-1" value="Spawns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="4t-yZNYD0nhIyF8x1905-7" target="4t-yZNYD0nhIyF8x1905-28" edge="1">
@@ -240,10 +240,10 @@
         <mxCell id="IYykLfQ93kb5P3nA4hAD-48" value="Logging Queue - ZMQ SUB" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;" parent="1" vertex="1">
           <mxGeometry x="129" y="335" width="111" height="67.5" as="geometry" />
         </mxCell>
-        <mxCell id="vr0JjSQf0yCIg-9ZwSDq-2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="vr0JjSQf0yCIg-9ZwSDq-1" target="4t-yZNYD0nhIyF8x1905-21">
+        <mxCell id="vr0JjSQf0yCIg-9ZwSDq-2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="vr0JjSQf0yCIg-9ZwSDq-1" target="4t-yZNYD0nhIyF8x1905-21" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="vr0JjSQf0yCIg-9ZwSDq-1" value="TaskQueue" style="strokeWidth=2;html=1;shape=mxgraph.flowchart.direct_data;whiteSpace=wrap;" vertex="1" parent="1">
+        <mxCell id="vr0JjSQf0yCIg-9ZwSDq-1" value="TaskQueue" style="strokeWidth=2;html=1;shape=mxgraph.flowchart.direct_data;whiteSpace=wrap;" parent="1" vertex="1">
           <mxGeometry x="402.5" y="260" width="115" height="25" as="geometry" />
         </mxCell>
       </root>

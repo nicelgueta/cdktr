@@ -3,6 +3,8 @@ mod taskmanager;
 mod interfaces;
 mod scheduler;
 mod db;
+mod server;
+
 use taskmanager::TaskManager;
 
 #[tokio::main]

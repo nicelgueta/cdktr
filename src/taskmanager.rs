@@ -102,6 +102,9 @@ impl TaskManager {
     pub async fn start(&mut self, host: String, port: usize) {
         // create task queue
         let tqclone = self.task_queue.clone();
+
+        // TODO: spawn a separate async task that communicates with another
+        // zmq rep/req server that will be used to check connection status
         tokio::spawn(
             async move {
                 zmq_loop(host, port, tqclone).await
@@ -142,15 +145,24 @@ impl TaskManager {
     }
 }
 
-pub async fn zmq_loop(host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
-
+async fn get_socket(host: &str, port: usize) -> zeromq::SubSocket {
     let mut socket = zeromq::SubSocket::new();
     socket
         .connect(&format!("tcp://{}:{}", host, &port.to_string()))
         .await
         .expect("Failed to connect");
-
     socket.subscribe("").await.expect("Failed to subscribe to subscription");
+    socket
+}
+/// This function is used to listen to the ZMQ socket and push the messages to the task queue
+/// Currently this takes any command and args and pushes them to the task queue
+/// TODO: this should instead receive an ID of a flow that has been registered
+/// and then query the database for the flow and push that to the task queue. 
+/// 
+pub async fn zmq_loop(host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
+
+    println!("Waiting on connection to tcp://{}:{}", host, &port.to_string());
+    let mut socket = get_socket(&host, port).await;
 
     println!("Starting ZMQ loop on tcp://{}:{}", host, &port.to_string());
     loop {
