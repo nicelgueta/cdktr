@@ -5,6 +5,7 @@ mod db;
 mod scheduler;
 mod server;
 
+use std::env;
 use std::thread;
 use tokio::runtime::Builder;
 
@@ -29,7 +30,12 @@ impl InstanceType {
 
 // #[tokio::main]
 fn main() {
-    let typ = InstanceType::from_str("PRINCIPAL");
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        println!("Needs at least one arg of either AGENT or PRINCIPAL");
+        return
+    };
+    let typ = InstanceType::from_str(&args[1]);
     let pub_host = "0.0.0.0".to_string();
     let pub_port = 5561;
     let database_url = None;
