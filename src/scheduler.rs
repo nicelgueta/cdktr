@@ -5,7 +5,7 @@
 /// The first is to check the time of the first item in the queue and wait.
 /// Once time, the scheduler dequeues the task and sends it to the taskmanager.
 /// The second loop runs on a separate thread (because currently cannot find a way
-/// to read duckDB async) to poll the DB for schedules and when it finds flows that
+/// to read diesel async) to poll the DB for schedules and when it finds flows that
 /// are supposed to start within the next poll interval it queues them in order of 
 /// earliest to latest
 /// 

@@ -38,6 +38,8 @@ fn main() {
 
     match typ {
         InstanceType::PRINCIPAL => {
+            // create the scheduler thread that will poll the database 
+            // and send task trigger messages to the task manager SUB
             let pub_host_cl = pub_host.clone();
             thread::spawn(move ||{
                 let rt = Builder::new_current_thread()
@@ -50,6 +52,7 @@ fn main() {
                     sched.start(pub_host_cl, pub_port).await
                 })
             });
+            // start the task manager thread 
             let pub_host_cl = pub_host.clone();
             thread::spawn( move || {
                 let rt = Builder::new_current_thread()
@@ -66,6 +69,8 @@ fn main() {
 
         },
         InstanceType::AGENT => {
+            // only create the task manager thread since scheduler is not required
+            // for AGENT instancess
             let pub_host_cl = pub_host.clone();
             thread::spawn(move || {
                 let rt = Builder::new_current_thread()
@@ -80,14 +85,15 @@ fn main() {
             });
         }
     };
+    // start REP/REQ server for all instances to block on the main thread
     let rt = Builder::new_current_thread()
         .enable_time()
         .enable_io()
         .build()
         .unwrap();
     rt.block_on(async move {
-        let serv = server::Server{};
-        serv.start(&pub_host, pub_port+1).await.expect(
+        let mut serv = server::Server::new();
+        serv.start(&pub_host, pub_port).await.expect(
             "CDKTR: Unable to start client server"
         )
     });

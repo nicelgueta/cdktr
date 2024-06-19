@@ -6,13 +6,15 @@ pub struct ClientConversionError;
 pub enum ClientResponseMessage {
     InvalidMessageType,
     Pong,
+    Success
 }
 
 impl Into<ZmqMessage> for ClientResponseMessage {
     fn into(self) -> ZmqMessage {
         let s = match self {
             Self::InvalidMessageType => "InvalidRequest: Unrecognised message type",
-            Self::Pong => "PONG"
+            Self::Pong => "PONG",
+            Self::Success => "SUCCESS"
         };
         ZmqMessage::from(s)
     }
@@ -20,16 +22,21 @@ impl Into<ZmqMessage> for ClientResponseMessage {
 
 pub enum ClientRequestMessage {
     Ping,
+    Echo(Vec<String>)
     // GetTasks,
 }
 impl ClientRequestMessage {
     fn from_zmq_str(s: &str) -> Result<Self, ClientConversionError> {
         let parsed_s: Vec<&str> = s.split("|").collect();
         let msg_type = parsed_s[0];
-        let args: Vec<&str> = parsed_s[1..].into();
+        let args: Vec<String> = parsed_s[1..]
+            .iter()
+            .map(|x| x.to_string())
+            .collect();
         match msg_type {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
+            "ECHO" => Ok(Self::Echo(args)),
             _ => Err(ClientConversionError)
         }
     }

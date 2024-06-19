@@ -55,3 +55,4 @@ def start_req_socket():
         print(f"Received reply: {message.decode('utf-8')}")
 
 start_req_socket()
+# start_pub_socket()
