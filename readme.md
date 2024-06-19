@@ -77,7 +77,17 @@ These can be set as environment variables, set in a local `conducktor.config.yam
 
 
 ## Current tasks
-- 
 
-## Issues
-- need to refresh zmq subscriptions to check if the pub dropped for whatever reason
+### Main
+- [ ] External event listener
+- [ ] Main instance setup (inc local TM? )
+- [ ] Create an instance ID for each instance
+
+### Scheduler
+- [x] Polling for scheduled tasks
+- [ ] 
+
+### TaskManager
+- [x] Task execution from SUB
+- [ ] Usage of instance ID for SUB topic filtering
+- [ ] Find a way for subscriber to not be affected by publisher connection drops

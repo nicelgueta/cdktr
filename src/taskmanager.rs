@@ -151,7 +151,7 @@ impl TaskManager {
 async fn get_socket(host: &str, port: usize) -> zeromq::SubSocket {
     let mut socket = zeromq::SubSocket::new();
     socket
-        .bind(&format!("tcp://{}:{}", host, port))
+        .connect(&format!("tcp://{}:{}", host, port))
         .await
         .expect("TASKMANAGER: Failed to connect");
     println!("TASKMANAGER: connected to tcp://{}:{}", host, port);

@@ -23,7 +23,7 @@ def start_pub_socket():
     print("Connecting to hello world server…")
 
     socket = context.socket(zmq.PUB)
-    socket.connect(f"tcp://{HOST}:{PORT}")
+    socket.bind(f"tcp://{HOST}:{PORT}")
     print(f"Running on tcp://{HOST}:{PORT}")
 
     # sync_to_subscriber(PORT+1)

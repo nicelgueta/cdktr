@@ -14,9 +14,8 @@ use std::{collections::VecDeque, sync::Arc};
 use std::thread;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use zeromq::SocketSend;
 use tokio::time::sleep;
-use zeromq::Socket;
+use zeromq::{PubSocket, Socket, SocketSend};
 use cron::Schedule;
 use std::str::FromStr;
 use crate::db::update_next_timestamp;
@@ -32,34 +31,19 @@ pub struct Scheduler {
     database_url: Option<String>,
     poll_interval_seconds: i32,
     pub task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
-    publisher: zeromq::PubSocket
 }
 impl Scheduler {
     pub fn new(
         database_url: Option<String>, 
         poll_interval_seconds: i32,
     ) -> Self {
-        let publisher = zeromq::PubSocket::new();
         Self {
             database_url, 
             poll_interval_seconds, 
             task_queue: Arc::new(Mutex::new(VecDeque::new())),
-            publisher: publisher
         }
     }
-    pub async fn start(&mut self, host: String, port: usize) {
-        println!("SCHEDULER: Creating publisher on socket {}", &port);
-        self.publisher
-            .connect(
-                &format!(
-                    "tcp://{}:{}", &host, &port
-                )
-            )
-            .await
-            .expect(&format!(
-                "Unable to create publisher on {}:{}", &host, &port
-            ));
-        println!("SCHEDULER: Connected publisher to: tcp://{}:{}", &host, &port );
+    pub async fn start(&mut self, publisher: Arc<Mutex<PubSocket>>) {
         let task_queue = self.task_queue.clone();
         let database_url = self.database_url.clone();
         let poll_interval_seconds = self.poll_interval_seconds.clone();
@@ -75,10 +59,10 @@ impl Scheduler {
             ).await
         });
         println!("SCHEDULER: Starting main scheduler loop");
-        self.main_loop().await;
+        self.main_loop(publisher).await;
     }
 
-    async fn main_loop(&mut self) {
+    async fn main_loop(&mut self, publisher: Arc<Mutex<PubSocket>>) {
         loop {
             {
                 let internal_task_q = self.task_queue.lock().await;
@@ -98,9 +82,12 @@ impl Scheduler {
                     args: Some(task.args.split("|").map(|x|x.to_string()).collect())
                 };
                 let msg_str = task_to_send.to_msg_string();
-                self.publisher.send(msg_str.into()).await.expect(
-                    "Unable to send msg"
-                );
+                {
+                    let mut pub_mut = publisher.lock().await;
+                    pub_mut.send(msg_str.into()).await.expect(
+                        "Unable to send msg"
+                    );
+                }
             }
         }
     }
