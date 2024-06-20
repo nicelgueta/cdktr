@@ -6,7 +6,7 @@ use zeromq::{Socket, SocketRecv, SocketSend};
 
 pub async fn start(
     current_host: &str, 
-    rep_port: usize
+    rep_port: usize,
 )  -> Result<(), Box<dyn Error>>{
     
     println!("SERVER: Starting REQ/REP Server on tcp://{}:{}", current_host, rep_port);
@@ -24,7 +24,14 @@ pub async fn start(
             let response = handle_client_message(
                 cli_msg
             ).await;
-            socket.send(response.into()).await?;
+            if response == ClientResponseMessage::TMRestart {
+                socket.send(ClientResponseMessage::Success.into()).await?;
+                
+                // exit the loop in order for the server to be restarted
+                break
+            } else {
+                socket.send(response.into()).await?;
+            };
 
         } else {
             let zmq_msg_s = String::try_from(zmq_recv).unwrap();
@@ -32,11 +39,13 @@ pub async fn start(
             let response = ClientResponseMessage::InvalidMessageType;
             socket.send(response.into()).await?;
         }
-    }
+    };
+    Ok(())
 }
 async fn handle_client_message(cli_msg: AgentRequest) -> ClientResponseMessage {
     match cli_msg {
         AgentRequest::Ping => ClientResponseMessage::Pong,
+        AgentRequest::TMRestart => ClientResponseMessage::TMRestart
         // AgentRequest::Echo(args) => {
         //     let task = Task {
         //         command: "echo".to_string(),

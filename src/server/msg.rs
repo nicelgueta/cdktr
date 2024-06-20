@@ -4,10 +4,12 @@ use zeromq::ZmqMessage;
 #[derive(Debug)]
 pub struct ClientConversionError;
 
+#[derive(PartialEq)]
 pub enum ClientResponseMessage {
     InvalidMessageType,
     Pong,
-    Success
+    Success,
+    TMRestart
 }
 
 impl Into<ZmqMessage> for ClientResponseMessage {
@@ -15,7 +17,8 @@ impl Into<ZmqMessage> for ClientResponseMessage {
         let s = match self {
             Self::InvalidMessageType => "InvalidRequest: Unrecognised message type",
             Self::Pong => "PONG",
-            Self::Success => "SUCCESS"
+            Self::Success => "SUCCESS",
+            Self::TMRestart => "TMRESTART"
         };
         ZmqMessage::from(s)
     }
@@ -52,6 +55,7 @@ trait BaseClientRequestMessage<T>: TryFrom<ZmqMessage> {
 
 pub enum AgentRequest{
     Ping,
+    TMRestart,
 }
 impl BaseClientRequestMessage<AgentRequest> for AgentRequest {
     fn from_zmq_str(s: &str) -> Result<AgentRequest, ClientConversionError> {
@@ -59,6 +63,7 @@ impl BaseClientRequestMessage<AgentRequest> for AgentRequest {
         match msg_type {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
+            "TMRESTART" => Ok(Self::TMRestart),
             _ => Err(ClientConversionError)
         }
     }
@@ -72,6 +77,9 @@ impl TryFrom<ZmqMessage> for AgentRequest {
         Self::from_zmq_str(&zmq_msg_s)
     }
 }
+
+
+// principal
 
 pub enum PrincipalRequest {
     Ping,

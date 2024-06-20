@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
-use zeromq::{Socket, SocketRecv};
+use zeromq::{Socket, SocketOptions, SocketRecv};
 
 use crate::{
     executor::ProcessExecutor,
@@ -121,6 +121,7 @@ impl TaskManager {
             while self.task_queue.lock().await.is_empty() || *self.thread_counter.lock().await > self.max_threads {
                 // if the queue is empty (no tasks to do) or the manager is currently running the
                 // maxium allowes concurrent threads then just hang tight
+                // println!("Waiting");
                 sleep(Duration::from_micros(500)).await
             };
             let task = {
@@ -149,7 +150,8 @@ impl TaskManager {
 }
 
 async fn get_socket(host: &str, port: usize) -> zeromq::SubSocket {
-    let mut socket = zeromq::SubSocket::new();
+    let options = SocketOptions::default();
+    let mut socket = zeromq::SubSocket::with_options(options);
     socket
         .connect(&format!("tcp://{}:{}", host, port))
         .await

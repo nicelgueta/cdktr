@@ -26,17 +26,14 @@ def start_pub_socket():
     socket.bind(f"tcp://{HOST}:{PORT}")
     print(f"Running on tcp://{HOST}:{PORT}")
 
-    # sync_to_subscriber(PORT+1)
-
-
-    time.sleep(2)
-    # for slug in rustyrs.generate_slugs(2, 10):
-    #     time.sleep(random.random())
-    #     socket.send(bytes(slug, 'utf-8'))c
-
+    # input("Ready?")
+    gen = rustyrs.SlugGenerator(5)
     while True:
-        msg = input("Enter message: ")
+        msg = f"echo|{next(gen)}"
+        print(f"Sending: {msg}")
+        time.sleep(0.05)
         socket.send(bytes(msg, 'utf-8'))
+
 
 def start_req_socket():
     #  Socket to talk to server
@@ -54,5 +51,19 @@ def start_req_socket():
         message = socket.recv()
         print(f"Received reply: {message.decode('utf-8')}")
 
-start_req_socket()
-# start_pub_socket()
+import sys
+if len(sys.argv) > 1:
+    if sys.argv[1] == "pub":
+        start_pub_socket()
+    elif sys.argv[1] == "req":
+        start_req_socket()
+    elif sys.argv[1] == "rpub":
+        socket = context.socket(zmq.REQ)
+        cli_port = PORT+1
+        socket.connect(f"tcp://{HOST}:{cli_port}")
+        socket.send(b"TMRESTART")
+        message = socket.recv()
+        print(f"Received reply: {message.decode('utf-8')}")
+        start_pub_socket()
+    else:
+        print("Invalid argument")
