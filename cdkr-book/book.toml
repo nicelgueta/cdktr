@@ -1,0 +1,15 @@
+[book]
+authors = ["nicelgueta"]
+language = "en"
+multilingual = false
+src = "src"
+title = "CDKTR Documentation"
+
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+default-theme = "ayu"
+preferred-dark-theme = "ayu"
