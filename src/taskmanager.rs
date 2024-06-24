@@ -1,5 +1,6 @@
 use std::time::Duration;
 use std::{collections::VecDeque, sync::Arc};
+use diesel::IntoSql;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -16,6 +17,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct TaskManager {
+    instance_id: String,
     max_threads: usize,
     thread_counter: Arc<Mutex<usize>>,
     task_queue: Arc<Mutex<VecDeque<Task>>>
@@ -54,8 +56,9 @@ impl TaskExecutionHandle {
 // type TaskQueue: Arc<VecDeque<Task>>;
 
 impl TaskManager {
-    pub fn new(max_threads: usize) -> Self {
+    pub fn new(instance_id: String, max_threads: usize) -> Self {
         Self {
+            instance_id,
             max_threads, 
             thread_counter: Arc::new(Mutex::new(0)),
             task_queue: Arc::new(Mutex::new(VecDeque::new()))
@@ -107,9 +110,10 @@ impl TaskManager {
 
         // TODO: spawn a separate async task that communicates with another
         // zmq rep/req server that will be used to check connection status
+        let ins_id = self.instance_id.clone();
         tokio::spawn(
             async move {
-                zmq_loop(host, port, tqclone).await
+                zmq_loop(&ins_id, host, port, tqclone).await
             }
         );
         // spawn_task_execution_loop(task_queue)
@@ -149,7 +153,7 @@ impl TaskManager {
     }
 }
 
-async fn get_socket(host: &str, port: usize) -> zeromq::SubSocket {
+async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSocket {
     let options = SocketOptions::default();
     let mut socket = zeromq::SubSocket::with_options(options);
     socket
@@ -157,7 +161,7 @@ async fn get_socket(host: &str, port: usize) -> zeromq::SubSocket {
         .await
         .expect("TASKMANAGER: Failed to connect");
     println!("TASKMANAGER: connected to tcp://{}:{}", host, port);
-    socket.subscribe("").await.expect("TASKMANAGER: Failed to subscribe to subscription");
+    socket.subscribe(instance_id).await.expect("TASKMANAGER: Failed to subscribe to subscription");
     socket
 }
 /// This function is used to listen to the ZMQ socket and push the messages to the task queue
@@ -165,10 +169,10 @@ async fn get_socket(host: &str, port: usize) -> zeromq::SubSocket {
 /// TODO: this should instead receive an ID of a flow that has been registered
 /// and then query the database for the flow and push that to the task queue. 
 /// 
-pub async fn zmq_loop(host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
+pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
 
     println!("TASKMANAGER: Subscribing to tcp://{}:{}", host, port);
-    let mut socket = get_socket(&host, port).await;
+    let mut socket = get_socket(&host, port, instance_id).await;
     println!("TASKMANAGER: Successfully created SUB connection to tcp://{}:{}", host, port);
     println!("TASKMANAGER: Starting listening loop");
     loop {
@@ -181,7 +185,7 @@ pub async fn zmq_loop(host: String, port: usize, task_queue_mutex: Arc<Mutex<Vec
         } else {
             None
         };
-        let task = Task {command, args};
+        let task = Task {instance_id: instance_id.to_string(), command, args};
         {
             let mut task_queue = task_queue_mutex.lock().await;
             (*task_queue).push_back(task);
@@ -200,7 +204,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_single_flow() {
-        let mut zk = TaskManager::new(1);
+        let mut zk = TaskManager::new("tm1".to_string(), 1);
         let result = zk.run_in_executor("echo".to_string(), Some(vec!["Running test_run_flow".to_string()])).await;
         assert!(result.is_ok());
         result.unwrap().wait().await.unwrap();
@@ -208,7 +212,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_single_flow_slow() {
-        let mut zk = TaskManager::new(1);
+        let mut zk = TaskManager::new("tm1".to_string(), 1);
         let mut result = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
         assert!(result.is_ok());
         let mut i = 0;
@@ -222,7 +226,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_multiple_flow_slow() {
-        let mut zk = TaskManager::new(3);
+        let mut zk = TaskManager::new("tm1".to_string(), 3);
         let mut result1 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
         let mut result2 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "2".to_string()])).await;
         let mut result3 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
@@ -255,7 +259,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_multiple_flow_too_many_threads() {
-        let mut zk = TaskManager::new(2);
+        let mut zk = TaskManager::new("tm1".to_string(), 2);
         let result1 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
         let result2 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "2".to_string()])).await;
         assert!(result1.is_ok());

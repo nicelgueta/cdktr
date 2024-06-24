@@ -43,18 +43,19 @@ async fn handle_client_message(
 ) -> ClientResponseMessage {
     match cli_msg {
         PrincipalRequest::Ping => ClientResponseMessage::Pong,
-        PrincipalRequest::Echo(args) => {
-            let task = Task {
-                command: "echo".to_string(),
-                args: Some(args)
-            };
-            {
-                let mut pub_mut = publisher.lock().await;
-                pub_mut.send(task.to_msg_string().into()).await.unwrap();
-            }
+        // PrincipalRequest::RunTask((ins_id, cmd, args)) => {
+        //     let task = Task {
+        //         instance_id: ins_id,
+        //         command: cmd,
+        //         args: Some(args)
+        //     };
+        //     {
+        //         let mut pub_mut = publisher.lock().await;
+        //         pub_mut.send(task.to_msg_string().into()).await.unwrap();
+        //     }
 
-            // return
-            ClientResponseMessage::Success
-        }
+        //     // return
+        //     ClientResponseMessage::Success
+        // }
     }
 }

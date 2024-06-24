@@ -2,7 +2,18 @@
 use zeromq::ZmqMessage;
 
 #[derive(Debug)]
-pub struct ClientConversionError;
+pub struct ClientConversionError {
+    msg: String
+}
+
+impl ClientConversionError {
+    pub fn new(msg: String) -> Self {
+        ClientConversionError {msg}
+    }
+    pub fn to_string(&self) -> String {
+        self.msg.clone()
+    }
+}
 
 #[derive(PartialEq)]
 pub enum ClientResponseMessage {
@@ -64,7 +75,7 @@ impl BaseClientRequestMessage<AgentRequest> for AgentRequest {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
             "TMRESTART" => Ok(Self::TMRestart),
-            _ => Err(ClientConversionError)
+            _ => Err(ClientConversionError::new(format!("Unrecognised server message: {}", msg_type)))
         }
     }
 }
@@ -78,12 +89,12 @@ impl TryFrom<ZmqMessage> for AgentRequest {
     }
 }
 
+//////////////////////////////////
 
 // principal
 
 pub enum PrincipalRequest {
     Ping,
-    Echo(Vec<String>)
 }
 impl BaseClientRequestMessage<PrincipalRequest> for PrincipalRequest {
     fn from_zmq_str(s: &str) -> Result<PrincipalRequest, ClientConversionError> {
@@ -91,8 +102,7 @@ impl BaseClientRequestMessage<PrincipalRequest> for PrincipalRequest {
         match msg_type {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
-            "ECHO" => Ok(Self::Echo(args)),
-            _ => Err(ClientConversionError)
+            _ => Err(ClientConversionError::new(format!("Unrecognised server message: {}", msg_type)))
         }
     }
 }
@@ -110,6 +120,7 @@ impl TryFrom<ZmqMessage> for PrincipalRequest {
 mod tests {
     use super::{parse_zmq_str, AgentRequest, BaseClientRequestMessage, PrincipalRequest};
 
+    #[test]
     fn test_agent_req_from_zmq_str(){
         let req_types = ["PING"];
         for rt in req_types {
@@ -118,24 +129,30 @@ mod tests {
             );
         }
     }
+
+    #[test]
     fn test_agent_req_from_zmq_str_invalid(){
         let rt = "IOASNDONTOTALLYFAKEASDKOADOAD";
         assert!(AgentRequest::from_zmq_str(rt).is_err());
     }
 
+    #[test]
     fn test_principal_req_from_zmq_str(){
-        let req_types = ["PING", "ECHO"];
+        let req_types = ["PING"];
         for rt in req_types {
             PrincipalRequest::from_zmq_str(rt).expect(
                 &format!("Failed to create AgentRequest from {}", rt)
             );
         }
     }
+
+    #[test]
     fn test_principal_req_from_zmq_str_invalid(){
         let rt = "IOASNDONTOTALLYFAKEASDKOADOAD";
         assert!(AgentRequest::from_zmq_str(rt).is_err());
     }
 
+    #[test]
     fn test_parse_zmq_str(){
         assert!(parse_zmq_str("ECHO|THIS|THING") == ("ECHO", vec!["THIS".to_string(), "THING".to_string()]));
     }

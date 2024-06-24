@@ -13,18 +13,17 @@
 use std::{collections::VecDeque, sync::Arc};
 use std::thread;
 use std::time::Duration;
-use tokio::sync::Mutex;
+use tokio::sync::{
+    Mutex,
+    mpsc::Sender
+};
 use tokio::time::sleep;
-use zeromq::{PubSocket, Socket, SocketSend};
 use cron::Schedule;
 use std::str::FromStr;
 use crate::db::update_next_timestamp;
-use crate::{
-    interfaces::Task,
-    db::{
-        get_connection, get_queueable_schedules,
-        models::ScheduledTask
-    }
+use crate::db::{
+    get_connection, get_queueable_schedules,
+    models::ScheduledTask
 };
 use chrono::Utc;
 pub struct Scheduler {
@@ -43,7 +42,7 @@ impl Scheduler {
             task_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
-    pub async fn start(&mut self, publisher: Arc<Mutex<PubSocket>>) {
+    pub async fn start(&mut self, sender: Sender<ScheduledTask>) {
         let task_queue = self.task_queue.clone();
         let database_url = self.database_url.clone();
         let poll_interval_seconds = self.poll_interval_seconds.clone();
@@ -59,10 +58,10 @@ impl Scheduler {
             ).await
         });
         println!("SCHEDULER: Starting main scheduler loop");
-        self.main_loop(publisher).await;
+        self.main_loop(sender).await;
     }
 
-    async fn main_loop(&mut self, publisher: Arc<Mutex<PubSocket>>) {
+    async fn main_loop(&mut self, sender: Sender<ScheduledTask>) {
         loop {
             {
                 let internal_task_q = self.task_queue.lock().await;
@@ -76,18 +75,7 @@ impl Scheduler {
                 let task = self.task_queue.lock().await.pop_front().expect(
                     "Unable to find a task at the front of the queue"
                 );
-                
-                let task_to_send = Task{
-                    command: task.command, 
-                    args: Some(task.args.split("|").map(|x|x.to_string()).collect())
-                };
-                let msg_str = task_to_send.to_msg_string();
-                {
-                    let mut pub_mut = publisher.lock().await;
-                    pub_mut.send(msg_str.into()).await.expect(
-                        "Unable to send msg"
-                    );
-                }
+                sender.send(task).await.expect("Failed to send ScheduledTask to TaskRouter");
             }
         }
     }
