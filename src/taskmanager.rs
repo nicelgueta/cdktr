@@ -108,8 +108,6 @@ impl TaskManager {
         // create task queue
         let tqclone = self.task_queue.clone();
 
-        // TODO: spawn a separate async task that communicates with another
-        // zmq rep/req server that will be used to check connection status
         let ins_id = self.instance_id.clone();
         tokio::spawn(
             async move {
