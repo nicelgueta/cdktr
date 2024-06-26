@@ -23,8 +23,9 @@ use std::str::FromStr;
 use crate::db::update_next_timestamp;
 use crate::db::{
     get_connection, get_queueable_schedules,
-    models::ScheduledTask
+    models::{ScheduledTask, ToTask}
 };
+use crate::models::Task;
 use chrono::Utc;
 pub struct Scheduler {
     database_url: Option<String>,
@@ -42,7 +43,7 @@ impl Scheduler {
             task_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
-    pub async fn start(&mut self, sender: Sender<ScheduledTask>) {
+    pub async fn start(&mut self, sender: Sender<Task>) {
         let task_queue = self.task_queue.clone();
         let database_url = self.database_url.clone();
         let poll_interval_seconds = self.poll_interval_seconds.clone();
@@ -61,7 +62,7 @@ impl Scheduler {
         self.main_loop(sender).await;
     }
 
-    async fn main_loop(&mut self, sender: Sender<ScheduledTask>) {
+    async fn main_loop(&mut self, sender: Sender<Task>) {
         loop {
             {
                 let internal_task_q = self.task_queue.lock().await;
@@ -72,9 +73,11 @@ impl Scheduler {
                 }
             }
             {
-                let task = self.task_queue.lock().await.pop_front().expect(
+                let sched_task = self.task_queue.lock().await.pop_front().expect(
                     "Unable to find a task at the front of the queue"
                 );
+
+                let task = sched_task.to_task();
                 sender.send(task).await.expect("Failed to send ScheduledTask to TaskRouter");
             }
         }
@@ -124,11 +127,16 @@ async fn poll_db(
         let mut task_mutex = task_queue.lock().await;
         for task in scheds {
             (*task_mutex).push_back(task.clone());
-            let schedule = Schedule::from_str(&task.cron).unwrap();
-            let next_run_ts = schedule.upcoming(Utc).next().unwrap().timestamp() as i32;
-            update_next_timestamp(cnxn, task.id, next_run_ts).expect(
-                &format!("SCHEDULER: failed to update next run timestamp for {}", &task.id)
-            );
+            match &task.cron {
+                Some(cron) => {
+                    let schedule = Schedule::from_str(cron).unwrap();
+                    let next_run_ts = schedule.upcoming(Utc).next().unwrap().timestamp() as i32;
+                    update_next_timestamp(cnxn, task.id, next_run_ts).expect(
+                        &format!("SCHEDULER: failed to update next run timestamp for {}", &task.id)
+                    );
+                },
+                None => ()
+            }
             
         }
 
@@ -178,27 +186,30 @@ mod tests {
             ScheduledTask {
                 id: 1,
                 task_name: String::from("Task 1"),
+                task_type: String::from("PROCESS"),
                 command: String::from("echo"),
-                args: String::from("Hello, World!"),
-                cron: String::from("0 5 * * * *"),
+                args: Some(String::from("Hello, World!")),
+                cron: Some(String::from("0 5 * * * *")),
                 timestamp_created: curr_timestamp,
                 next_run_timestamp: curr_timestamp,
             },
             ScheduledTask {
                 id: 2,
                 task_name: String::from("Task 2"),
+                task_type: String::from("PROCESS"),
                 command: String::from("ls"),
-                args: String::from("-la"),
-                cron: String::from("0 6 * * * *"),
+                args: Some(String::from("-la")),
+                cron: Some(String::from("0 6 * * * *")),
                 timestamp_created: curr_timestamp,
                 next_run_timestamp: curr_timestamp + 10000, // won't be ready
             },
             ScheduledTask {
                 id: 3,
                 task_name: String::from("Task 3"),
+                task_type: String::from("PROCESS"),
                 command: String::from("backup"),
-                args: String::from("--all"),
-                cron: String::from("0 7 * * * *"),
+                args: Some(String::from("--all")),
+                cron: Some(String::from("0 7 * * * *")),
                 timestamp_created: curr_timestamp,
                 next_run_timestamp: curr_timestamp + 10000, // won't be ready
             },
@@ -223,6 +234,7 @@ mod tests {
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
             {
                 "task_name": "echo hello",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "hello",
                 "cron": "0 3 * * * *", // these don't correspond - ignore as not used for this
@@ -230,6 +242,7 @@ mod tests {
             },
             {
                 "task_name": "Echo World",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "world",
                 "cron": "0 4 * * * *", // these don't correspond - ignore as not used for this
@@ -237,6 +250,7 @@ mod tests {
             },
             {
                 "task_name": "Echo Jelly",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "jelly",
                 "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
@@ -255,6 +269,7 @@ mod tests {
         assert_eq!(task_queue.len(), 2);
 
     }
+
     #[tokio::test]
     async fn test_poll_db_loop() {
         /// Test the loop by running a poll interval of 1 second but running for 5 seconds. 
@@ -271,6 +286,7 @@ mod tests {
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
             {
                 "task_name": "echo 0",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "0",
                 "cron": "0 3 * * * *", // these don't correspond - ignore as not used for this
@@ -278,6 +294,7 @@ mod tests {
             },
             {
                 "task_name": "Echo 1",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "1",
                 "cron": "0 4 * * * *", // these don't correspond - ignore as not used for this
@@ -285,6 +302,7 @@ mod tests {
             },
             {
                 "task_name": "Echo 2",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "2",
                 "cron": "0 4 * * * *", // these don't correspond - ignore as not used for this
@@ -294,6 +312,7 @@ mod tests {
             // these should not be queued as test should end once hit 3 second mark
             {
                 "task_name": "Echo 3",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "3",
                 "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
@@ -301,6 +320,7 @@ mod tests {
             },
             {
                 "task_name": "Echo 4",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "4",
                 "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
@@ -308,6 +328,7 @@ mod tests {
             },
             {
                 "task_name": "Echo 5",
+                "task_type": "PROCESS",
                 "command": "echo",
                 "args": "5",
                 "cron": "0 5 * * * *", // these don't correspond - ignore as not used for this
@@ -331,7 +352,7 @@ mod tests {
         let task_queue = task_queue.lock().await;
         assert_eq!(task_queue.len(), 3);
         for i in 0..3 {
-            assert_eq!(task_queue[i].args, i.to_string());
+            assert_eq!(task_queue[i].args, Some(i.to_string()));
         }
 
     }

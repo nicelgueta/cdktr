@@ -1,6 +1,5 @@
 use std::time::Duration;
 use std::{collections::VecDeque, sync::Arc};
-use diesel::IntoSql;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -9,9 +8,10 @@ use zeromq::{Socket, SocketOptions, SocketRecv};
 
 use crate::{
     executor::ProcessExecutor,
-    interfaces::{
+    models::{
         Task,
-        traits::Executor
+        ZMQString,
+        traits::{Executor, ZMQEncodable}
     },
 };
 
@@ -67,8 +67,7 @@ impl TaskManager {
 
     pub async fn run_in_executor(
         &mut self, 
-        cmd: String, 
-        args: Option<Vec<String>>,
+        task: Task
     ) -> Result<TaskExecutionHandle,TaskManagerError> 
     {
         {
@@ -88,7 +87,9 @@ impl TaskManager {
                 *counter+=1;
             }
 
-            let executor = ProcessExecutor::new(&cmd, args);
+            let executor = match task {
+                Task::Process(ptask) => ProcessExecutor::new(&ptask.command, ptask.args)
+            };
             let _flow_result = executor.run(
                 tx
             ).await;
@@ -129,7 +130,7 @@ impl TaskManager {
             let task = {
                 self.task_queue.lock().await.pop_front().expect("TASKMANAGER: Unable to pop task from queue")
             };
-            let task_exe_result = self.run_in_executor(task.command, task.args).await;
+            let task_exe_result = self.run_in_executor(task).await;
             match task_exe_result {
                 Err(e) => match e {
                     TaskManagerError::TooManyThreadsError => break,
@@ -175,18 +176,22 @@ pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_m
     println!("TASKMANAGER: Starting listening loop");
     loop {
         let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
-        let msg = String::try_from(recv).unwrap();
-        let cmd: Vec<String> = msg.split("|").into_iter().map(|x| x.to_string()).collect();
-        let command = cmd[0].clone();
-        let args = if cmd.len() > 1 {
-            Some(cmd[1..].iter().map(|x| x.clone()).collect())
-        } else {
-            None
-        };
-        let task = Task {instance_id: instance_id.to_string(), command, args};
-        {
-            let mut task_queue = task_queue_mutex.lock().await;
-            (*task_queue).push_back(task);
+        let raw_str = String::try_from(recv).unwrap();
+        let zmq_str_r = ZMQString::from_raw(raw_str);
+        match zmq_str_r {
+            Ok(zmq_str) => {
+                let task_res= Task::from_zmq_str(zmq_str);
+                match task_res {
+                    Ok(task) => {
+                        {
+                            let mut task_queue = task_queue_mutex.lock().await;
+                            (*task_queue).push_back(task);
+                        }
+                    },
+                    Err(e) => println!("TASKMANAGER: failed to parse ZMQ msg: {:?}", e)
+                }
+            },
+            Err(e) => println!("TASKMANAGER: failed to parse ZMQ msg: {:?}", e)
         }
     }
 }
@@ -196,14 +201,17 @@ pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_m
 mod tests {
     use tokio::time::{sleep, Duration};
 
+    use crate::models::traits::ZMQEncodable;
     use crate::taskmanager::TaskManagerError;
+    use crate::models::{Task, ZMQString};
 
     use super::TaskManager;
 
     #[tokio::test]
     async fn test_run_single_flow() {
+        let task = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|echo|test_run_flow".to_string()).unwrap()).unwrap();
         let mut zk = TaskManager::new("tm1".to_string(), 1);
-        let result = zk.run_in_executor("echo".to_string(), Some(vec!["Running test_run_flow".to_string()])).await;
+        let result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
         result.unwrap().wait().await.unwrap();
     }
@@ -211,7 +219,8 @@ mod tests {
     #[tokio::test]
     async fn test_run_single_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 1);
-        let mut result = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
+        let task = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let mut result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
         let mut i = 0;
         while let Some(msg) = result.as_mut().unwrap().wait_stdout().await {
@@ -225,9 +234,12 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 3);
-        let mut result1 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
-        let mut result2 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "2".to_string()])).await;
-        let mut result3 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
+        let task1 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|1".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let task2= Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|2".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let task3 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|1".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let mut result1 = zk.run_in_executor(task1).await;
+        let mut result2 = zk.run_in_executor(task2).await;
+        let mut result3 = zk.run_in_executor(task3).await;
         assert!(result1.is_ok());
         assert!(result2.is_ok());
         assert!(result3.is_ok());
@@ -258,15 +270,17 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_too_many_threads() {
         let mut zk = TaskManager::new("tm1".to_string(), 2);
-        let result1 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
-        let result2 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "2".to_string()])).await;
+        let task1 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|1".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let task2 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|2".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let result1 = zk.run_in_executor(task1).await;
+        let result2 = zk.run_in_executor(task2).await;
         assert!(result1.is_ok());
         assert!(result2.is_ok());
 
         let second = Duration::from_secs(1);
         sleep(second).await;
-
-        let result3 = zk.run_in_executor("python".to_string(), Some(vec!["s.py".to_string(), "1".to_string()])).await;
+        let task3 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|1".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let result3 = zk.run_in_executor(task3).await;
 
         match result3 {
             Ok(_handle) => panic!("Adding another thread beyond max threads should error"),

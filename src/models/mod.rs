@@ -1,5 +1,6 @@
 use exceptions::ZMQParseError;
 
+pub mod task_types;
 
 mod exceptions {
     #[derive(Debug, PartialEq)]
@@ -57,7 +58,7 @@ impl ZMQMessageType {
 /// The struct defines the message type and the subsequent tokens that were found on the 
 /// message. This separation is used to ensure that the message type is determined by
 /// the consumer and the tokens consumed with the context of the message known.
-struct ZMQString {
+pub struct ZMQString {
     msg_type: ZMQMessageType,
     tokens: Vec<String>
 }
@@ -95,11 +96,6 @@ impl ZMQString {
     }
 }
 
-#[derive(Debug,PartialEq)]
-struct ProcessTask {
-    pub command: String,
-    pub args: Option<Vec<String>>
-}
 /// A Task is the encapsulation provided for single unit of work defined and utilised
 /// by difference components of the system. On the ZMQ sockets, it's encoded as a 
 /// pipe-delimited string with the first token being `TASKDEF` and the second being the
@@ -107,9 +103,10 @@ struct ProcessTask {
 /// A Task type defines the types of tasks supported by cdktr for execution. 
 /// The value of each enum must define the struct configuration for each task
 #[derive(Debug, PartialEq)]
-enum Task {
-    Process(ProcessTask)
+pub enum Task {
+    Process(task_types::ProcessTask)
 }
+
 impl traits::ZMQEncodable for Task {
     fn from_zmq_str(s: ZMQString) -> Result<Self, exceptions::ZMQParseError> 
     where Self: Sized {
@@ -133,7 +130,7 @@ impl traits::ZMQEncodable for Task {
                             };
                             let command = s.tokens[1].clone();
                             Ok(Self::Process(
-                                ProcessTask {
+                                task_types::ProcessTask {
                                     command,
                                     args
                                 }

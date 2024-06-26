@@ -4,7 +4,7 @@ use zeromq::{Socket, PubSocket};
 use std::sync::Arc;
 
 use crate::{
-    taskmanager, scheduler, server, interfaces::Task
+    taskmanager, scheduler, server, models::Task
 };
 
 pub enum InstanceType {
@@ -34,7 +34,7 @@ async fn spawn_tm(instance_id: String, pub_host_cl: String, pub_port: usize,  ma
 async fn spawn_scheduler(
     database_url:Option<String>, 
     poll_interval_seconds:i32, 
-    sender: Sender<ScheduledTask>  
+    sender: Sender<Task>  
 ) -> tokio::task::JoinHandle<()>{
     tokio::spawn(async move {
         let mut sched = scheduler::Scheduler::new(
@@ -80,7 +80,7 @@ impl Hub {
                 // and send task trigger messages to the main receiver that is passed
                 // to the task router
                 
-                spawn_scheduler(database_url, poll_interval_seconds, self.tx).await;
+                spawn_scheduler(database_url, poll_interval_seconds, self.tx.clone()).await;
         
                 // start the task manager thread 
                 let pub_host_cl = pub_host.clone();
@@ -104,7 +104,7 @@ impl Hub {
         
                 // start REP/REQ server for principal
                 server::principal::start(
-                    self.publisher, 
+                    self.publisher.clone(), 
                     &pub_host_cl, 
                     server_port
                 ).await.expect(

@@ -2,7 +2,7 @@ use tokio::{process::Command, sync::mpsc::Sender};
 use std::process::Stdio;
 use tokio::io::{BufReader, AsyncBufReadExt};
 
-use crate::interfaces::{
+use crate::models::{
     traits, FlowExecutionResult
 };
 
@@ -56,7 +56,7 @@ impl traits::Executor for ProcessExecutor {
 #[cfg(test)]
 mod tests {
     use super::ProcessExecutor;
-    use crate::interfaces::traits::Executor;
+    use crate::models::traits::Executor;
     use tokio::sync::mpsc;
 
     #[tokio::test]

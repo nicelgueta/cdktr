@@ -78,6 +78,7 @@ mod tests {
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
                 {
                     "task_name": "echo start",
+                    "task_type": "PROCESS",
                     "command": "echo",
                     "args": "start",
                     "cron": "0 3 * * * *", 
@@ -85,6 +86,7 @@ mod tests {
                 },
                 {
                     "task_name": "echo hello",
+                    "task_type": "PROCESS",
                     "command": "echo",
                     "args": "hello",
                     "cron": "0 3 * * * *", 
@@ -92,6 +94,7 @@ mod tests {
                 },
                 {
                     "task_name": "echo nope",
+                    "task_type": "PROCESS",
                     "command": "echo",
                     "args": "nope",
                     "cron": "0 3 * * * *", 
@@ -99,6 +102,7 @@ mod tests {
                 },
                 {
                     "task_name": "Echo World",
+                    "task_type": "PROCESS",
                     "command": "echo",
                     "args": "world",
                     "cron": "0 4 * * 0", 
@@ -106,6 +110,7 @@ mod tests {
                 },
                 {
                     "task_name": "Echo Jelly",
+                    "task_type": "PROCESS",
                     "command": "echo",
                     "args": "jelly",
                     "cron": "0 5 * * 0", 
@@ -134,6 +139,7 @@ mod tests {
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
                 {
                     "task_name": "echo start",
+                    "task_type": "PROCESS",
                     "command": "echo",
                     "args": "start",
                     "cron": "0 3 * * * *", 
