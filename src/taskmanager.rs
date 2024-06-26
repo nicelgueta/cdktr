@@ -10,8 +10,7 @@ use crate::{
     executor::ProcessExecutor,
     models::{
         Task,
-        ZMQString,
-        traits::{Executor, ZMQEncodable}
+        traits::Executor
     },
 };
 
@@ -176,20 +175,12 @@ pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_m
     println!("TASKMANAGER: Starting listening loop");
     loop {
         let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
-        let raw_str = String::try_from(recv).unwrap();
-        let zmq_str_r = ZMQString::from_raw(raw_str);
-        match zmq_str_r {
-            Ok(zmq_str) => {
-                let task_res= Task::from_zmq_str(zmq_str);
-                match task_res {
-                    Ok(task) => {
-                        {
-                            let mut task_queue = task_queue_mutex.lock().await;
-                            (*task_queue).push_back(task);
-                        }
-                    },
-                    Err(e) => println!("TASKMANAGER: failed to parse ZMQ msg: {:?}", e)
-                }
+        let task_res = Task::try_from(recv);
+        match task_res {
+            Ok(task) => {
+                let mut task_queue = task_queue_mutex.lock().await;
+                (*task_queue).push_back(task);
+
             },
             Err(e) => println!("TASKMANAGER: failed to parse ZMQ msg: {:?}", e)
         }
@@ -200,16 +191,17 @@ pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_m
 #[cfg(test)]
 mod tests {
     use tokio::time::{sleep, Duration};
-
-    use crate::models::traits::ZMQEncodable;
+    use zeromq::ZmqMessage;
     use crate::taskmanager::TaskManagerError;
-    use crate::models::{Task, ZMQString};
+    use crate::models::Task;
 
     use super::TaskManager;
 
     #[tokio::test]
     async fn test_run_single_flow() {
-        let task = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|echo|test_run_flow".to_string()).unwrap()).unwrap();
+        let task = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|echo|test_run_flow")).expect(
+            "Failed to create task from the ZMQMessage"
+        );
         let mut zk = TaskManager::new("tm1".to_string(), 1);
         let result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
@@ -219,7 +211,7 @@ mod tests {
     #[tokio::test]
     async fn test_run_single_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 1);
-        let task = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let task = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py")).expect("Failed to create task from the ZMQMessage");
         let mut result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
         let mut i = 0;
@@ -234,9 +226,9 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 3);
-        let task1 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|1".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
-        let task2= Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|2".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
-        let task3 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|1".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let task1 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
+        let task2= Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|2")).expect("Failed to create task from the ZMQMessage");
+        let task3 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
         let mut result1 = zk.run_in_executor(task1).await;
         let mut result2 = zk.run_in_executor(task2).await;
         let mut result3 = zk.run_in_executor(task3).await;
@@ -270,8 +262,8 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_too_many_threads() {
         let mut zk = TaskManager::new("tm1".to_string(), 2);
-        let task1 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|1".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
-        let task2 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|2".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let task1 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
+        let task2 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|2")).expect("Failed to create task from the ZMQMessage");
         let result1 = zk.run_in_executor(task1).await;
         let result2 = zk.run_in_executor(task2).await;
         assert!(result1.is_ok());
@@ -279,7 +271,7 @@ mod tests {
 
         let second = Duration::from_secs(1);
         sleep(second).await;
-        let task3 = Task::from_zmq_str(ZMQString::from_raw("TASKDEF|PROCESS|python|s.py|1".to_string()).expect("Failed convert raw to zmq string")).expect("Failed to create task from zmq string");
+        let task3 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
         let result3 = zk.run_in_executor(task3).await;
 
         match result3 {

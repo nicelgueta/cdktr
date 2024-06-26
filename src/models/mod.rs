@@ -1,4 +1,9 @@
+use std::collections::VecDeque;
+
 use exceptions::ZMQParseError;
+use zeromq::ZmqMessage;
+
+use crate::utils::arg_str_to_vec;
 
 pub mod task_types;
 
@@ -35,7 +40,7 @@ impl FlowExecutionResult {
 /// appears to be a supported message based on this token. It is up to the actual
 /// implementation of the ZMQEncodable itself to determine whether the rest of the string
 /// is valid or not for the message type.
-enum ZMQMessageType {
+pub enum ZMQMessageType {
     TaskDef,
 }
 impl ZMQMessageType {
@@ -45,54 +50,11 @@ impl ZMQMessageType {
             _ => Err(exceptions::ZMQParseError::InvalidMessageType)
         }
     }
+    
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::TaskDef => "TASKDEF"
         }
-    }
-}
-
-/// ZMQString is a thin wrapper around a normal string that is passed on the write by ZMQ
-/// to ensure it is formatted in a way that can easily be decoded by components 
-/// and publish and receive messages.
-/// The struct defines the message type and the subsequent tokens that were found on the 
-/// message. This separation is used to ensure that the message type is determined by
-/// the consumer and the tokens consumed with the context of the message known.
-pub struct ZMQString {
-    msg_type: ZMQMessageType,
-    tokens: Vec<String>
-}
-impl ZMQString {
-    pub fn new(msg_type: ZMQMessageType, tokens: Vec<String>) -> Self {
-        Self {
-            msg_type, tokens
-        }
-    }
-    pub fn from_raw(raw: String) -> Result<Self, exceptions::ZMQParseError> {
-        let tokens: Vec<String> = raw.split("|").map(
-            |x|x.to_string()
-        ).collect();
-        if tokens.len() == 0 {
-            return Err(exceptions::ZMQParseError::InvalidMessageType)
-        };
-        // validate msg type
-        let msg_type = ZMQMessageType::new(&tokens[0])?;
-        Ok(
-            Self {
-                tokens: tokens[1..].into(),
-                msg_type
-            }
-        )
-    }
-    pub fn to_raw(&self) -> String {
-        let mut s = String::new();
-        let mt = self.msg_type.as_str();
-        s.push_str(mt);
-        s.push_str(&self.tokens.join("|"));
-        s
-    }
-    pub fn tokens(&self) -> &Vec<String> {
-        &self.tokens
     }
 }
 
@@ -107,28 +69,40 @@ pub enum Task {
     Process(task_types::ProcessTask)
 }
 
-impl traits::ZMQEncodable for Task {
-    fn from_zmq_str(s: ZMQString) -> Result<Self, exceptions::ZMQParseError> 
-    where Self: Sized {
-        match s.msg_type {
+impl TryFrom<ZmqMessage> for Task {
+    type Error = ZMQParseError;
+    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
+        let zmq_str = String::try_from(value);
+        if let Err(e) = zmq_str {
+            return Err(exceptions::ZMQParseError::ParseError(e.to_string()))
+        };
+        let mut zmq_msg_v = VecDeque::from(arg_str_to_vec(&zmq_str.unwrap()));
+        if zmq_msg_v.len() == 0 {
+            return Err(ZMQParseError::ParseError(
+                "Empty message - no valid tokens".to_string()
+            ));
+        };
+        let msg_type_token = zmq_msg_v.pop_front().unwrap();
+        let msg_type = ZMQMessageType::new(&msg_type_token)?;
+        match msg_type {
             ZMQMessageType::TaskDef => {
-                if s.tokens.len() == 0 {
+                if zmq_msg_v.len() == 0 {
                     return Err(exceptions::ZMQParseError::InvalidTaskType)
                 };
-                let typ_tok = s.tokens[0].as_str();
-                match typ_tok {
+                let typ_tok = zmq_msg_v.pop_front().unwrap();
+                match typ_tok.as_str() {
                     "PROCESS" => {
-                        if s.tokens[1..].len() < 1 {
+                        if zmq_msg_v.len() < 1 {
                             Err(exceptions::ZMQParseError::ParseError(
                                 "Missing tokens for PROCESS msg. Expected tokens COMMAND and ARGS".to_string()
                             ))
                         } else {
-                            let args = if s.tokens[2..].len() < 1 {
+                            let command = zmq_msg_v.pop_front().unwrap();
+                            let args = if zmq_msg_v.len() < 1 {
                                 None
                             } else {
-                                Some(s.tokens[2..].into())
+                                Some(zmq_msg_v.into())
                             };
-                            let command = s.tokens[1].clone();
                             Ok(Self::Process(
                                 task_types::ProcessTask {
                                     command,
@@ -142,36 +116,37 @@ impl traits::ZMQEncodable for Task {
             }
         }
     }
-    fn to_zmq_string(&self) -> ZMQString {
+}
+impl TryInto<ZmqMessage> for Task {
+    type Error = ZMQParseError;
+    fn try_into(self) -> Result<ZmqMessage, Self::Error> {
         match self {
             Self::Process(pt) => {
-                let mut tokens = vec!["PROCESS".to_string()];
+                let mut tokens = vec![
+                    "TASKDEF".to_string(),
+                    "PROCESS".to_string()
+                ];
                 tokens.push(pt.command.clone());
                 if let Some(args) = &pt.args {
                     for arg in args {
                         tokens.push(arg.clone())
                     }
                 };
-                ZMQString::new(
-                    ZMQMessageType::TaskDef, tokens
-                )
+                Ok(ZmqMessage::from(tokens.join("|")))
             }
         }
     }
-
 }
+
 
 pub mod traits {
     use tokio::sync::mpsc::Sender;
+    use zeromq::ZmqMessage;
 
-    use super::{FlowExecutionResult, ZMQString, exceptions};
+    use super::FlowExecutionResult;
     use core::future::Future;
 
-    pub trait ZMQEncodable {
-        fn to_zmq_string(&self) -> ZMQString;
-        fn from_zmq_str(s: ZMQString) -> Result<Self, exceptions::ZMQParseError> 
-        where Self: Sized;
-    }
+    pub trait ZMQEncodable: From<ZmqMessage> + Into<ZmqMessage> {}
 
     pub trait Executor {
         fn new(command: &str, args: Option<Vec<String>>) -> Self ;
@@ -183,8 +158,7 @@ pub mod traits {
 
 #[cfg(test)]
 mod tests {
-    use traits::ZMQEncodable;
-
+    use zeromq::ZmqMessage;
     use super::*;
 
     #[test]
@@ -197,49 +171,23 @@ mod tests {
         assert!(ZMQMessageType::new("invalidinvalid").is_err());
     }
 
+
     #[test]
-    fn zmq_string_task_new() {
-        ZMQString::new(
-            ZMQMessageType::TaskDef, vec!["ls".to_string()]
-        );
+    fn create_process_task_from_zmq_message() {
+        let msg = ZmqMessage::from("TASKDEF|PROCESS|ls");
+        assert!(Task::try_from(msg).is_ok());
     }
 
     #[test]
-    fn zmq_string_task_from_raw() {
-        assert!(ZMQString::from_raw(
-            "TASKDEF|UNDEFINED".to_string()
-        ).is_ok())
-    }
-
-    #[test]
-    fn zmq_string_invalid_task_from_raw() {
-        assert!(ZMQString::from_raw(
-            "SOMETHINGELSE|UNDEFINED".to_string()
-        ).is_err())
-    }
-
-    #[test]
-    fn create_process_task_from_zmq_string() {
-        let task_zmqs = ZMQString::from_raw(
-            "TASKDEF|PROCESS|ls".to_string()
-        ).unwrap();
-        assert!(Task::from_zmq_str(task_zmqs).is_ok());
-    }
-
-    #[test]
-    fn create_process_task_from_zmq_string_with_args() {
-        let task_zmqs = ZMQString::from_raw(
-            "TASKDEF|PROCESS|ls|thisdir".to_string()
-        ).unwrap();
-        assert!(Task::from_zmq_str(task_zmqs).is_ok());
+    fn create_process_task_from_zmq_msg_with_args() {
+        let msg = ZmqMessage::from("TASKDEF|PROCESS|ls|thisdir");
+        assert!(Task::try_from(msg).is_ok());
     }
 
     #[test]
     fn create_process_task_from_zmq_string_missing_command() {
-        let task_zmqs = ZMQString::from_raw(
-            "TASKDEF|PROCESS".to_string()
-        ).unwrap();
-        assert!(Task::from_zmq_str(task_zmqs).is_err());
+        let msg = ZmqMessage::from("TASKDEF|PROCESS");
+        assert!(Task::try_from(msg).is_err());
     }
 
 }
