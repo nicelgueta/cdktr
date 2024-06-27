@@ -33,7 +33,7 @@ def start_pub_socket(i=False):
         if i:
             msg = input("Enter msg: ")
         else:
-            msg = f"echo|{next(gen)}"
+            msg = f"EXETASKDEF|5562|PROCESS|echo|{next(gen)}"
             print(f"Sending: {msg}")
             time.sleep(0.05)
         socket.send(bytes(msg, 'utf-8'))
@@ -74,3 +74,6 @@ if len(sys.argv) > 1:
             start_pub_socket()
         case _:
             print("Invalid argument")
+
+
+# EXETASKDEF|5562|PROCESS|ls

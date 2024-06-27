@@ -123,7 +123,7 @@ impl TaskManager {
             }
         );
         // spawn_task_execution_loop(task_queue)
-        println!("TASKMANAGER: Beginning task execution loop");
+        println!("TASKMANAGER-{}: Beginning task execution loop", self.instance_id);
         self.task_execution_loop().await
     }
     async fn task_execution_loop(&mut self) {
@@ -135,13 +135,13 @@ impl TaskManager {
                 sleep(Duration::from_micros(500)).await
             };
             let task = {
-                self.task_queue.lock().await.pop_front().expect("TASKMANAGER: Unable to pop task from queue")
+                self.task_queue.lock().await.pop_front().expect("TASKMANAGER-{instance_id}: Unable to pop task from queue")
             };
             let task_exe_result = self.run_in_executor(task).await;
             match task_exe_result {
                 Err(e) => match e {
                     TaskManagerError::TooManyThreadsError => break,
-                    _ => panic!("TASKMANAGER: Got TaskManagerError")
+                    _ => panic!("{}", &format!("TASKMANAGER-{}: Got TaskManagerError", self.instance_id))
                 },
                 Ok(mut task_exe) => {
                     // need to spawn the reading of the logs of the run task in order to free this thread
@@ -165,18 +165,20 @@ async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSo
     socket
         .connect(&format!("tcp://{}:{}", host, port))
         .await
-        .expect("TASKMANAGER: Failed to connect");
-    println!("TASKMANAGER: connected to tcp://{}:{}", host, port);
-    socket.subscribe(instance_id).await.expect("TASKMANAGER: Failed to subscribe to subscription");
+        .expect("TASKMANAGER-{instance_id}: Failed to connect");
+    println!("TASKMANAGER-{instance_id}: connected to tcp://{}:{}", host, port);
+    let subscription_string = format!("EXETASKDEF|{instance_id}");
+    socket.subscribe(&subscription_string).await.expect("TASKMANAGER-{instance_id}: Failed to subscribe to subscription");
+
     socket
 }
 
 pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
 
-    println!("TASKMANAGER: Subscribing to tcp://{}:{}", host, port);
+    println!("TASKMANAGER-{instance_id}: Subscribing to tcp://{}:{}", host, port);
     let mut socket = get_socket(&host, port, instance_id).await;
-    println!("TASKMANAGER: Successfully created SUB connection to tcp://{}:{}", host, port);
-    println!("TASKMANAGER: Starting listening loop");
+    println!("TASKMANAGER-{instance_id}: Successfully created SUB connection to tcp://{}:{}", host, port);
+    println!("TASKMANAGER-{instance_id}: Starting listening loop");
     loop {
         let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
         let task_res = Task::try_from(recv);
@@ -186,7 +188,7 @@ pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_m
                 (*task_queue).push_back(task);
 
             },
-            Err(e) => println!("TASKMANAGER: failed to parse ZMQ msg: {:?}", e)
+            Err(e) => println!("TASKMANAGER-{instance_id}: failed to parse ZMQ msg: {:?}", e)
         }
     }
 }
