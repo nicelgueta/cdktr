@@ -15,7 +15,7 @@ use hub::{InstanceType, Hub};
 async fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
-        println!("Needs at least one arg of either AGENT or PRINCIPAL and PORT");
+        println!("Needs at least arg (1) of either AGENT or PRINCIPAL and (2) PORT");
         return
     };
     let typ = InstanceType::from_str(&args[1]);

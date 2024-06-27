@@ -52,8 +52,16 @@ impl TaskExecutionHandle {
 
 }
 
-// type TaskQueue: Arc<VecDeque<Task>>;
-
+/// `TaskManager` is a struct for managing and executing tasks concurrently within a specified limit of threads.
+///
+/// It is designed to queue tasks and manage their execution based on the availabilitsy of threads, ensuring that the number of concurrently running tasks does not exceed the specified maximum.
+///
+/// # Fields
+/// - `instance_id`: A `String` identifier for the instance of `TaskManager`. This can be used to differentiate between multiple instances.
+/// - `max_threads`: The maximum number of threads that can be used for executing tasks concurrently. This limit helps in controlling resource usage.
+/// - `thread_counter`: An `Arc<Mutex<usize>>` that safely counts the number of active threads. This is shared across tasks to ensure thread-safe updates.
+/// - `task_queue`: An `Arc<Mutex<VecDeque<Task>>>` that holds the tasks queued for execution. The use of `VecDeque` allows efficient task insertion and removal.
+///
 impl TaskManager {
     pub fn new(instance_id: String, max_threads: usize) -> Self {
         Self {
@@ -162,11 +170,7 @@ async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSo
     socket.subscribe(instance_id).await.expect("TASKMANAGER: Failed to subscribe to subscription");
     socket
 }
-/// This function is used to listen to the ZMQ socket and push the messages to the task queue
-/// Currently this takes any command and args and pushes them to the task queue
-/// TODO: this should instead receive an ID of a flow that has been registered
-/// and then query the database for the flow and push that to the task queue. 
-/// 
+
 pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
 
     println!("TASKMANAGER: Subscribing to tcp://{}:{}", host, port);

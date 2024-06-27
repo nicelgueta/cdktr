@@ -18,7 +18,7 @@ def sync_to_subscriber(port: int):
     socket.send(b"SYNC")
 
     
-def start_pub_socket():
+def start_pub_socket(i=False):
     #  Socket to talk to server
     print("Connecting to hello world server…")
 
@@ -27,11 +27,15 @@ def start_pub_socket():
     print(f"Running on tcp://{HOST}:{PORT}")
 
     # input("Ready?")
+        
     gen = rustyrs.SlugGenerator(5)
     while True:
-        msg = f"echo|{next(gen)}"
-        print(f"Sending: {msg}")
-        time.sleep(0.05)
+        if i:
+            msg = input("Enter msg: ")
+        else:
+            msg = f"echo|{next(gen)}"
+            print(f"Sending: {msg}")
+            time.sleep(0.05)
         socket.send(bytes(msg, 'utf-8'))
 
 
@@ -53,17 +57,20 @@ def start_req_socket():
 
 import sys
 if len(sys.argv) > 1:
-    if sys.argv[1] == "pub":
-        start_pub_socket()
-    elif sys.argv[1] == "req":
-        start_req_socket()
-    elif sys.argv[1] == "rpub":
-        socket = context.socket(zmq.REQ)
-        cli_port = PORT+1
-        socket.connect(f"tcp://{HOST}:{cli_port}")
-        socket.send(b"TMRESTART")
-        message = socket.recv()
-        print(f"Received reply: {message.decode('utf-8')}")
-        start_pub_socket()
-    else:
-        print("Invalid argument")
+    match sys.argv[1]:
+        case "pub":
+            start_pub_socket(False)
+        case "pubi":
+            start_pub_socket(True)
+        case "req":
+            start_req_socket()
+        case "rpub":
+            socket = context.socket(zmq.REQ)
+            cli_port = PORT+1
+            socket.connect(f"tcp://{HOST}:{cli_port}")
+            socket.send(b"TMRESTART")
+            message = socket.recv()
+            print(f"Received reply: {message.decode('utf-8')}")
+            start_pub_socket()
+        case _:
+            print("Invalid argument")

@@ -23,6 +23,7 @@ pub enum FlowExecutionResult {
     // ABORTED(String),
     // FAILURE(String),
 }
+
 impl FlowExecutionResult {
     pub fn to_string(self) -> String {
         match self {
@@ -41,21 +42,35 @@ impl FlowExecutionResult {
 /// implementation of the ZMQEncodable itself to determine whether the rest of the string
 /// is valid or not for the message type.
 pub enum ZMQMessageType {
+    /// Standard task definition for a task without a specific executor context
+    /// eg.
+    /// TASKDEF|PROCESS|ls|thisdir
     TaskDef,
+
+    /// Task definition message for a task with a specific executor context (i.e targeted)
+    /// for a specific executor. This is used on the PUB socket as that is the one that 
+    /// TaskManager instances are subscribed to:
+    /// eg.
+    /// EXETASKDEF|5562|PROCESS|ls|thisdir
+    /// 
+    /// 
+    ExeTaskDef,
 }
 impl ZMQMessageType {
     pub fn new(token: &str) -> Result<Self, exceptions::ZMQParseError> {
         match token {
             "TASKDEF" => Ok(Self::TaskDef),
+            "EXETASKDEF" => Ok(Self::ExeTaskDef),
             _ => Err(exceptions::ZMQParseError::InvalidMessageType)
         }
     }
-    
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::TaskDef => "TASKDEF"
-        }
-    }
+    // TODO:
+    // pub fn as_str(&self) -> &'static str {
+    //     match self {
+    //         Self::TaskDef => "TASKDEF",
+    //         Self::ExeTaskDef => "EXETASKDEF"
+    //     }
+    // }
 }
 
 /// A Task is the encapsulation provided for single unit of work defined and utilised
@@ -67,6 +82,36 @@ impl ZMQMessageType {
 #[derive(Debug, PartialEq)]
 pub enum Task {
     Process(task_types::ProcessTask)
+}
+
+fn task_from_zmq_vec(mut zmq_msg_v: VecDeque<String>) -> Result<Task, ZMQParseError>{
+    if zmq_msg_v.len() == 0 {
+        return Err(exceptions::ZMQParseError::InvalidTaskType)
+    };
+    let typ_tok = zmq_msg_v.pop_front().unwrap();
+    match typ_tok.as_str() {
+        "PROCESS" => {
+            if zmq_msg_v.len() < 1 {
+                Err(exceptions::ZMQParseError::ParseError(
+                    "Missing tokens for PROCESS msg. Expected tokens COMMAND and ARGS".to_string()
+                ))
+            } else {
+                let command = zmq_msg_v.pop_front().unwrap();
+                let args = if zmq_msg_v.len() < 1 {
+                    None
+                } else {
+                    Some(zmq_msg_v.into())
+                };
+                Ok(Task::Process(
+                    task_types::ProcessTask {
+                        command,
+                        args
+                    }
+                ))
+            }
+        },
+        _ => Err(ZMQParseError::InvalidTaskType)
+    }
 }
 
 impl TryFrom<ZmqMessage> for Task {
@@ -86,37 +131,24 @@ impl TryFrom<ZmqMessage> for Task {
         let msg_type = ZMQMessageType::new(&msg_type_token)?;
         match msg_type {
             ZMQMessageType::TaskDef => {
-                if zmq_msg_v.len() == 0 {
-                    return Err(exceptions::ZMQParseError::InvalidTaskType)
-                };
-                let typ_tok = zmq_msg_v.pop_front().unwrap();
-                match typ_tok.as_str() {
-                    "PROCESS" => {
-                        if zmq_msg_v.len() < 1 {
-                            Err(exceptions::ZMQParseError::ParseError(
-                                "Missing tokens for PROCESS msg. Expected tokens COMMAND and ARGS".to_string()
-                            ))
-                        } else {
-                            let command = zmq_msg_v.pop_front().unwrap();
-                            let args = if zmq_msg_v.len() < 1 {
-                                None
-                            } else {
-                                Some(zmq_msg_v.into())
-                            };
-                            Ok(Self::Process(
-                                task_types::ProcessTask {
-                                    command,
-                                    args
-                                }
-                            ))
-                        }
-                    },
-                    _ => Err(ZMQParseError::InvalidTaskType)
+                task_from_zmq_vec(zmq_msg_v)
+            },
+            ZMQMessageType::ExeTaskDef => {
+                // just check we have the id there and is valid message - we don't do
+                // anything with it those because we only care about the task
+                let subscriber_id_res = zmq_msg_v.pop_front();
+                if let Some(_sid) = subscriber_id_res {
+                    task_from_zmq_vec(zmq_msg_v)
+                } else {
+                    Err(ZMQParseError::ParseError(
+                        "Unable to pick out subscriber from EXETASKDEF - invalid message".to_string()
+                    ))
                 }
             }
         }
     }
 }
+
 impl TryInto<ZmqMessage> for Task {
     type Error = ZMQParseError;
     fn try_into(self) -> Result<ZmqMessage, Self::Error> {
@@ -141,12 +173,9 @@ impl TryInto<ZmqMessage> for Task {
 
 pub mod traits {
     use tokio::sync::mpsc::Sender;
-    use zeromq::ZmqMessage;
 
     use super::FlowExecutionResult;
     use core::future::Future;
-
-    pub trait ZMQEncodable: From<ZmqMessage> + Into<ZmqMessage> {}
 
     pub trait Executor {
         fn new(command: &str, args: Option<Vec<String>>) -> Self ;
@@ -162,6 +191,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_task_from_zmq_vec(){
+        let zmq_v: Vec<String> = vec!["PROCESS","ls","thisdir"].iter().map(|x|x.to_string()).collect();
+        let zmq_vd = VecDeque::from(zmq_v);
+        assert!(task_from_zmq_vec(zmq_vd).is_ok());
+    }
+
+    #[test]
     fn zmq_message_type_taskdef() {
         assert!(ZMQMessageType::new("TASKDEF").is_ok());
     }
@@ -171,22 +207,53 @@ mod tests {
         assert!(ZMQMessageType::new("invalidinvalid").is_err());
     }
 
-
+    // TASKDEF
     #[test]
-    fn create_process_task_from_zmq_message() {
+    fn create_process_taskdef_from_zmq_message() {
         let msg = ZmqMessage::from("TASKDEF|PROCESS|ls");
         assert!(Task::try_from(msg).is_ok());
     }
 
     #[test]
-    fn create_process_task_from_zmq_msg_with_args() {
+    fn create_process_taskdef_from_zmq_msg_with_args() {
         let msg = ZmqMessage::from("TASKDEF|PROCESS|ls|thisdir");
         assert!(Task::try_from(msg).is_ok());
     }
 
     #[test]
-    fn create_process_task_from_zmq_string_missing_command() {
+    fn create_process_taskdef_from_zmq_string_missing_command() {
         let msg = ZmqMessage::from("TASKDEF|PROCESS");
+        assert!(Task::try_from(msg).is_err());
+    }
+
+    // EXETASKDEF
+    #[test]
+    fn create_process_exetaskdef_from_zmq_message() {
+        let msg = ZmqMessage::from("EXETASKDEF|SOMEID123|PROCESS|ls");
+        assert!(Task::try_from(msg).is_ok());
+    }
+
+    #[test]
+    fn create_process_exetaskdef_from_zmq_msg_with_args() {
+        let msg = ZmqMessage::from("EXETASKDEF|SOMEID123|PROCESS|ls|thisdir");
+        assert!(Task::try_from(msg).is_ok());
+    }
+
+    #[test]
+    fn create_process_exetaskdef_from_zmq_string_missing_command() {
+        let msg = ZmqMessage::from("EXETASKDEF|SOMEID123|PROCESS");
+        assert!(Task::try_from(msg).is_err());
+    }
+
+    #[test]
+    fn create_process_exetaskdef_from_zmq_string_missing_subid() {
+        let msg = ZmqMessage::from("EXETASKDEF|PROCESS|ls");
+        assert!(Task::try_from(msg).is_err());
+    }
+
+    #[test]
+    fn create_process_exetaskdef_from_zmq_string_missing_subid_w_args() {
+        let msg = ZmqMessage::from("EXETASKDEF|PROCESS|ls|thisdir");
         assert!(Task::try_from(msg).is_err());
     }
 
