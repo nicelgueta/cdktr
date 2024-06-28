@@ -79,7 +79,7 @@ impl ZMQMessageType {
 /// uppercase representation of a TaskType enum to determine the type. 
 /// A Task type defines the types of tasks supported by cdktr for execution. 
 /// The value of each enum must define the struct configuration for each task
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Task {
     Process(task_types::ProcessTask)
 }
@@ -173,13 +173,14 @@ impl TryInto<ZmqMessage> for Task {
 
 pub mod traits {
     use tokio::sync::mpsc::Sender;
-
+    use async_trait::async_trait;
     use super::FlowExecutionResult;
     use core::future::Future;
 
+    #[async_trait]
     pub trait Executor {
         fn new(command: &str, args: Option<Vec<String>>) -> Self ;
-        fn run(self, tx: Sender<String>) -> impl Future<Output = FlowExecutionResult> ;
+        async fn run(&self, tx: Sender<String>) -> impl Future<Output = FlowExecutionResult> ;
     }
 
 }
