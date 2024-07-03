@@ -5,7 +5,7 @@ use zeromq::ZmqMessage;
 
 use crate::utils::arg_str_to_vec;
 
-pub mod task_types;
+use crate::executors::ProcessTask;
 
 mod exceptions {
     #[derive(Debug, PartialEq)]
@@ -79,9 +79,9 @@ impl ZMQMessageType {
 /// uppercase representation of a TaskType enum to determine the type. 
 /// A Task type defines the types of tasks supported by cdktr for execution. 
 /// The value of each enum must define the struct configuration for each task
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Task {
-    Process(task_types::ProcessTask)
+    Process(ProcessTask)
 }
 
 fn task_from_zmq_vec(mut zmq_msg_v: VecDeque<String>) -> Result<Task, ZMQParseError>{
@@ -103,7 +103,7 @@ fn task_from_zmq_vec(mut zmq_msg_v: VecDeque<String>) -> Result<Task, ZMQParseEr
                     Some(zmq_msg_v.into())
                 };
                 Ok(Task::Process(
-                    task_types::ProcessTask {
+                    ProcessTask {
                         command,
                         args
                     }
@@ -173,13 +173,13 @@ impl TryInto<ZmqMessage> for Task {
 
 pub mod traits {
     use tokio::sync::mpsc::Sender;
-
+    use async_trait::async_trait;
     use super::FlowExecutionResult;
-    use core::future::Future;
 
+    #[async_trait]
     pub trait Executor {
         fn new(command: &str, args: Option<Vec<String>>) -> Self ;
-        fn run(self, tx: Sender<String>) -> impl Future<Output = FlowExecutionResult> ;
+        async fn run(&self, tx: Sender<String>) -> FlowExecutionResult;
     }
 
 }

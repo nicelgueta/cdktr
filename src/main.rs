@@ -1,4 +1,4 @@
-mod executor;
+mod executors;
 mod taskmanager;
 mod models;
 mod db;

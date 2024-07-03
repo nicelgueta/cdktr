@@ -7,7 +7,7 @@ use tokio::time::sleep;
 use zeromq::{Socket, SocketOptions, SocketRecv};
 
 use crate::{
-    executor::ProcessExecutor,
+    executors::ProcessExecutor,
     models::{
         Task,
         traits::Executor
@@ -72,6 +72,8 @@ impl TaskManager {
         }
     }
 
+    /// This function takes a given task and runs it in the relevant executor depending on the type 
+    /// of member of the Task enum it pertains to. 
     pub async fn run_in_executor(
         &mut self, 
         task: Task
@@ -86,7 +88,7 @@ impl TaskManager {
         }
         let thread_counter: Arc<Mutex<usize>> = self.thread_counter.clone();
         let (tx, rx) = mpsc::channel(32);
-
+        let executor  = get_executor(task);
         let handle = tokio::spawn(async move {
             // inform the TaskManager of another running process
             { // put in a scope to ensure the mutex lock is dropped
@@ -94,9 +96,6 @@ impl TaskManager {
                 *counter+=1;
             }
 
-            let executor = match task {
-                Task::Process(ptask) => ProcessExecutor::new(&ptask.command, ptask.args)
-            };
             let _flow_result = executor.run(
                 tx
             ).await;
@@ -109,6 +108,9 @@ impl TaskManager {
                 *counter-=1;
             }
         });
+
+        // pass the join handle and receiver up to the calling function for control of
+        // the spwaned coroutine
         Ok(TaskExecutionHandle::new(handle, rx))
     }
 
@@ -126,6 +128,8 @@ impl TaskManager {
         println!("TASKMANAGER-{}: Beginning task execution loop", self.instance_id);
         self.task_execution_loop().await
     }
+
+
     async fn task_execution_loop(&mut self) {
         loop {
             while self.task_queue.lock().await.is_empty() || *self.thread_counter.lock().await > self.max_threads {
@@ -157,8 +161,14 @@ impl TaskManager {
             }
         }
     }
+
 }
 
+fn get_executor(task: Task) -> impl Executor {
+    match task {
+        Task::Process(ptask) => ProcessExecutor::new(&ptask.command, ptask.args)
+    }
+}
 async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSocket {
     let options = SocketOptions::default();
     let mut socket = zeromq::SubSocket::with_options(options);

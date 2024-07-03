@@ -1,10 +1,16 @@
 use tokio::{process::Command, sync::mpsc::Sender};
 use std::process::Stdio;
 use tokio::io::{BufReader, AsyncBufReadExt};
-
+use async_trait::async_trait;
 use crate::models::{
     traits, FlowExecutionResult
 };
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ProcessTask {
+    pub command: String,
+    pub args: Option<Vec<String>>
+}
 
 pub struct ProcessExecutor {
     command: String,
@@ -12,17 +18,18 @@ pub struct ProcessExecutor {
 
 }
 
+#[async_trait]
 impl traits::Executor for ProcessExecutor {
     fn new(command: &str, args: Option<Vec<String>>) -> Self {
         Self {
             command: command.to_string(), args
         }
     }
-    async fn run(self, tx: Sender<String>) -> FlowExecutionResult {
-        let mut cmd = Command::new(self.command);
+    async fn run(&self, tx: Sender<String>) -> FlowExecutionResult {
+        let mut cmd = Command::new(&self.command);
         cmd.stdout(Stdio::piped());
 
-        if let Some(args) = self.args {
+        if let Some(args) = &self.args {
             cmd.args(args)
         } else {
             &mut cmd
