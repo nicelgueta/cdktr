@@ -2,9 +2,11 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    models::{Task, task_types},
+    models::Task,
     utils::arg_str_to_vec
 };
+use crate::executors::ProcessTask;
+
 
 pub trait ToTask {
     fn to_task(&self) -> Task ;
@@ -32,7 +34,7 @@ impl ToTask for ScheduledTask {
                 } else {
                     None
                 };
-                let p_task = task_types::ProcessTask {
+                let p_task = ProcessTask {
                     command: self.command.clone(),
                     args: args
                 };

@@ -7,7 +7,7 @@ use tokio::time::sleep;
 use zeromq::{Socket, SocketOptions, SocketRecv};
 
 use crate::{
-    executor::ProcessExecutor,
+    executors::ProcessExecutor,
     models::{
         Task,
         traits::Executor

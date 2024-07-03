@@ -5,7 +5,12 @@ use async_trait::async_trait;
 use crate::models::{
     traits, FlowExecutionResult
 };
-use core::future::Future;
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ProcessTask {
+    pub command: String,
+    pub args: Option<Vec<String>>
+}
 
 pub struct ProcessExecutor {
     command: String,
@@ -13,7 +18,7 @@ pub struct ProcessExecutor {
 
 }
 
-
+#[async_trait]
 impl traits::Executor for ProcessExecutor {
     fn new(command: &str, args: Option<Vec<String>>) -> Self {
         Self {
