@@ -209,6 +209,12 @@ mod tests {
 
     // TASKDEF
     #[test]
+    fn create_invalid_taskdef_from_zmq_message() {
+        let msg = ZmqMessage::from("TASKDEF|WHATISTHIS?|ls");
+        assert!(Task::try_from(msg).is_err());
+    }
+
+    #[test]
     fn create_process_taskdef_from_zmq_message() {
         let msg = ZmqMessage::from("TASKDEF|PROCESS|ls");
         assert!(Task::try_from(msg).is_ok());

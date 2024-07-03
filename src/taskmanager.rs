@@ -7,13 +7,23 @@ use tokio::time::sleep;
 use zeromq::{Socket, SocketOptions, SocketRecv};
 
 use crate::{
-    executors::ProcessExecutor,
+    executors::get_executor,
     models::{
         Task,
         traits::Executor
     },
 };
 
+/// `TaskManager` is a struct for managing and executing tasks concurrently within a specified limit of threads.
+///
+/// It is designed to queue tasks and manage their execution based on the availabilitsy of threads, ensuring that the number of concurrently running tasks does not exceed the specified maximum.
+///
+/// # Fields
+/// - `instance_id`: A `String` identifier for the instance of `TaskManager`. This can be used to differentiate between multiple instances.
+/// - `max_threads`: The maximum number of threads that can be used for executing tasks concurrently. This limit helps in controlling resource usage.
+/// - `thread_counter`: An `Arc<Mutex<usize>>` that safely counts the number of active threads. This is shared across tasks to ensure thread-safe updates.
+/// - `task_queue`: An `Arc<Mutex<VecDeque<Task>>>` that holds the tasks queued for execution. The use of `VecDeque` allows efficient task insertion and removal.
+///
 #[derive(Debug)]
 pub struct TaskManager {
     instance_id: String,
@@ -52,16 +62,7 @@ impl TaskExecutionHandle {
 
 }
 
-/// `TaskManager` is a struct for managing and executing tasks concurrently within a specified limit of threads.
-///
-/// It is designed to queue tasks and manage their execution based on the availabilitsy of threads, ensuring that the number of concurrently running tasks does not exceed the specified maximum.
-///
-/// # Fields
-/// - `instance_id`: A `String` identifier for the instance of `TaskManager`. This can be used to differentiate between multiple instances.
-/// - `max_threads`: The maximum number of threads that can be used for executing tasks concurrently. This limit helps in controlling resource usage.
-/// - `thread_counter`: An `Arc<Mutex<usize>>` that safely counts the number of active threads. This is shared across tasks to ensure thread-safe updates.
-/// - `task_queue`: An `Arc<Mutex<VecDeque<Task>>>` that holds the tasks queued for execution. The use of `VecDeque` allows efficient task insertion and removal.
-///
+
 impl TaskManager {
     pub fn new(instance_id: String, max_threads: usize) -> Self {
         Self {
@@ -164,11 +165,6 @@ impl TaskManager {
 
 }
 
-fn get_executor(task: Task) -> impl Executor {
-    match task {
-        Task::Process(ptask) => ProcessExecutor::new(&ptask.command, ptask.args)
-    }
-}
 async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSocket {
     let options = SocketOptions::default();
     let mut socket = zeromq::SubSocket::with_options(options);
