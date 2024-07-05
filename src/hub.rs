@@ -1,10 +1,17 @@
-use crate::db::models::ScheduledTask;
+
 use tokio::sync::{mpsc::{Receiver, Sender, channel}, Mutex};
 use zeromq::{Socket, PubSocket};
 use std::sync::Arc;
 
 use crate::{
-    taskmanager, scheduler, server, models::Task
+    taskmanager, 
+    scheduler, 
+    server::{
+        agent::AgentServer,
+        principal::PrincipalServer,
+        models::traits::Server
+    }, 
+    models::Task
 };
 
 pub enum InstanceType {
@@ -88,6 +95,7 @@ impl Hub {
                 
                 let pub_host_cl = pub_host.clone();
         
+                // bind the publisher to its TCP port
                 {
                     let mut pub_mut = self.publisher.lock().await;
                     pub_mut
@@ -103,9 +111,9 @@ impl Hub {
                 };
         
                 // start REP/REQ server for principal
-                server::principal::start(
-                    self.publisher.clone(), 
-                    &pub_host_cl, 
+                let principal_server = PrincipalServer::new(self.publisher.clone());
+                principal_server.start( 
+                    &pub_host_cl,
                     server_port
                 ).await.expect(
                     "CDKTR: Unable to start client server"
@@ -118,7 +126,8 @@ impl Hub {
                     let pub_host_cl = pub_host.clone();
                     let tm_task = spawn_tm(instance_id.clone(), pub_host_cl, pub_port, max_tm_threads).await;
                     // start REP/REQ server for agent
-                    server::agent::start( 
+                    let agent_server = AgentServer::new();
+                    agent_server.start( 
                         &pub_host, 
                         server_port,
                     ).await.expect("CDKTR: Unable to start client server");
