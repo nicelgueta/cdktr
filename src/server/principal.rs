@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use zeromq::{ZmqMessage, PubSocket};
+use zeromq::{ZmqMessage, PubSocket, Socket};
 use super::{
     parse_zmq_str,
     models::{
@@ -18,12 +18,14 @@ pub enum PrincipalRequest {
 
 
 pub struct PrincipalServer {
-    publisher: Arc<Mutex<PubSocket>>
+    publisher: Arc<Mutex<PubSocket>>,
+    req: zeromq::ReqSocket
 }
 
 impl PrincipalServer {
     pub fn new(publisher: Arc<Mutex<PubSocket>>) -> Self  {
-        Self {publisher}
+        let req = zeromq::ReqSocket::new();
+        Self { publisher, req }
     }
 }
 
@@ -59,5 +61,45 @@ impl TryFrom<ZmqMessage> for PrincipalRequest {
             "Unable to convert ZMQ Client message to String"
         );
         Self::from_zmq_str(&zmq_msg_s)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_principal_request_from_zmq_str_all_happy(){
+        const ALL_HAPPIES: [&str; 1] = [
+            "PING",
+        ];
+        for zmq_s in ALL_HAPPIES {
+            let res = PrincipalRequest::from_zmq_str(zmq_s);
+            assert!(res.is_ok())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_handle_cli_message_all_happy(){
+        let test_params = [
+            ("PING", ClientResponseMessage::Pong, false),
+        ];
+        let fake_publisher = Arc::new(Mutex::new(PubSocket::new()));
+        let mut server = PrincipalServer::new(fake_publisher);
+        for (
+            zmq_s, response, restart_flag
+        ) in test_params {
+            let ar = PrincipalRequest::from_zmq_str(zmq_s).expect(
+                "Should be able to unwrap the agent from ZMQ command"
+            );
+            let (resp, flag) = server.handle_client_message(
+                ar
+            ).await;
+            println!("Testing {zmq_s}");
+            assert_eq!(response, resp);
+            assert_eq!(flag, restart_flag);
+        }
+
     }
 }
