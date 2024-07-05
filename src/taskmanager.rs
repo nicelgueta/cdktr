@@ -12,32 +12,8 @@ use crate::{
         Task,
         traits::Executor
     },
+    utils::AsyncQueue
 };
-
-/// `TaskManager` is a struct for managing and executing tasks concurrently within a specified limit of threads.
-///
-/// It is designed to queue tasks and manage their execution based on the availabilitsy of threads, ensuring that the number of concurrently running tasks does not exceed the specified maximum.
-///
-/// # Fields
-/// - `instance_id`: A `String` identifier for the instance of `TaskManager`. This can be used to differentiate between multiple instances.
-/// - `max_threads`: The maximum number of threads that can be used for executing tasks concurrently. This limit helps in controlling resource usage.
-/// - `thread_counter`: An `Arc<Mutex<usize>>` that safely counts the number of active threads. This is shared across tasks to ensure thread-safe updates.
-/// - `task_queue`: An `Arc<Mutex<VecDeque<Task>>>` that holds the tasks queued for execution. The use of `VecDeque` allows efficient task insertion and removal.
-///
-#[derive(Debug)]
-pub struct TaskManager {
-    instance_id: String,
-    max_threads: usize,
-    thread_counter: Arc<Mutex<usize>>,
-    task_queue: Arc<Mutex<VecDeque<Task>>>
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TaskManagerError {
-    TooManyThreadsError,
-    FlowError,
-    Other
-}
 
 #[derive(Debug)]
 pub struct TaskExecutionHandle {
@@ -59,9 +35,34 @@ impl TaskExecutionHandle {
     pub async fn wait_stdout(&mut self) -> Option<String> {
         self.stdout_receiver.recv().await
     }
-
+    
 }
 
+#[derive(Debug, PartialEq)]
+pub enum TaskManagerError {
+    TooManyThreadsError,
+    FlowError,
+    // Other
+}
+
+
+/// `TaskManager` is a struct for managing and executing tasks concurrently within a specified limit of threads.
+///
+/// It is designed to queue tasks and manage their execution based on the availabilitsy of threads, ensuring that the number of concurrently running tasks does not exceed the specified maximum.
+///
+/// # Fields
+/// - `instance_id`: A `String` identifier for the instance of `TaskManager`. This can be used to differentiate between multiple instances.
+/// - `max_threads`: The maximum number of threads that can be used for executing tasks concurrently. This limit helps in controlling resource usage.
+/// - `thread_counter`: An `Arc<Mutex<usize>>` that safely counts the number of active threads. This is shared across tasks to ensure thread-safe updates.
+/// - `task_queue`: An `Arc<Mutex<VecDeque<Task>>>` that holds the tasks queued for execution. The use of `VecDeque` allows efficient task insertion and removal.
+///
+#[derive(Debug)]
+pub struct TaskManager {
+    instance_id: String,
+    max_threads: usize,
+    thread_counter: Arc<Mutex<usize>>,
+    task_queue: AsyncQueue<Task>
+}
 
 impl TaskManager {
     pub fn new(instance_id: String, max_threads: usize) -> Self {
@@ -69,7 +70,7 @@ impl TaskManager {
             instance_id,
             max_threads, 
             thread_counter: Arc::new(Mutex::new(0)),
-            task_queue: Arc::new(Mutex::new(VecDeque::new()))
+            task_queue: AsyncQueue::new()
         }
     }
 
@@ -122,7 +123,7 @@ impl TaskManager {
         let ins_id = self.instance_id.clone();
         tokio::spawn(
             async move {
-                zmq_loop(&ins_id, host, port, tqclone).await
+                sub_zmq_loop(&ins_id, host, port, tqclone).await
             }
         );
         // spawn_task_execution_loop(task_queue)
@@ -133,14 +134,14 @@ impl TaskManager {
 
     async fn task_execution_loop(&mut self) {
         loop {
-            while self.task_queue.lock().await.is_empty() || *self.thread_counter.lock().await > self.max_threads {
+            while self.task_queue.is_empty().await || *self.thread_counter.lock().await > self.max_threads {
                 // if the queue is empty (no tasks to do) or the manager is currently running the
                 // maxium allowes concurrent threads then just hang tight
                 // println!("Waiting");
                 sleep(Duration::from_micros(500)).await
             };
             let task = {
-                self.task_queue.lock().await.pop_front().expect("TASKMANAGER-{instance_id}: Unable to pop task from queue")
+                self.task_queue.get().await.expect("TASKMANAGER-{instance_id}: Unable to pop task from queue")
             };
             let task_exe_result = self.run_in_executor(task).await;
             match task_exe_result {
@@ -165,6 +166,7 @@ impl TaskManager {
 
 }
 
+
 async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSocket {
     let options = SocketOptions::default();
     let mut socket = zeromq::SubSocket::with_options(options);
@@ -179,7 +181,7 @@ async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSo
     socket
 }
 
-pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_mutex: Arc<Mutex<VecDeque<Task>>>){
+pub async fn sub_zmq_loop(instance_id: &str, host: String, port: usize, mut task_queue: AsyncQueue<Task>){
 
     println!("TASKMANAGER-{instance_id}: Subscribing to tcp://{}:{}", host, port);
     let mut socket = get_socket(&host, port, instance_id).await;
@@ -190,8 +192,7 @@ pub async fn zmq_loop(instance_id: &str, host: String, port: usize, task_queue_m
         let task_res = Task::try_from(recv);
         match task_res {
             Ok(task) => {
-                let mut task_queue = task_queue_mutex.lock().await;
-                (*task_queue).push_back(task);
+                task_queue.put(task).await
 
             },
             Err(e) => println!("TASKMANAGER-{instance_id}: failed to parse ZMQ msg: {:?}", e)
