@@ -68,7 +68,7 @@ if len(sys.argv) > 1:
             socket = context.socket(zmq.REQ)
             cli_port = PORT+1
             socket.connect(f"tcp://{HOST}:{cli_port}")
-            socket.send(b"TMRESTART")
+            socket.send(b"RECONNECT|newid")
             message = socket.recv()
             print(f"Received reply: {message.decode('utf-8')}")
             start_pub_socket()
