@@ -111,7 +111,7 @@ impl Hub {
                 };
         
                 // start REP/REQ server for principal
-                let principal_server = PrincipalServer::new(self.publisher.clone());
+                let mut principal_server = PrincipalServer::new(self.publisher.clone());
                 principal_server.start( 
                     &pub_host_cl,
                     server_port
@@ -122,17 +122,18 @@ impl Hub {
             InstanceType::AGENT => {
                 // only create the task manager thread since scheduler is not required
                 // for AGENT instancess
+                let mut agent_server = AgentServer::new();
                 loop {
                     let pub_host_cl = pub_host.clone();
                     let tm_task = spawn_tm(instance_id.clone(), pub_host_cl, pub_port, max_tm_threads).await;
                     // start REP/REQ server for agent
-                    let agent_server = AgentServer::new();
                     agent_server.start( 
                         &pub_host, 
                         server_port,
                     ).await.expect("CDKTR: Unable to start client server");
                     println!("SERVER: Loop exited - restarting");
                     tm_task.abort();
+                    println!("SERVER: Task Manager killed");
                 }
         
             }
