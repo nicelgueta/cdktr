@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use zeromq::ZmqMessage;
 use super::{
     parse_zmq_str,
+    traits::{Server, BaseClientRequestMessage},
     models::{
-        traits::{Server, BaseClientRequestMessage},
         ClientResponseMessage,
         ClientConversionError
     }

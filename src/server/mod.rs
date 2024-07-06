@@ -1,8 +1,11 @@
 use zeromq::ZmqMessage;
 
+mod traits;
 pub mod models;
 pub mod agent;
 pub mod principal;
+
+pub use traits::Server;
 
 impl Into<ZmqMessage> for models::ClientResponseMessage {
     fn into(self) -> ZmqMessage {
@@ -33,7 +36,7 @@ mod tests {
         parse_zmq_str, 
         agent::AgentRequest,
         principal::PrincipalRequest,
-        models::traits::BaseClientRequestMessage, 
+        traits::BaseClientRequestMessage, 
     };
 
     #[test]

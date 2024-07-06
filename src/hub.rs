@@ -9,7 +9,7 @@ use crate::{
     server::{
         agent::AgentServer,
         principal::PrincipalServer,
-        models::traits::Server
+        Server
     }, 
     models::Task
 };

@@ -4,8 +4,8 @@ use tokio::sync::Mutex;
 use zeromq::{ZmqMessage, PubSocket, Socket};
 use super::{
     parse_zmq_str,
+    traits::{Server, BaseClientRequestMessage},
     models::{
-        traits::{Server, BaseClientRequestMessage},
         ClientResponseMessage,
         ClientConversionError
     }
