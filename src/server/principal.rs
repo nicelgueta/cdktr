@@ -82,7 +82,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_cli_message_all_happy(){
-        let test_params = [
+        let test_params: [(&str, ClientResponseMessage, bool); 1] = [
             ("PING", ClientResponseMessage::Pong, false),
         ];
         let fake_publisher = Arc::new(Mutex::new(PubSocket::new()));
