@@ -1,6 +1,7 @@
 use zeromq::ZmqMessage;
 
 mod traits;
+mod principal_api;
 pub mod models;
 pub mod agent;
 pub mod principal;
@@ -14,7 +15,9 @@ impl Into<ZmqMessage> for models::ClientResponseMessage {
             Self::ClientError(payload) => format!("ClientError: {}", payload),
             Self::Pong => "PONG".to_string(),
             Self::Success => "SUCCESS".to_string(),
-            Self::Heartbeat(pub_id) => format!("HEARTBEAT|{}", pub_id)
+            Self::SuccessWithPayload(payload) => format!("SUCCESS|{}", payload),
+            Self::Heartbeat(pub_id) => format!("HEARTBEAT|{}", pub_id),
+            Self::ServerError(payload) => format!("ServerError: {}", payload)
         };
         ZmqMessage::from(s)
     }

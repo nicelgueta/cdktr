@@ -1,7 +1,21 @@
 use async_trait::async_trait;
+use diesel::SqliteConnection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use zeromq::{ZmqMessage, PubSocket, Socket};
+use crate::db::models::NewScheduledTask;
+use crate::db::{models::ScheduledTask, get_connection};
+
+use super::principal_api::{
+    // zmq msgs
+    create_task_from_zmq_args,
+
+    // client handling
+    handle_create_task,
+    handle_list_tasks,
+    handle_delete_task
+};
+
 use super::{
     parse_zmq_str,
     traits::{Server, BaseClientRequestMessage},
@@ -13,19 +27,29 @@ use super::{
 
 // TODO: make an extension of AgentRequest
 pub enum PrincipalRequest {
+
+    /// Check server is online
     Ping,
+    /// Creates a new scheudled task in the principal database
+    CreateTask(NewScheduledTask),
+    /// Lists all scheduled tasks currently stored in the database
+    ListTasks,
+    /// Deletes a specific scheduled task in the database by its id
+    DeleteTask(i32)
 }
 
 
 pub struct PrincipalServer {
     publisher: Arc<Mutex<PubSocket>>,
-    req: zeromq::ReqSocket
+    req: zeromq::ReqSocket,
+    db_cnxn: SqliteConnection
 }
 
 impl PrincipalServer {
-    pub fn new(publisher: Arc<Mutex<PubSocket>>) -> Self  {
+    pub fn new(publisher: Arc<Mutex<PubSocket>>, database_url: Option<String>) -> Self  {
         let req = zeromq::ReqSocket::new();
-        Self { publisher, req }
+        let db_cnxn = get_connection(database_url.as_deref());
+        Self { publisher, req, db_cnxn }
     }
 }
 
@@ -38,6 +62,9 @@ impl Server<PrincipalRequest> for PrincipalServer {
     ) -> (ClientResponseMessage, bool) {
         match cli_msg {
             PrincipalRequest::Ping => (ClientResponseMessage::Pong, false),
+            PrincipalRequest::CreateTask(new_task) => handle_create_task(&mut self.db_cnxn, new_task),
+            PrincipalRequest::ListTasks => handle_list_tasks(&mut self.db_cnxn),
+            PrincipalRequest::DeleteTask(task_id) => handle_delete_task(&mut self.db_cnxn,task_id)
         }
     }
 }
@@ -50,6 +77,8 @@ impl BaseClientRequestMessage for PrincipalRequest {
         match msg_type {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
+            "LISTTASKS" => Ok(Self::ListTasks),
+            "CREATETASK" => Ok(Self::CreateTask(create_task_from_zmq_args(args)?)),
             _ => Err(ClientConversionError::new(format!("Unrecognised server message: {}", msg_type)))
         }
     }
@@ -71,10 +100,12 @@ mod tests {
 
     #[test]
     fn test_principal_request_from_zmq_str_all_happy(){
-        const ALL_HAPPIES: [&str; 1] = [
+        let all_happies = vec![
             "PING",
+            "LISTTASKS",
+            r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#
         ];
-        for zmq_s in ALL_HAPPIES {
+        for zmq_s in all_happies {
             let res = PrincipalRequest::from_zmq_str(zmq_s);
             assert!(res.is_ok())
         }
@@ -82,11 +113,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_cli_message_all_happy(){
-        let test_params: [(&str, ClientResponseMessage, bool); 1] = [
-            ("PING", ClientResponseMessage::Pong, false),
+        let test_params = vec![
+            (
+                "PING", 
+                ClientResponseMessage::Pong, false
+            ),
+            (
+                "LISTTASKS", 
+                ClientResponseMessage::SuccessWithPayload("[]".to_string()), false
+            ),
+            (
+                r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#, 
+                ClientResponseMessage::Success, false
+            ),
         ];
         let fake_publisher = Arc::new(Mutex::new(PubSocket::new()));
-        let mut server = PrincipalServer::new(fake_publisher);
+        let mut server = PrincipalServer::new(fake_publisher, None);
         for (
             zmq_s, response, restart_flag
         ) in test_params {

@@ -18,8 +18,10 @@ impl ClientConversionError {
 pub enum ClientResponseMessage {
     InvalidMessageType,
     ClientError(String),
+    ServerError(String),
     Pong,
     Success,
+    SuccessWithPayload(String),
     Heartbeat(String)
 }
 

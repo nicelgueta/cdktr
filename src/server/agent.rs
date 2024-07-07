@@ -9,7 +9,11 @@ use super::{
     }
 };
 pub enum AgentRequest{
+
+    /// Check the server is online
     Ping,
+
+    /// Check the current publisher ID that the agent is subscribed to
     Heartbeat,
 
     /// Command sent to instruct the agent to reset the publisher ID

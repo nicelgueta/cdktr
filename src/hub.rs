@@ -87,7 +87,7 @@ impl Hub {
                 // and send task trigger messages to the main receiver that is passed
                 // to the task router
                 
-                spawn_scheduler(database_url, poll_interval_seconds, self.tx.clone()).await;
+                spawn_scheduler(database_url.clone(), poll_interval_seconds, self.tx.clone()).await;
         
                 // start the task manager thread 
                 let pub_host_cl = pub_host.clone();
@@ -111,7 +111,7 @@ impl Hub {
                 };
         
                 // start REP/REQ server for principal
-                let mut principal_server = PrincipalServer::new(self.publisher.clone());
+                let mut principal_server = PrincipalServer::new(self.publisher.clone(), database_url);
                 principal_server.start( 
                     &pub_host_cl,
                     server_port
