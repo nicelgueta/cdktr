@@ -3,10 +3,11 @@ use diesel::SqliteConnection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use zeromq::{ZmqMessage, PubSocket, Socket};
-use crate::db::models::NewScheduledTask;
-use crate::db::{models::ScheduledTask, get_connection};
+use crate::db::{models::NewScheduledTask, get_connection};
 
-use super::principal_api::{
+mod api; 
+
+use api::{
     // zmq msgs
     create_task_payload,
     delete_task_payload,

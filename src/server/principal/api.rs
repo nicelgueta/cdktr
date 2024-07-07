@@ -4,9 +4,10 @@ use diesel::prelude::*;
 /// 
 use crate::{
     macros::args_to_model,
-    db::models::{NewScheduledTask, ScheduledTask}
+    db::models::{NewScheduledTask, ScheduledTask},
+    server::models::{RepReqError, ClientResponseMessage}
 };
-use super::models::{RepReqError, ClientResponseMessage};
+
 use diesel::RunQueryDsl;
 
 pub fn create_task_payload(args: Vec<String>) -> Result<NewScheduledTask, RepReqError> {

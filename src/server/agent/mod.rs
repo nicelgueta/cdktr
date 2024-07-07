@@ -1,15 +1,14 @@
 use async_trait::async_trait;
 use zeromq::ZmqMessage;
 use crate::{models::Task, utils::AsyncQueue};
-
+mod api;
 use super::{
     parse_zmq_str,
     traits::{Server, BaseClientRequestMessage},
     models::{
         ClientResponseMessage,
         RepReqError
-    },
-    agent_api::create_task_run_payload
+    }
 };
 pub enum AgentRequest{
 
@@ -53,7 +52,7 @@ impl BaseClientRequestMessage for AgentRequest {
                 }
             },
             "HEARTBEAT" => Ok(Self::Heartbeat),
-            "RUN" => Ok(Self::Run(create_task_run_payload(args)?)),
+            "RUN" => Ok(Self::Run(api::create_task_run_payload(args)?)),
             _ => Err(RepReqError::new(1,format!("Unrecognised message type: {}", msg_type)))
         }
     }

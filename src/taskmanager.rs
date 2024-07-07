@@ -241,7 +241,7 @@ mod tests {
     #[tokio::test]
     async fn test_run_single_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 1, AsyncQueue::new());
-        let task = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py")).expect("Failed to create task from the ZMQMessage");
+        let task = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
         let mut result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
         let mut i = 0;

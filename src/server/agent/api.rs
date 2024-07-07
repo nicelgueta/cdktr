@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
-
-use crate::models::Task;
-
-use super::models::RepReqError;
+use crate::{
+    models::Task,
+    server::models::RepReqError
+};
 
 pub fn create_task_run_payload(args:Vec<String>) -> Result<Task, RepReqError> {
     let task_res = Task::try_from(VecDeque::from(args));
