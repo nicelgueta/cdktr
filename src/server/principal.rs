@@ -60,9 +60,9 @@ impl Server<PrincipalRequest> for PrincipalServer {
     async fn handle_client_message(
         &mut self, 
         cli_msg: PrincipalRequest
-    ) -> (ClientResponseMessage, bool) {
+    ) -> (ClientResponseMessage, usize) {
         match cli_msg {
-            PrincipalRequest::Ping => (ClientResponseMessage::Pong, false),
+            PrincipalRequest::Ping => (ClientResponseMessage::Pong, 0),
             PrincipalRequest::CreateTask(new_task) => handle_create_task(&mut self.db_cnxn, new_task),
             PrincipalRequest::ListTasks => handle_list_tasks(&mut self.db_cnxn),
             PrincipalRequest::DeleteTask(task_id) => handle_delete_task(&mut self.db_cnxn,task_id),
@@ -119,31 +119,31 @@ mod tests {
         let test_params = vec![
             (
                 "PING", 
-                ClientResponseMessage::Pong, false
+                ClientResponseMessage::Pong, 0
             ),
             (
                 "LISTTASKS", 
-                ClientResponseMessage::SuccessWithPayload("[]".to_string()), false
+                ClientResponseMessage::SuccessWithPayload("[]".to_string()), 0
             ),
             (
                 r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#, 
-                ClientResponseMessage::Success, false
+                ClientResponseMessage::Success, 0
             ),
         ];
         let fake_publisher = Arc::new(Mutex::new(PubSocket::new()));
         let mut server = PrincipalServer::new(fake_publisher, None);
         for (
-            zmq_s, response, restart_flag
+            zmq_s, response, exp_exit_code
         ) in test_params {
             let ar = PrincipalRequest::from_zmq_str(zmq_s).expect(
                 "Should be able to unwrap the agent from ZMQ command"
             );
-            let (resp, flag) = server.handle_client_message(
+            let (resp, exit_code) = server.handle_client_message(
                 ar
             ).await;
             println!("Testing {zmq_s}");
             assert_eq!(response, resp);
-            assert_eq!(flag, restart_flag);
+            assert_eq!(exit_code, exp_exit_code);
         }
 
     }

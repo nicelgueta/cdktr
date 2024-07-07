@@ -117,7 +117,7 @@ impl Hub {
                     server_port
                 ).await.expect(
                     "CDKTR: Unable to start client server"
-                )
+                );
             },
             InstanceType::AGENT => {
                 // only create the task manager thread since scheduler is not required
@@ -127,15 +127,14 @@ impl Hub {
                     let pub_host_cl = pub_host.clone();
                     let tm_task = spawn_tm(instance_id.clone(), pub_host_cl, pub_port, max_tm_threads).await;
                     // start REP/REQ server for agent
-                    agent_server.start( 
+                    let agent_loop_exit_code = agent_server.start( 
                         &pub_host, 
                         server_port,
                     ).await.expect("CDKTR: Unable to start client server");
-                    println!("SERVER: Loop exited - restarting");
+                    println!("SERVER: Loop exited with code {}", agent_loop_exit_code);
                     tm_task.abort();
                     println!("SERVER: Task Manager killed");
                 }
-        
             }
         };
     }

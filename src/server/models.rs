@@ -26,7 +26,7 @@ impl RepReqError {
     }
 }
 
-
+/// A message that is returned to the client REQ socket.
 #[derive(PartialEq, Debug)]
 pub enum ClientResponseMessage {
     ClientError(String),

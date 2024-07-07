@@ -24,17 +24,17 @@ where
     async fn handle_client_message(
         &mut self, 
         cli_msg: RT
-    ) -> (ClientResponseMessage, bool) ;
+    ) -> (ClientResponseMessage, usize) ;
 
     /// Method to run the REP listening loop. This is a default
     /// implementation and is exactly the same for both the Agent
     /// and Principal instances so it is not needed to override this
-    /// implmentation
+    /// implmentation.
     async fn start(
         &mut self,
         current_host: &str, 
         rep_port: usize,
-    )  -> Result<(), Box<dyn Error>> {
+    )  -> Result<usize, Box<dyn Error>> {
         
         println!("SERVER: Starting REP Server on tcp://{}:{}", current_host, rep_port);
         let mut socket = zeromq::RepSocket::new();
@@ -44,30 +44,31 @@ where
             .expect("Failed to connect");
         println!("SERVER: Successfully connected");
     
-        loop {
+        let exit_code = loop {
             let zmq_recv = socket.recv().await?;
             let msg_res: Result<RT, RepReqError> = RT::try_from(
                 zmq_recv.clone()
             );
             match msg_res {
                 Ok(cli_msg) => {
-                    let (response, should_restart) = self.handle_client_message(
+                    let (response, exit_code) = self.handle_client_message(
                         cli_msg
                     ).await;
                     socket.send(response.into()).await?;
-                    if should_restart {
-                        // exit the loop in order for the server to be restarted
-                        break
+                    if exit_code > 0 {
+                        // received a non-zero exit code from the message handling function
+                        // which means the server should perform some other kind of action
+                        // above the client/request loop so loop should be exited
+                        break exit_code
                     };
                 },
                 Err(e) => {
                     let error_msg = e.to_string();
-                    println!("SERVER: Invalid message type: {}", error_msg);
                     let response = ClientResponseMessage::ClientError(error_msg);
                     socket.send(response.into()).await?;
                 }
             }
         };
-        Ok(())
+        Ok(exit_code)
     }
 }

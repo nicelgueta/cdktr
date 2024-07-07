@@ -40,20 +40,20 @@ pub fn delete_task_payload(args: Vec<String>) -> Result<i32, RepReqError> {
     }
 }
 
-pub fn handle_create_task(db_cnxn: &mut SqliteConnection, scheduled_task: NewScheduledTask) -> (ClientResponseMessage, bool) {
+pub fn handle_create_task(db_cnxn: &mut SqliteConnection, scheduled_task: NewScheduledTask) -> (ClientResponseMessage, usize) {
     use crate::db::schema::schedules;
     let result = diesel::insert_into(schedules::table)
         .values(&scheduled_task)
         .execute(db_cnxn)
     ;
     match result {
-        Ok(_v) => (ClientResponseMessage::Success, false),
-        Err(e) => (ClientResponseMessage::ServerError(e.to_string()), false)
+        Ok(_v) => (ClientResponseMessage::Success, 0),
+        Err(e) => (ClientResponseMessage::ServerError(e.to_string()), 0)
     }
 
 }
 
-pub fn handle_list_tasks(db_cnxn: &mut SqliteConnection) -> (ClientResponseMessage, bool) {
+pub fn handle_list_tasks(db_cnxn: &mut SqliteConnection) -> (ClientResponseMessage, usize) {
     use crate::db::schema::schedules::dsl::*; 
     let results: Result<Vec<ScheduledTask>, diesel::result::Error> = schedules
         .select(ScheduledTask::as_select())
@@ -62,25 +62,25 @@ pub fn handle_list_tasks(db_cnxn: &mut SqliteConnection) -> (ClientResponseMessa
     match results {
         Ok(res) => {
             match serde_json::to_string(&res) {
-                Ok(json_str) => (ClientResponseMessage::SuccessWithPayload(json_str), false),
+                Ok(json_str) => (ClientResponseMessage::SuccessWithPayload(json_str), 0),
                 Err(e) => {
                     (
                         ClientResponseMessage::ServerError(
                             format!("Failed to convert data to JSON string. Got error: {}",e.to_string())
                         ), 
-                        false
+                        0
                     )
                 }
             }
         },
         Err(e) => (ClientResponseMessage::ServerError(
             format!("Failed to query data from database. Got error: {}",e.to_string())
-        ), false)
+        ), 0)
     }
 }
 
 
-pub fn handle_delete_task(db_cnxn: &mut SqliteConnection, task_id: i32) -> (ClientResponseMessage, bool) {
+pub fn handle_delete_task(db_cnxn: &mut SqliteConnection, task_id: i32) -> (ClientResponseMessage, usize) {
     use crate::db::schema::schedules::dsl::*; 
     let result = diesel::delete(schedules.filter(id.eq(task_id)))
         .execute(db_cnxn)
@@ -88,14 +88,14 @@ pub fn handle_delete_task(db_cnxn: &mut SqliteConnection, task_id: i32) -> (Clie
     match result {
         Ok(num_affected) => {
             if num_affected >= 1 {
-                (ClientResponseMessage::Success, false)
+                (ClientResponseMessage::Success, 0)
             } else {
-                (ClientResponseMessage::Unprocessable(format!("No records found for task_id {task_id}")), false)
+                (ClientResponseMessage::Unprocessable(format!("No records found for task_id {task_id}")), 0)
             }
         },
         Err(e) => {
             let msg = format!("Failed to convert data to JSON string. Got error: {}",e.to_string());
-            (ClientResponseMessage::ServerError(msg), false)
+            (ClientResponseMessage::ServerError(msg), 0)
         }
     }
 
@@ -161,13 +161,13 @@ mod tests {
             cron: "0 3 * * * *".to_string(),
             next_run_timestamp: 1720313744
         };
-        assert_eq!(handle_create_task(&mut db_cnxn, task), (ClientResponseMessage::Success, false))
+        assert_eq!(handle_create_task(&mut db_cnxn, task), (ClientResponseMessage::Success, 0))
     }
 
     #[test]
     fn test_handle_list_tasks_empty_db(){
         let mut db_cnxn = setup_db();
-        assert_eq!(handle_list_tasks(&mut db_cnxn), (ClientResponseMessage::SuccessWithPayload("[]".to_string()), false))
+        assert_eq!(handle_list_tasks(&mut db_cnxn), (ClientResponseMessage::SuccessWithPayload("[]".to_string()), 0))
     }
 
     #[test]
@@ -183,8 +183,8 @@ mod tests {
         };
         handle_create_task(&mut db_cnxn, task);
         
-        let (resp, flag) = handle_list_tasks(&mut db_cnxn);
-        assert_eq!(flag, false);
+        let (resp, exit_code) = handle_list_tasks(&mut db_cnxn);
+        assert_eq!(exit_code, 0);
         match resp {
             ClientResponseMessage::SuccessWithPayload(json_str) => {
                 let tasks: Vec<ScheduledTask> = serde_json::from_str(&json_str).unwrap();
@@ -206,7 +206,7 @@ mod tests {
             next_run_timestamp: 1720313744
         };
         handle_create_task(&mut db_cnxn, task);
-        assert_eq!(handle_delete_task(&mut db_cnxn, 1), (ClientResponseMessage::Success, false))
+        assert_eq!(handle_delete_task(&mut db_cnxn, 1), (ClientResponseMessage::Success, 0))
     }
 
     #[test]
@@ -221,7 +221,7 @@ mod tests {
             next_run_timestamp: 1720313744
         };
         handle_create_task(&mut db_cnxn, task);
-        assert_eq!(handle_delete_task(&mut db_cnxn, 2), (ClientResponseMessage::Unprocessable("No records found for task_id 2".to_string()), false))
+        assert_eq!(handle_delete_task(&mut db_cnxn, 2), (ClientResponseMessage::Unprocessable("No records found for task_id 2".to_string()), 0))
     }
 
 }

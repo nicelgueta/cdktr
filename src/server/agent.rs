@@ -81,13 +81,13 @@ impl Server<AgentRequest> for AgentServer {
     async fn handle_client_message(
         &mut self, 
         cli_msg: AgentRequest
-    ) -> (ClientResponseMessage, bool) {
+    ) -> (ClientResponseMessage, usize) {
         match cli_msg {
-            AgentRequest::Ping => (ClientResponseMessage::Pong, false),
-            AgentRequest::Heartbeat => (ClientResponseMessage::Heartbeat(self.publisher_id.clone()), false),
+            AgentRequest::Ping => (ClientResponseMessage::Pong, 0),
+            AgentRequest::Heartbeat => (ClientResponseMessage::Heartbeat(self.publisher_id.clone()), 0),
             AgentRequest::Reconnect(pub_id) => {
                 self.publisher_id = pub_id;
-                (ClientResponseMessage::Success, true)
+                (ClientResponseMessage::Success, 0)
             }
 
         }
@@ -128,22 +128,22 @@ mod tests {
     #[tokio::test]
     async fn test_handle_cli_message_all_happy(){
         let test_params = [
-            ("PING", ClientResponseMessage::Pong, false),
-            ("RECONNECT|newid", ClientResponseMessage::Success, true),
-            ("HEARTBEAT", ClientResponseMessage::Heartbeat("newid".to_string()), false),
+            ("PING", ClientResponseMessage::Pong, 0),
+            ("RECONNECT|newid", ClientResponseMessage::Success, 1),
+            ("HEARTBEAT", ClientResponseMessage::Heartbeat("newid".to_string()), 0),
         ];
         let mut server = AgentServer::new();
         for (
-            zmq_s, response, restart_flag
+            zmq_s, response, exp_exit_code
         ) in test_params {
             let ar = AgentRequest::from_zmq_str(zmq_s).expect(
                 "Should be able to unwrap the agent from ZMQ command"
             );
-            let (resp, flag) = server.handle_client_message(
+            let (resp, exit_code) = server.handle_client_message(
                 ar
             ).await;
             assert_eq!(response, resp);
-            assert_eq!(flag, restart_flag);
+            assert_eq!(exit_code, exp_exit_code);
         }
 
     }
