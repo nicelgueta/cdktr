@@ -1,24 +1,37 @@
 
 
 #[derive(Debug)]
-pub struct ClientConversionError {
-    pub msg: String
+pub enum RepReqError {
+    ParseError(String),
+    Unprocessable(String),
+    ServerError(String)
 }
-impl ClientConversionError {
-    pub fn new(msg: String) -> Self {
-        ClientConversionError {msg}
+impl RepReqError {
+    pub fn new(typ: usize, msg: String) -> Self {
+        match typ {
+            1 => Self::ParseError(msg),
+            2 => Self::Unprocessable(msg),
+            3 => Self::ServerError(msg),
+            _ => Self::ServerError(
+                format!("Unhandled exception. Code {typ}")
+            )
+        }
     }
     pub fn to_string(&self) -> String {
-        self.msg.clone()
+        match self {
+            Self::ParseError(pl) => pl.clone(),
+            Self::Unprocessable(pl) => pl.clone(),
+            Self::ServerError(pl) => pl.clone()
+        }
     }
 }
 
 
 #[derive(PartialEq, Debug)]
 pub enum ClientResponseMessage {
-    InvalidMessageType,
     ClientError(String),
     ServerError(String),
+    Unprocessable(String),
     Pong,
     Success,
     SuccessWithPayload(String),

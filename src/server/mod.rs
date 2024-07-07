@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use zeromq::ZmqMessage;
 
 mod traits;
@@ -11,13 +13,13 @@ pub use traits::Server;
 impl Into<ZmqMessage> for models::ClientResponseMessage {
     fn into(self) -> ZmqMessage {
         let s = match self {
-            Self::InvalidMessageType => "InvalidRequest: Unrecognised message type".to_string(),
-            Self::ClientError(payload) => format!("ClientError: {}", payload),
+            Self::ClientError(payload) => format!("CLIENTERROR|{payload}"),
             Self::Pong => "PONG".to_string(),
             Self::Success => "SUCCESS".to_string(),
-            Self::SuccessWithPayload(payload) => format!("SUCCESS|{}", payload),
-            Self::Heartbeat(pub_id) => format!("HEARTBEAT|{}", pub_id),
-            Self::ServerError(payload) => format!("ServerError: {}", payload)
+            Self::SuccessWithPayload(payload) => format!("SUCCESS|{payload}"),
+            Self::Heartbeat(pub_id) => format!("HEARTBEAT|{pub_id}"),
+            Self::ServerError(payload) => format!("SERVERERROR|{payload}"),
+            Self::Unprocessable(payload) => format!("UNPROC|{payload}")
         };
         ZmqMessage::from(s)
     }

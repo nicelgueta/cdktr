@@ -8,7 +8,8 @@ use crate::db::{models::ScheduledTask, get_connection};
 
 use super::principal_api::{
     // zmq msgs
-    create_task_from_zmq_args,
+    create_task_payload,
+    delete_task_payload,
 
     // client handling
     handle_create_task,
@@ -21,7 +22,7 @@ use super::{
     traits::{Server, BaseClientRequestMessage},
     models::{
         ClientResponseMessage,
-        ClientConversionError
+        RepReqError
     }
 };
 
@@ -64,7 +65,7 @@ impl Server<PrincipalRequest> for PrincipalServer {
             PrincipalRequest::Ping => (ClientResponseMessage::Pong, false),
             PrincipalRequest::CreateTask(new_task) => handle_create_task(&mut self.db_cnxn, new_task),
             PrincipalRequest::ListTasks => handle_list_tasks(&mut self.db_cnxn),
-            PrincipalRequest::DeleteTask(task_id) => handle_delete_task(&mut self.db_cnxn,task_id)
+            PrincipalRequest::DeleteTask(task_id) => handle_delete_task(&mut self.db_cnxn,task_id),
         }
     }
 }
@@ -72,19 +73,20 @@ impl Server<PrincipalRequest> for PrincipalServer {
 
 #[async_trait]
 impl BaseClientRequestMessage for PrincipalRequest {
-    fn from_zmq_str(s: &str) -> Result<PrincipalRequest, ClientConversionError> {
+    fn from_zmq_str(s: &str) -> Result<PrincipalRequest, RepReqError> {
         let (msg_type, args) = parse_zmq_str(s);
         match msg_type {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
+            "CREATETASK" => Ok(Self::CreateTask(create_task_payload(args)?)),
             "LISTTASKS" => Ok(Self::ListTasks),
-            "CREATETASK" => Ok(Self::CreateTask(create_task_from_zmq_args(args)?)),
-            _ => Err(ClientConversionError::new(format!("Unrecognised server message: {}", msg_type)))
+            "DELETETASK" => Ok(Self::DeleteTask(delete_task_payload(args)?)),
+            _ => Err(RepReqError::new(1, format!("Unrecognised message type: {}", msg_type)))
         }
     }
 }
 impl TryFrom<ZmqMessage> for PrincipalRequest {
-    type Error = ClientConversionError;
+    type Error = RepReqError;
     fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
         let zmq_msg_s = String::try_from(value).expect(
             "Unable to convert ZMQ Client message to String"
@@ -103,7 +105,8 @@ mod tests {
         let all_happies = vec![
             "PING",
             "LISTTASKS",
-            r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#
+            r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#,
+            "DELETETASK|1"
         ];
         for zmq_s in all_happies {
             let res = PrincipalRequest::from_zmq_str(zmq_s);

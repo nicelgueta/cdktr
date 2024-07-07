@@ -5,7 +5,7 @@ use super::{
     traits::{Server, BaseClientRequestMessage},
     models::{
         ClientResponseMessage,
-        ClientConversionError
+        RepReqError
     }
 };
 pub enum AgentRequest{
@@ -24,20 +24,20 @@ pub enum AgentRequest{
 
 #[async_trait]
 impl BaseClientRequestMessage for AgentRequest {
-    fn from_zmq_str(s: &str) -> Result<AgentRequest, ClientConversionError> {
+    fn from_zmq_str(s: &str) -> Result<AgentRequest, RepReqError> {
         let (msg_type, args) = parse_zmq_str(s);
         match msg_type {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
             "RECONNECT" => {
                 if args.len() == 0 {
-                    Err(ClientConversionError::new(
+                    Err(RepReqError::new(1,
                         "RECONNECT command requires 1 argument: publisher_id".to_string()
                     ))
                 } else {
                     let pub_id = args[0].clone();
                     if pub_id.len() == 0 {
-                        Err(ClientConversionError::new(
+                        Err(RepReqError::new(1,
                             "RECONNECT publisher_id cannot be blank".to_string()
                         ))
                     } else {
@@ -46,12 +46,12 @@ impl BaseClientRequestMessage for AgentRequest {
                 }
             },
             "HEARTBEAT" => Ok(Self::Heartbeat),
-            _ => Err(ClientConversionError::new(format!("Unrecognised server message: {}", msg_type)))
+            _ => Err(RepReqError::new(1,format!("Unrecognised message type: {}", msg_type)))
         }
     }
 }
 impl TryFrom<ZmqMessage> for AgentRequest {
-    type Error = ClientConversionError;
+    type Error = RepReqError;
     fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
         let zmq_msg_s = String::try_from(value).expect(
             "Unable to convert ZMQ Client message to String"

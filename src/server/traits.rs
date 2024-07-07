@@ -1,13 +1,13 @@
-use super::models::{ClientConversionError, ClientResponseMessage};
+use super::models::{RepReqError, ClientResponseMessage};
 use async_trait::async_trait;
 use std::error::Error;
 use zeromq::{Socket, SocketRecv, SocketSend};
 use zeromq::ZmqMessage;
 
 pub trait BaseClientRequestMessage: 
-    TryFrom<ZmqMessage, Error = ClientConversionError> + Send
+    TryFrom<ZmqMessage, Error = RepReqError> + Send
 {
-    fn from_zmq_str(s: &str) -> Result<Self, ClientConversionError> ;
+    fn from_zmq_str(s: &str) -> Result<Self, RepReqError> ;
 }
 
 /// A standard ZMQ REP server that both the Agent and Principal instances
@@ -46,7 +46,7 @@ where
     
         loop {
             let zmq_recv = socket.recv().await?;
-            let msg_res: Result<RT, ClientConversionError> = RT::try_from(
+            let msg_res: Result<RT, RepReqError> = RT::try_from(
                 zmq_recv.clone()
             );
             match msg_res {
