@@ -205,14 +205,7 @@ impl EventListener<Task> for TaskManagerPubListener {
         println!("TASKMANAGER-{}: Starting listening loop", self.instance_id);
         loop {
             let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
-            let task_res = Task::try_from(recv);
-            match task_res {
-                Ok(task) => {
-                    out_queue.put(task).await
-    
-                },
-                Err(e) => println!("TASKMANAGER-{}: failed to parse ZMQ msg: {:?}", self.instance_id, e)
-            }
+            todo!("Need to implement the handler that will do something with a message thats received from the publisher")
         }
     }
 }
