@@ -1,12 +1,15 @@
 use async_trait::async_trait;
 use zeromq::ZmqMessage;
+use crate::models::Task;
+
 use super::{
     parse_zmq_str,
     traits::{Server, BaseClientRequestMessage},
     models::{
         ClientResponseMessage,
         RepReqError
-    }
+    },
+    agent_api::create_task_run_payload
 };
 pub enum AgentRequest{
 
@@ -18,7 +21,11 @@ pub enum AgentRequest{
 
     /// Command sent to instruct the agent to reset the publisher ID
     /// and restart the instance
-    Reconnect(String)
+    Reconnect(String),
+
+    /// Action to run a specific task. This is the main hook used by the 
+    /// principal to send tasks for execution to the agents
+    Run(Task)
 }
 
 
@@ -46,6 +53,7 @@ impl BaseClientRequestMessage for AgentRequest {
                 }
             },
             "HEARTBEAT" => Ok(Self::Heartbeat),
+            "RUN" => Ok(Self::Run(create_task_run_payload(args)?)),
             _ => Err(RepReqError::new(1,format!("Unrecognised message type: {}", msg_type)))
         }
     }
@@ -87,8 +95,9 @@ impl Server<AgentRequest> for AgentServer {
             AgentRequest::Heartbeat => (ClientResponseMessage::Heartbeat(self.publisher_id.clone()), 0),
             AgentRequest::Reconnect(pub_id) => {
                 self.publisher_id = pub_id;
-                (ClientResponseMessage::Success, 0)
-            }
+                (ClientResponseMessage::Success, 1)
+            },
+            AgentRequest::Run(pl) => todo!()
 
         }
     }

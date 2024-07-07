@@ -2,26 +2,15 @@ use diesel::prelude::*;
 /// API module to provide all of the principal message handling
 /// utilities
 /// 
-use crate::db::models::{NewScheduledTask, ScheduledTask};
+use crate::{
+    macros::args_to_model,
+    db::models::{NewScheduledTask, ScheduledTask}
+};
 use super::models::{RepReqError, ClientResponseMessage};
 use diesel::RunQueryDsl;
 
 pub fn create_task_payload(args: Vec<String>) -> Result<NewScheduledTask, RepReqError> {
-    if args.len() == 0 {
-        Err(RepReqError::new(
-            1,
-            "No payload found for CREATETASK command".to_string()
-        ))
-    } else {
-        let parse_res: Result<NewScheduledTask, serde_json::Error> = serde_json::from_str(&args[0]);
-        match parse_res{
-            Ok(task) => Ok(task),
-            Err(e) => Err(RepReqError::new(
-                1, 
-                format!("Invalid JSON for ScheduledTask. Error: {}", e.to_string())
-            ))
-        }
-    }
+    args_to_model!(args, NewScheduledTask)
 }
 
 pub fn delete_task_payload(args: Vec<String>) -> Result<i32, RepReqError> {

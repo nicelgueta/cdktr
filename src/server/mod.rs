@@ -4,6 +4,7 @@ use zeromq::ZmqMessage;
 
 mod traits;
 mod principal_api;
+mod agent_api;
 pub mod models;
 pub mod agent;
 pub mod principal;

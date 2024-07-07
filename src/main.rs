@@ -6,7 +6,7 @@ mod scheduler;
 mod server;
 mod hub;
 mod utils;
-// mod macros;
+mod macros;
 
 use std::env;
 use hub::{InstanceType, Hub};
