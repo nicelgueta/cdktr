@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use zeromq::ZmqMessage;
-use crate::models::Task;
+use crate::{models::Task, utils::AsyncQueue};
 
 use super::{
     parse_zmq_str,
@@ -71,15 +71,18 @@ impl TryFrom<ZmqMessage> for AgentRequest {
 
 pub struct AgentServer {
     /// ID of the publisher currently subscribed to
-    publisher_id: String
+    publisher_id: String,
+    task_queue: AsyncQueue<Task>
 }
 
 impl AgentServer {
-    pub fn new() -> Self {
-    
+    pub fn new(task_queue: AsyncQueue<Task>) -> Self {
         // start with an empty string - the first heartbeat from the principal 
         //will correct this to the new value
-        Self {publisher_id: "DISCONNECTED".to_string()}
+        Self {
+            publisher_id: "DISCONNECTED".to_string(),
+            task_queue
+        }
     }
 }
 
@@ -97,7 +100,10 @@ impl Server<AgentRequest> for AgentServer {
                 self.publisher_id = pub_id;
                 (ClientResponseMessage::Success, 1)
             },
-            AgentRequest::Run(pl) => todo!()
+            AgentRequest::Run(task) => {
+                self.task_queue.put(task).await;
+                (ClientResponseMessage::Success, 0)
+            }
 
         }
     }
@@ -141,7 +147,7 @@ mod tests {
             ("RECONNECT|newid", ClientResponseMessage::Success, 1),
             ("HEARTBEAT", ClientResponseMessage::Heartbeat("newid".to_string()), 0),
         ];
-        let mut server = AgentServer::new();
+        let mut server = AgentServer::new(AsyncQueue::new());
         for (
             zmq_s, response, exp_exit_code
         ) in test_params {

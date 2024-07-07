@@ -66,12 +66,12 @@ pub struct TaskManager {
 }
 
 impl TaskManager {
-    pub fn new(instance_id: String, max_threads: usize) -> Self {
+    pub fn new(instance_id: String, max_threads: usize, incoming_task_queue: AsyncQueue<Task>) -> Self {
         Self {
             instance_id,
             max_threads, 
             thread_counter: Arc::new(Mutex::new(0)),
-            task_queue: AsyncQueue::new()
+            task_queue: incoming_task_queue
         }
     }
 
@@ -146,7 +146,7 @@ impl TaskManager {
                 sleep(Duration::from_micros(500)).await
             };
             let task = {
-                self.task_queue.get().await.expect("TASKMANAGER-{instance_id}: Unable to pop task from queue")
+                self.task_queue.get().await.expect(&format!("TASKMANAGER-{}: Unable to pop task from queue", &self.instance_id))
             };
             let task_exe_result = self.run_in_executor(task).await;
             match task_exe_result {
@@ -223,6 +223,7 @@ mod tests {
     use zeromq::ZmqMessage;
     use crate::taskmanager::TaskManagerError;
     use crate::models::Task;
+    use crate::utils::AsyncQueue;
 
     use super::TaskManager;
 
@@ -231,7 +232,7 @@ mod tests {
         let task = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|echo|test_run_flow")).expect(
             "Failed to create task from the ZMQMessage"
         );
-        let mut zk = TaskManager::new("tm1".to_string(), 1);
+        let mut zk = TaskManager::new("tm1".to_string(), 1, AsyncQueue::new());
         let result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
         result.unwrap().wait().await.unwrap();
@@ -239,7 +240,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_single_flow_slow() {
-        let mut zk = TaskManager::new("tm1".to_string(), 1);
+        let mut zk = TaskManager::new("tm1".to_string(), 1, AsyncQueue::new());
         let task = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py")).expect("Failed to create task from the ZMQMessage");
         let mut result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
@@ -254,7 +255,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_multiple_flow_slow() {
-        let mut zk = TaskManager::new("tm1".to_string(), 3);
+        let mut zk = TaskManager::new("tm1".to_string(), 3, AsyncQueue::new());
         let task1 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
         let task2= Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|2")).expect("Failed to create task from the ZMQMessage");
         let task3 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
@@ -290,7 +291,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_multiple_flow_too_many_threads() {
-        let mut zk = TaskManager::new("tm1".to_string(), 2);
+        let mut zk = TaskManager::new("tm1".to_string(), 2, AsyncQueue::new());
         let task1 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
         let task2 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|2")).expect("Failed to create task from the ZMQMessage");
         let result1 = zk.run_in_executor(task1).await;

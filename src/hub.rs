@@ -4,14 +4,11 @@ use zeromq::{Socket, PubSocket};
 use std::sync::Arc;
 
 use crate::{
-    taskmanager, 
-    scheduler, 
-    server::{
+    models::Task, scheduler, server::{
         agent::AgentServer,
         principal::PrincipalServer,
         Server
-    }, 
-    models::Task
+    }, taskmanager, utils::AsyncQueue
 };
 
 pub enum InstanceType {
@@ -32,9 +29,15 @@ impl InstanceType {
         }
     }
 }
-async fn spawn_tm(instance_id: String, pub_host_cl: String, pub_port: usize,  max_tm_threads: usize) -> tokio::task::JoinHandle<()>{
+async fn spawn_tm(
+    instance_id: String, 
+    pub_host_cl: String, 
+    pub_port: usize,  
+    max_tm_threads: usize,
+    task_queue: AsyncQueue<Task>
+) -> tokio::task::JoinHandle<()>{
     tokio::spawn( async move  {
-        let mut tm = taskmanager::TaskManager::new(instance_id, max_tm_threads);
+        let mut tm = taskmanager::TaskManager::new(instance_id, max_tm_threads, task_queue);
         tm.start(pub_host_cl, pub_port).await
     })
 }
@@ -89,9 +92,9 @@ impl Hub {
                 
                 spawn_scheduler(database_url.clone(), poll_interval_seconds, self.tx.clone()).await;
         
-                // start the task manager thread 
-                let pub_host_cl = pub_host.clone();
-                spawn_tm(instance_id, pub_host_cl, pub_port, max_tm_threads).await;
+                // // start the task manager thread 
+                // let pub_host_cl = pub_host.clone();
+                // spawn_tm(instance_id, pub_host_cl, pub_port, max_tm_threads).await;
                 
                 let pub_host_cl = pub_host.clone();
         
@@ -122,10 +125,18 @@ impl Hub {
             InstanceType::AGENT => {
                 // only create the task manager thread since scheduler is not required
                 // for AGENT instancess
-                let mut agent_server = AgentServer::new();
+                let main_task_queue = AsyncQueue::new();
+                let mut agent_server = AgentServer::new(main_task_queue.clone());
                 loop {
+                    let task_q_cl = main_task_queue.clone();
                     let pub_host_cl = pub_host.clone();
-                    let tm_task = spawn_tm(instance_id.clone(), pub_host_cl, pub_port, max_tm_threads).await;
+                    let tm_task = spawn_tm(
+                        instance_id.clone(), 
+                        pub_host_cl, 
+                        pub_port, 
+                        max_tm_threads, 
+                        task_q_cl
+                    ).await;
                     // start REP/REQ server for agent
                     let agent_loop_exit_code = agent_server.start( 
                         &pub_host, 
