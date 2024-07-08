@@ -7,14 +7,17 @@ use tokio::time::sleep;
 use zeromq::{Socket, SocketOptions, SocketRecv};
 use async_trait::async_trait;
 use crate::models::traits::EventListener;
+use crate::utils::parse_zmq_message;
 use crate::{
     executors::get_executor,
     models::{
         Task,
+        PubZMQMessageType,
         traits::Executor
     },
     utils::AsyncQueue
 };
+mod api;
 
 #[derive(Debug)]
 pub struct TaskExecutionHandle {
@@ -27,12 +30,7 @@ impl TaskExecutionHandle {
             join_handle, stdout_receiver
         }
     }
-    pub async fn wait(self) -> Result<(), TaskManagerError> {
-        match self.join_handle.await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(TaskManagerError::FlowError)
-        }
-    }
+
     pub async fn wait_stdout(&mut self) -> Option<String> {
         self.stdout_receiver.recv().await
     }
@@ -42,8 +40,6 @@ impl TaskExecutionHandle {
 #[derive(Debug, PartialEq)]
 pub enum TaskManagerError {
     TooManyThreadsError,
-    FlowError,
-    // Other
 }
 
 
@@ -151,8 +147,7 @@ impl TaskManager {
             let task_exe_result = self.run_in_executor(task).await;
             match task_exe_result {
                 Err(e) => match e {
-                    TaskManagerError::TooManyThreadsError => break,
-                    _ => panic!("{}", &format!("TASKMANAGER-{}: Got TaskManagerError", self.instance_id))
+                    TaskManagerError::TooManyThreadsError => break
                 },
                 Ok(mut task_exe) => {
                     // need to spawn the reading of the logs of the run task in order to free this thread
@@ -198,21 +193,19 @@ impl TaskManagerPubListener {
 }
 #[async_trait]
 impl EventListener<Task> for TaskManagerPubListener {
-    async fn start_listening_loop(&self, mut out_queue: AsyncQueue<Task>) {
+    async fn start_listening_loop(&self, _out_queue: AsyncQueue<Task>) {
         println!("TASKMANAGER-{}: Subscribing to tcp://{}:{}", self.instance_id, self.host, self.port);
         let mut socket = get_socket(&self.host, self.port, &self.instance_id).await;
         println!("TASKMANAGER-{}: Successfully created SUB connection to tcp://{}:{}", self.instance_id, self.host, self.port);
         println!("TASKMANAGER-{}: Starting listening loop", self.instance_id);
         loop {
             let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
-            let task_res = Task::try_from(recv);
-            match task_res {
-                Ok(task) => {
-                    out_queue.put(task).await
-    
-                },
-                Err(e) => println!("TASKMANAGER-{}: failed to parse ZMQ msg: {:?}", self.instance_id, e)
-            }
+            let parse_res = parse_zmq_message::<PubZMQMessageType>(recv);
+            match parse_res {
+                Ok((msg_type, args)) => api::handle_pub_message(msg_type, args),
+                Err(e) => println!("Unable to parse ZMQ pub message. Error: {}", e.to_string())
+            }         
+
         }
     }
 }
@@ -220,28 +213,32 @@ impl EventListener<Task> for TaskManagerPubListener {
 #[cfg(test)]
 mod tests {
     use tokio::time::{sleep, Duration};
-    use zeromq::ZmqMessage;
     use crate::taskmanager::TaskManagerError;
-    use crate::models::Task;
+    use crate::models::{Task, ZMQArgs};
     use crate::utils::AsyncQueue;
 
     use super::TaskManager;
 
+    fn get_task(v: Vec<&str>) -> Task {
+        let vec_s = v.iter().map(|x|x.to_string()).collect::<Vec<String>>();
+        Task::try_from(ZMQArgs::from(vec_s)).expect(
+            "Failed to create task from the ZMQArgs"
+        )
+    }
+
     #[tokio::test]
     async fn test_run_single_flow() {
-        let task = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|echo|test_run_flow")).expect(
-            "Failed to create task from the ZMQMessage"
-        );
+        let task = get_task(vec!["PROCESS", "echo", "test_run_flow"]);
         let mut zk = TaskManager::new("tm1".to_string(), 1, AsyncQueue::new());
         let result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
-        result.unwrap().wait().await.unwrap();
+        result.unwrap().wait_stdout().await.unwrap();
     }
 
     #[tokio::test]
     async fn test_run_single_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 1, AsyncQueue::new());
-        let task = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
+        let task = get_task(vec!["PROCESS", "python", "s.py", "1"]);
         let mut result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
         let mut i = 0;
@@ -256,9 +253,9 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 3, AsyncQueue::new());
-        let task1 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
-        let task2= Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|2")).expect("Failed to create task from the ZMQMessage");
-        let task3 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
+        let task1 = get_task(vec!["PROCESS", "python", "s.py", "2"]);
+        let task2= get_task(vec!["PROCESS", "python", "s.py", "2"]);
+        let task3 = get_task(vec!["PROCESS", "python", "s.py", "1"]);
         let mut result1 = zk.run_in_executor(task1).await;
         let mut result2 = zk.run_in_executor(task2).await;
         let mut result3 = zk.run_in_executor(task3).await;
@@ -292,16 +289,16 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_too_many_threads() {
         let mut zk = TaskManager::new("tm1".to_string(), 2, AsyncQueue::new());
-        let task1 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
-        let task2 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|2")).expect("Failed to create task from the ZMQMessage");
+        let task1 = get_task(vec!["PROCESS", "python", "s.py", "1"]);
+        let task2 = get_task(vec!["PROCESS", "python", "s.py", "2"]);
         let result1 = zk.run_in_executor(task1).await;
         let result2 = zk.run_in_executor(task2).await;
         assert!(result1.is_ok());
         assert!(result2.is_ok());
 
-        let second = Duration::from_secs(1);
+        let second = Duration::from_millis(10);
         sleep(second).await;
-        let task3 = Task::try_from(ZmqMessage::from("TASKDEF|PROCESS|python|s.py|1")).expect("Failed to create task from the ZMQMessage");
+        let task3 = get_task(vec!["PROCESS", "python", "s.py", "1"]);
         let result3 = zk.run_in_executor(task3).await;
 
         match result3 {

@@ -30,7 +30,7 @@ impl ToTask for ScheduledTask {
         match &self.task_type[..] {
             "PROCESS" => {
                 let args = if let Some(astr) = &self.args {
-                    Some(arg_str_to_vec(astr))
+                    Some(arg_str_to_vec(astr.to_string()).into())
                 } else {
                     None
                 };

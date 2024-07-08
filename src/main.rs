@@ -7,6 +7,7 @@ mod server;
 mod hub;
 mod utils;
 mod macros;
+mod exceptions;
 
 use std::env;
 use hub::{InstanceType, Hub};

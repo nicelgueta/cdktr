@@ -1,13 +1,33 @@
 use std::{collections::VecDeque, sync::Arc};
-
+use zeromq::ZmqMessage;
 use tokio::sync::Mutex;
+use crate::{exceptions::ZMQParseError, models::{traits::FromToken, ZMQArgs}};
 
-
-pub fn arg_str_to_vec(s: &str) -> Vec<String> {
+pub fn arg_str_to_vec(s: String) -> VecDeque<String> {
     s.split("|").map(|x|x.to_string()).collect()
 }
 
-/// A simple queue that can be accessed across threads. The queue should
+pub fn parse_zmq_message<T: FromToken<T, Error = ZMQParseError>>(
+    msg: ZmqMessage
+) -> Result<(T, ZMQArgs), ZMQParseError> {
+    let zmq_str = String::try_from(msg);
+    match zmq_str {
+        Ok(st) => {
+            let mut raw_vec = arg_str_to_vec(st);
+            let first_token = match raw_vec.pop_front() {
+                Some(token) => token,
+                None => return Err(ZMQParseError::InvalidMessageType)
+            };
+            let msg_type = T::try_from_token(
+               &first_token
+            )?;
+            Ok((msg_type, ZMQArgs::from(raw_vec)))
+        },
+        Err(e) => Err(ZMQParseError::ParseError(e.to_string()))
+    }
+}
+
+/// A simple queue that can be accessed across threads. The queue
 /// holds an internal Arc<Mutex<T>> on the 
 /// 
 #[derive(Clone, Debug)]
@@ -38,7 +58,7 @@ mod tests {
 
     #[test]
     fn test_arg_to_vec() {
-        let args = "hello|world";
+        let args = "hello|world".to_string();
         assert_eq!(arg_str_to_vec(args), vec![
             "hello".to_string(), "world".to_string()
         ])
@@ -46,7 +66,7 @@ mod tests {
 
     #[test]
     fn test_arg_to_vec_empty() {
-        let args = "helloworld";
+        let args = "helloworld".to_string();
         assert_eq!(arg_str_to_vec(args), vec![
             "helloworld".to_string()
         ])

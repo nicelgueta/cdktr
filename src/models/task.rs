@@ -1,11 +1,6 @@
-use std::collections::VecDeque;
-
-use super::exceptions::ZMQParseError;
+use super::{exceptions::ZMQParseError, ZMQArgs};
 use serde::Deserialize;
 use zeromq::ZmqMessage;
-use super::ZMQMessageType;
-use crate::utils::arg_str_to_vec;
-
 use crate::executors::ProcessTask;
 
 /// A Task is the encapsulation provided for single unit of work defined and utilised
@@ -19,61 +14,42 @@ pub enum Task {
     Process(ProcessTask)
 }
 
-impl TryFrom<VecDeque<String>> for Task {
+impl TryFrom<ZMQArgs> for Task {
     type Error = ZMQParseError;
-    fn try_from(mut zmq_msg_v: VecDeque<String>) -> Result<Self, Self::Error>{
-        if zmq_msg_v.len() == 0 {
-            return Err(ZMQParseError::InvalidTaskType)
+    fn try_from(mut zmq_args: ZMQArgs) -> Result<Self, Self::Error>{
+        let typ_tok = if let Some(token) = zmq_args.next() {
+            token
+        } else {
+            return Err(ZMQParseError::ParseError(
+                "Missing token to denote task type".to_string()
+            ))
         };
-        let typ_tok = zmq_msg_v.pop_front().unwrap();
         match typ_tok.as_str() {
             "PROCESS" => {
-                if zmq_msg_v.len() < 1 {
-                    Err(ZMQParseError::ParseError(
+                let command = if let Some(arg) = zmq_args.next() {
+                    arg
+                } else {
+                    return Err(ZMQParseError::ParseError(
                         "Missing tokens for PROCESS msg. Expected tokens COMMAND and ARGS".to_string()
                     ))
+                };
+                let args = if zmq_args.len() < 1 {
+                    None
                 } else {
-                    let command = zmq_msg_v.pop_front().unwrap();
-                    let args = if zmq_msg_v.len() < 1 {
-                        None
-                    } else {
-                        Some(zmq_msg_v.into())
-                    };
-                    Ok(Task::Process(
-                        ProcessTask {
-                            command,
-                            args
-                        }
-                    ))
-                }
+                    Some(zmq_args.into())
+                };
+                Ok(Task::Process(
+                    ProcessTask {
+                        command,
+                        args
+                    }
+                ))
             },
             _ => Err(ZMQParseError::InvalidTaskType)
         }
     }
 }
 
-impl TryFrom<ZmqMessage> for Task {
-    type Error = ZMQParseError;
-    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
-        let zmq_str = String::try_from(value);
-        if let Err(e) = zmq_str {
-            return Err(ZMQParseError::ParseError(e.to_string()))
-        };
-        let mut zmq_msg_v = VecDeque::from(arg_str_to_vec(&zmq_str.unwrap()));
-        if zmq_msg_v.len() == 0 {
-            return Err(ZMQParseError::ParseError(
-                "Empty message - no valid tokens".to_string()
-            ));
-        };
-        let msg_type_token = zmq_msg_v.pop_front().unwrap();
-        let msg_type = ZMQMessageType::new(&msg_type_token)?;
-        match msg_type {
-            ZMQMessageType::TaskDef => {
-                Ok(Task::try_from(zmq_msg_v)?)
-            }
-        }
-    }
-}
 
 impl TryInto<ZmqMessage> for Task {
     type Error = ZMQParseError;
@@ -94,4 +70,43 @@ impl TryInto<ZmqMessage> for Task {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_task_from_zmq_vec(){
+        let zmq_args = ZMQArgs::from(
+            vec!["PROCESS","ls","thisdir"].iter().map(|x|x.to_string()).collect::<Vec<String>>()
+        );
+        assert!(Task::try_from(zmq_args).is_ok());
+    }
+
+    #[test]
+    fn test_task_from_zmq_vec_invalid_task_type(){
+        let zmq_args = ZMQArgs::from(
+            vec!["FAKEWHAT","ls","thisdir"].iter().map(|x|x.to_string()).collect::<Vec<String>>()
+        );
+        assert!(Task::try_from(zmq_args).is_err());
+    }
+
+    // PROCESS
+    #[test]
+    fn test_process_task_from_args_no_extra_args(){
+        let zmq_args = ZMQArgs::from(
+            vec!["PROCESS","ls"].iter().map(|x|x.to_string()).collect::<Vec<String>>()
+        );
+        assert!(Task::try_from(zmq_args).is_ok());
+    }
+
+    #[test]
+    fn test_process_task_from_args_missing_command(){
+        let zmq_args = ZMQArgs::from(
+            vec!["PROCESS"].iter().map(|x|x.to_string()).collect::<Vec<String>>()
+        );
+        assert!(Task::try_from(zmq_args).is_err());
+    }
+
 }
