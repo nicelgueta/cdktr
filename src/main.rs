@@ -1,22 +1,24 @@
-mod executors;
-mod taskmanager;
-mod models;
 mod db;
+mod exceptions;
+mod executors;
+mod hub;
+mod macros;
+mod models;
 mod scheduler;
 mod server;
-mod hub;
+mod taskmanager;
 mod utils;
-mod macros;
+mod zmq_helpers;
 
+use hub::{Hub, InstanceType};
 use std::env;
-use hub::{InstanceType, Hub};
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         println!("Needs at least arg (1) of either AGENT or PRINCIPAL and (2) PORT");
-        return
+        return;
     };
     let typ = InstanceType::from_str(&args[1]);
     let pub_host = "0.0.0.0".to_string();
@@ -32,12 +34,13 @@ async fn main() {
 
     // begin main app loop
     hub.start(
-        instance_id, 
-        database_url, 
-        poll_interval_seconds, 
-        pub_host, 
-        pub_port, 
-        max_tm_threads, 
-        server_port
-    ).await
+        instance_id,
+        database_url,
+        poll_interval_seconds,
+        pub_host,
+        pub_port,
+        max_tm_threads,
+        server_port,
+    )
+    .await
 }

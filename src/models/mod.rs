@@ -1,30 +1,10 @@
+mod task;
+
+use crate::{exceptions, utils::arg_str_to_vec};
 use std::collections::VecDeque;
-
-use exceptions::ZMQParseError;
-use serde::Deserialize;
+pub use task::Task;
 use zeromq::ZmqMessage;
-
-use crate::utils::arg_str_to_vec;
-
-use crate::executors::ProcessTask;
-
-mod exceptions {
-    #[derive(Debug, PartialEq)]
-    pub enum ZMQParseError {
-        ParseError(String),
-        InvalidMessageType,
-        InvalidTaskType
-    }
-    impl ZMQParseError {
-        pub fn to_string(&self) -> String {
-            match self {
-                Self::ParseError(msg) => format!("ParseError: {msg}"),
-                Self::InvalidMessageType => String::from("Invalid message type"),
-                Self::InvalidTaskType => String::from("Invalid task type")
-            }
-        }
-    }
-}
+pub mod traits;
 
 #[derive(Debug, PartialEq)]
 pub enum FlowExecutionResult {
@@ -38,204 +18,95 @@ impl FlowExecutionResult {
     pub fn to_string(self) -> String {
         match self {
             Self::CRASHED(v) => v,
-            _ => "".to_string()
-            // Self::ABORTED(v) => v,
-            // Self::FAILURE(v) => v,
+            _ => "".to_string(), // Self::ABORTED(v) => v,
+                                 // Self::FAILURE(v) => v,
         }
     }
 }
 
-/// ZMQMessageType enum defines the possible messages that can travel on the 
-/// on the wire between different components and externally. The first token
+/// PubZMQMessageType enum defines the possible messages that are published
+/// on the PUB wire between different components and externally. The first token
 /// in a ZMQString is matched against this enum to determine whether a message
 /// appears to be a supported message based on this token. It is up to the actual
 /// implementation of the ZMQEncodable itself to determine whether the rest of the string
 /// is valid or not for the message type.
-pub enum ZMQMessageType {
+pub enum PubZMQMessage {
     /// Standard task definition for a task without a specific executor context
+    /// A message sent from the publisher like this is executed by all agents
+    /// listening to the feed
     /// eg.
     /// TASKDEF|PROCESS|ls|thisdir
-    TaskDef,
+    TaskDef(Task),
 }
-impl ZMQMessageType {
-    pub fn new(token: &str) -> Result<Self, exceptions::ZMQParseError> {
-        match token {
-            "TASKDEF" => Ok(Self::TaskDef),
-            _ => Err(exceptions::ZMQParseError::InvalidMessageType)
-        }
-    }
-    // TODO:
-    // pub fn as_str(&self) -> &'static str {
-    //     match self {
-    //         Self::TaskDef => "TASKDEF",
-    //         Self::ExeTaskDef => "EXETASKDEF"
-    //     }
-    // }
-}
-
-/// A Task is the encapsulation provided for single unit of work defined and utilised
-/// by difference components of the system. On the ZMQ sockets, it's encoded as a 
-/// pipe-delimited string with the first token being `TASKDEF` and the second being the
-/// uppercase representation of a TaskType enum to determine the type. 
-/// A Task type defines the types of tasks supported by cdktr for execution. 
-/// The value of each enum must define the struct configuration for each task
-#[derive(Debug, PartialEq, Clone, Deserialize)]
-pub enum Task {
-    Process(ProcessTask)
-}
-
-impl TryFrom<VecDeque<String>> for Task {
-    type Error = ZMQParseError;
-    fn try_from(mut zmq_msg_v: VecDeque<String>) -> Result<Self, Self::Error>{
-        if zmq_msg_v.len() == 0 {
-            return Err(exceptions::ZMQParseError::InvalidTaskType)
-        };
-        let typ_tok = zmq_msg_v.pop_front().unwrap();
-        match typ_tok.as_str() {
-            "PROCESS" => {
-                if zmq_msg_v.len() < 1 {
-                    Err(exceptions::ZMQParseError::ParseError(
-                        "Missing tokens for PROCESS msg. Expected tokens COMMAND and ARGS".to_string()
-                    ))
-                } else {
-                    let command = zmq_msg_v.pop_front().unwrap();
-                    let args = if zmq_msg_v.len() < 1 {
-                        None
-                    } else {
-                        Some(zmq_msg_v.into())
-                    };
-                    Ok(Task::Process(
-                        ProcessTask {
-                            command,
-                            args
-                        }
-                    ))
-                }
-            },
-            _ => Err(ZMQParseError::InvalidTaskType)
-        }
-    }
-}
-
-impl TryFrom<ZmqMessage> for Task {
-    type Error = ZMQParseError;
+impl TryFrom<ZmqMessage> for PubZMQMessage {
+    type Error = exceptions::ZMQParseError;
     fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
-        let zmq_str = String::try_from(value);
-        if let Err(e) = zmq_str {
-            return Err(exceptions::ZMQParseError::ParseError(e.to_string()))
+        let mut args: ZMQArgs = value.into();
+        let msg_type = if let Some(token) = args.next() {
+            token
+        } else {
+            return Err(exceptions::ZMQParseError::InvalidMessageType)
         };
-        let mut zmq_msg_v = VecDeque::from(arg_str_to_vec(&zmq_str.unwrap()));
-        if zmq_msg_v.len() == 0 {
-            return Err(ZMQParseError::ParseError(
-                "Empty message - no valid tokens".to_string()
-            ));
-        };
-        let msg_type_token = zmq_msg_v.pop_front().unwrap();
-        let msg_type = ZMQMessageType::new(&msg_type_token)?;
-        match msg_type {
-            ZMQMessageType::TaskDef => {
-                Ok(Task::try_from(zmq_msg_v)?)
-            }
+        match msg_type.as_str() {
+            "TASKDEF" => Ok(Self::TaskDef(Task::try_from(args)?)),
+            _ => Err(exceptions::ZMQParseError::InvalidTaskType)
         }
     }
 }
 
-impl TryInto<ZmqMessage> for Task {
-    type Error = ZMQParseError;
-    fn try_into(self) -> Result<ZmqMessage, Self::Error> {
-        match self {
-            Self::Process(pt) => {
-                let mut tokens = vec![
-                    "TASKDEF".to_string(),
-                    "PROCESS".to_string()
-                ];
-                tokens.push(pt.command.clone());
-                if let Some(args) = &pt.args {
-                    for arg in args {
-                        tokens.push(arg.clone())
-                    }
-                };
-                Ok(ZmqMessage::from(tokens.join("|")))
-            }
+/// This struct is returned from a parsed ZMQ message after the type has
+/// been determined from the first token in the message.
+/// So for example, given the raw ZMQ string:
+/// `TASKDEF|PROCESS|ls|thisdir`
+/// The tokens would be: ["PROCESS", "ls", "thisdir"]. This is because the message
+/// would have already been determined to be a task definition (TASKDEF)
+pub struct ZMQArgs {
+    inner: VecDeque<String>,
+}
+
+impl ZMQArgs {
+    pub fn next(&mut self) -> Option<String> {
+        self.inner.pop_front()
+    }
+    pub fn put(&mut self, item: String) {
+        self.inner.push_back(item)
+    }
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+impl Into<Vec<String>> for ZMQArgs {
+    fn into(self) -> Vec<String> {
+        self.inner.into()
+    }
+}
+
+impl From<VecDeque<String>> for ZMQArgs {
+    fn from(value: VecDeque<String>) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl From<Vec<String>> for ZMQArgs {
+    fn from(value: Vec<String>) -> Self {
+        Self {
+            inner: value.into(),
         }
     }
 }
-
-
-pub mod traits {
-    use tokio::sync::mpsc::Sender;
-    use async_trait::async_trait;
-    use crate::utils::AsyncQueue;
-
-    use super::FlowExecutionResult;
-
-    /// An Executor is a trait that defines the interface for components that
-    /// are responsible for executing tasks. The executor is responsible for
-    /// running the task and sending the result back to the caller
-    #[async_trait]
-    pub trait Executor {
-        fn new(command: &str, args: Option<Vec<String>>) -> Self ;
-        async fn run(&self, tx: Sender<String>) -> FlowExecutionResult;
-    }
-
-    /// The event listener trait is for implementing components that 
-    /// listen to external events and place onto a Queue. T refers to 
-    /// the item that will be placed on the queue upon each event.
-    #[async_trait]
-    pub trait EventListener<T> {
-        async fn start_listening_loop(&self, out_queue: AsyncQueue<T>) ;
-
-    }
-
-}
-
 
 #[cfg(test)]
 mod tests {
-    use zeromq::ZmqMessage;
     use super::*;
-
-    #[test]
-    fn test_task_from_zmq_vec(){
-        let zmq_v: Vec<String> = vec!["PROCESS","ls","thisdir"].iter().map(|x|x.to_string()).collect();
-        let zmq_vd = VecDeque::from(zmq_v);
-        assert!(Task::try_from(zmq_vd).is_ok());
-    }
-
     #[test]
     fn zmq_message_type_taskdef() {
-        assert!(ZMQMessageType::new("TASKDEF").is_ok());
+        let zmq_msg = ZmqMessage::from("TASKDEF|PROCESS|ls");
+        assert!(PubZMQMessage::try_from(zmq_msg).is_ok());
     }
 
     #[test]
     fn zmq_message_type_invalid() {
-        assert!(ZMQMessageType::new("invalidinvalid").is_err());
+        let zmq_msg = ZmqMessage::from("invalidinvalid");
+        assert!(PubZMQMessage::try_from(zmq_msg).is_err());
     }
-
-    // TASKDEF
-    #[test]
-    fn create_invalid_taskdef_from_zmq_message() {
-        let msg = ZmqMessage::from("TASKDEF|WHATISTHIS?|ls");
-        assert!(Task::try_from(msg).is_err());
-    }
-
-    #[test]
-    fn create_process_taskdef_from_zmq_message() {
-        let msg = ZmqMessage::from("TASKDEF|PROCESS|ls");
-        assert!(Task::try_from(msg).is_ok());
-    }
-
-    #[test]
-    fn create_process_taskdef_from_zmq_msg_with_args() {
-        let msg = ZmqMessage::from("TASKDEF|PROCESS|ls|thisdir");
-        assert!(Task::try_from(msg).is_ok());
-    }
-
-    #[test]
-    fn create_process_taskdef_from_zmq_string_missing_command() {
-        let msg = ZmqMessage::from("TASKDEF|PROCESS");
-        assert!(Task::try_from(msg).is_err());
-    }
-
-
 }

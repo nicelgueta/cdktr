@@ -1,30 +1,20 @@
-use super::models::{RepReqError, ClientResponseMessage};
+use super::models::{ClientResponseMessage, RepReqError};
 use async_trait::async_trait;
 use std::error::Error;
-use zeromq::{Socket, SocketRecv, SocketSend};
 use zeromq::ZmqMessage;
-
-pub trait BaseClientRequestMessage: 
-    TryFrom<ZmqMessage, Error = RepReqError> + Send
-{
-    fn from_zmq_str(s: &str) -> Result<Self, RepReqError> ;
-}
+use zeromq::{Socket, SocketRecv, SocketSend};
 
 /// A standard ZMQ REP server that both the Agent and Principal instances
 /// implement
 #[async_trait]
 pub trait Server<RT>
 where
-    RT: BaseClientRequestMessage 
+    RT: TryFrom<ZmqMessage, Error = RepReqError> + Send,
 {
-
     /// Method to handle the client request. It returns a tuple of ClientResponseMessage
-    /// and a restart flag. This flag is used to determine whether the 
+    /// and a restart flag. This flag is used to determine whether the
     /// instance should be restarted or not
-    async fn handle_client_message(
-        &mut self, 
-        cli_msg: RT
-    ) -> (ClientResponseMessage, usize) ;
+    async fn handle_client_message(&mut self, cli_msg: RT) -> (ClientResponseMessage, usize);
 
     /// Method to run the REP listening loop. This is a default
     /// implementation and is exactly the same for both the Agent
@@ -32,36 +22,34 @@ where
     /// implmentation.
     async fn start(
         &mut self,
-        current_host: &str, 
+        current_host: &str,
         rep_port: usize,
-    )  -> Result<usize, Box<dyn Error>> {
-        
-        println!("SERVER: Starting REP Server on tcp://{}:{}", current_host, rep_port);
+    ) -> Result<usize, Box<dyn Error>> {
+        println!(
+            "SERVER: Starting REP Server on tcp://{}:{}",
+            current_host, rep_port
+        );
         let mut socket = zeromq::RepSocket::new();
         socket
             .bind(&format!("tcp://{}:{}", current_host, rep_port))
             .await
             .expect("Failed to connect");
         println!("SERVER: Successfully connected");
-    
+
         let exit_code = loop {
             let zmq_recv = socket.recv().await?;
-            let msg_res: Result<RT, RepReqError> = RT::try_from(
-                zmq_recv.clone()
-            );
+            let msg_res: Result<RT, RepReqError> = RT::try_from(zmq_recv.clone());
             match msg_res {
                 Ok(cli_msg) => {
-                    let (response, exit_code) = self.handle_client_message(
-                        cli_msg
-                    ).await;
+                    let (response, exit_code) = self.handle_client_message(cli_msg).await;
                     socket.send(response.into()).await?;
                     if exit_code > 0 {
                         // received a non-zero exit code from the message handling function
                         // which means the server should perform some other kind of action
                         // above the client/request loop so loop should be exited
-                        break exit_code
+                        break exit_code;
                     };
-                },
+                }
                 Err(e) => {
                     let error_msg = e.to_string();
                     let response = ClientResponseMessage::ClientError(error_msg);
