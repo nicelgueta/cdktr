@@ -175,8 +175,7 @@ async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSo
         .await
         .expect("TASKMANAGER-{instance_id}: Failed to connect");
     println!("TASKMANAGER-{instance_id}: connected to tcp://{}:{}", host, port);
-    let subscription_string = format!("EXETASKDEF|{instance_id}");
-    socket.subscribe(&subscription_string).await.expect("TASKMANAGER-{instance_id}: Failed to subscribe to subscription");
+    socket.subscribe("").await.expect("TASKMANAGER-{instance_id}: Failed to subscribe to subscription");
 
     socket
 }
