@@ -1,29 +1,27 @@
-use serde::Deserialize;
-use tokio::{process::Command, sync::mpsc::Sender};
-use std::process::Stdio;
-use tokio::io::{BufReader, AsyncBufReadExt};
+use crate::models::{traits, FlowExecutionResult};
 use async_trait::async_trait;
-use crate::models::{
-    traits, FlowExecutionResult
-};
+use serde::Deserialize;
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::{process::Command, sync::mpsc::Sender};
 
-#[derive(Debug, PartialEq, Clone,Deserialize)]
+#[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct ProcessTask {
     pub command: String,
-    pub args: Option<Vec<String>>
+    pub args: Option<Vec<String>>,
 }
 
 pub struct ProcessExecutor {
     command: String,
     args: Option<Vec<String>>,
-
 }
 
 #[async_trait]
 impl traits::Executor for ProcessExecutor {
     fn new(command: &str, args: Option<Vec<String>>) -> Self {
         Self {
-            command: command.to_string(), args
+            command: command.to_string(),
+            args,
         }
     }
     async fn run(&self, tx: Sender<String>) -> FlowExecutionResult {
@@ -39,27 +37,26 @@ impl traits::Executor for ProcessExecutor {
 
         match child_process {
             Ok(child) => {
-                // handle process 
+                // handle process
                 let stdout = child.stdout.expect("unable to acquire stdout");
                 let mut reader = BufReader::new(stdout).lines();
 
-                while let Some(line) = reader.next_line().await.unwrap(){
+                while let Some(line) = reader.next_line().await.unwrap() {
                     tx.send(line).await.unwrap();
                 }
                 FlowExecutionResult::SUCCESS
-            },
+            }
             Err(e) => {
                 // check for errors starting up the process
                 let error_msg = e.to_string();
-                FlowExecutionResult::CRASHED(
-                    format!("Failed to start child process: {}", &error_msg)
-                )
-
+                FlowExecutionResult::CRASHED(format!(
+                    "Failed to start child process: {}",
+                    &error_msg
+                ))
             }
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -69,7 +66,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_flow() {
-
         let exec = ProcessExecutor::new("echo", Some(vec!["Running test_run_flow".to_string()]));
         let (tx, _rx) = mpsc::channel(32);
         let exec_result = exec.run(tx).await.to_string();
@@ -78,20 +74,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_flow_with_callback() {
-        let exec: ProcessExecutor = ProcessExecutor::new("printf", Some(vec!["item1\nitem2\nitem3".to_string()]));
+        let exec: ProcessExecutor =
+            ProcessExecutor::new("printf", Some(vec!["item1\nitem2\nitem3".to_string()]));
         let (tx, mut rx) = mpsc::channel(32);
-        
+
         let mut outputs: Vec<String> = Vec::new();
 
-        // have to spawn instead of await  in order to move on to the recv messages since for tx 
+        // have to spawn instead of await  in order to move on to the recv messages since for tx
         // to go out of scope, `run` would have to have exited
-        tokio::spawn(
-            async move {exec.run(tx).await}
-        ); 
+        tokio::spawn(async move { exec.run(tx).await });
         while let Some(msg) = rx.recv().await {
             outputs.push(msg);
         }
         assert_eq!(outputs, vec!["item1", "item2", "item3"])
     }
-
 }

@@ -1,17 +1,13 @@
 mod process_executor;
 
-use crate::models::{
-    Task,
-    traits::Executor
-};
+use crate::models::{traits::Executor, Task};
 pub use process_executor::ProcessTask;
 
 pub fn get_executor(task: Task) -> impl Executor {
     match task {
-        Task::Process(ptask) => process_executor::ProcessExecutor::new(&ptask.command, ptask.args)
+        Task::Process(ptask) => process_executor::ProcessExecutor::new(&ptask.command, ptask.args),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -20,10 +16,9 @@ mod tests {
     fn test_get_process_executor() {
         let ptask = ProcessTask {
             command: "echo".to_string(),
-            args: Some(vec!["hello world".to_string()])
+            args: Some(vec!["hello world".to_string()]),
         };
         let task = Task::Process(ptask);
         get_executor(task);
-
     }
 }
