@@ -3,8 +3,8 @@ use crate::{
     server::models::RepReqError,
 };
 
-pub fn create_task_run_payload(args: Vec<String>) -> Result<Task, RepReqError> {
-    let task_res = Task::try_from(ZMQArgs::from(args));
+pub fn create_task_run_payload(args: ZMQArgs) -> Result<Task, RepReqError> {
+    let task_res = Task::try_from(args);
     match task_res {
         Ok(task) => Ok(task),
         Err(e) => Err(RepReqError::ParseError(format!(

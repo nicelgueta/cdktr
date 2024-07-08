@@ -1,9 +1,9 @@
 mod task;
 
-use crate::exceptions;
+use crate::{exceptions, utils::arg_str_to_vec};
 use std::collections::VecDeque;
 pub use task::Task;
-use traits::FromToken;
+use zeromq::ZmqMessage;
 pub mod traits;
 
 #[derive(Debug, PartialEq)]
@@ -30,20 +30,26 @@ impl FlowExecutionResult {
 /// appears to be a supported message based on this token. It is up to the actual
 /// implementation of the ZMQEncodable itself to determine whether the rest of the string
 /// is valid or not for the message type.
-pub enum PubZMQMessageType {
+pub enum PubZMQMessage {
     /// Standard task definition for a task without a specific executor context
     /// A message sent from the publisher like this is executed by all agents
     /// listening to the feed
     /// eg.
     /// TASKDEF|PROCESS|ls|thisdir
-    TaskDef,
+    TaskDef(Task),
 }
-impl FromToken<PubZMQMessageType> for PubZMQMessageType {
+impl TryFrom<ZmqMessage> for PubZMQMessage {
     type Error = exceptions::ZMQParseError;
-    fn try_from_token(token: &str) -> Result<Self, Self::Error> {
-        match token {
-            "TASKDEF" => Ok(Self::TaskDef),
-            _ => Err(exceptions::ZMQParseError::InvalidMessageType),
+    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
+        let mut args: ZMQArgs = value.into();
+        let msg_type = if let Some(token) = args.next() {
+            token
+        } else {
+            return Err(exceptions::ZMQParseError::InvalidMessageType)
+        };
+        match msg_type.as_str() {
+            "TASKDEF" => Ok(Self::TaskDef(Task::try_from(args)?)),
+            _ => Err(exceptions::ZMQParseError::InvalidTaskType)
         }
     }
 }
@@ -92,14 +98,15 @@ impl From<Vec<String>> for ZMQArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::traits::FromToken;
     #[test]
     fn zmq_message_type_taskdef() {
-        assert!(PubZMQMessageType::try_from_token("TASKDEF").is_ok());
+        let zmq_msg = ZmqMessage::from("TASKDEF|PROCESS|ls");
+        assert!(PubZMQMessage::try_from(zmq_msg).is_ok());
     }
 
     #[test]
     fn zmq_message_type_invalid() {
-        assert!(PubZMQMessageType::try_from_token("invalidinvalid").is_err());
+        let zmq_msg = ZmqMessage::from("invalidinvalid");
+        assert!(PubZMQMessage::try_from(zmq_msg).is_err());
     }
 }

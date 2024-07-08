@@ -2,36 +2,34 @@
 /// utilities
 ///
 use crate::{
-    db::models::{NewScheduledTask, ScheduledTask},
-    macros::args_to_model,
-    server::models::{ClientResponseMessage, RepReqError},
+    db::models::{NewScheduledTask, ScheduledTask}, macros::args_to_model, models::ZMQArgs, server::models::{ClientResponseMessage, RepReqError}
 };
 use diesel::prelude::*;
 
 use diesel::RunQueryDsl;
 
-pub fn create_task_payload(args: Vec<String>) -> Result<NewScheduledTask, RepReqError> {
+pub fn create_new_task_payload(args: ZMQArgs) -> Result<NewScheduledTask, RepReqError> {
     args_to_model!(args, NewScheduledTask)
 }
 
-pub fn delete_task_payload(args: Vec<String>) -> Result<i32, RepReqError> {
-    if args.len() == 0 {
-        Err(RepReqError::new(
-            1,
-            "No payload found for DELETETASK command. Requires task ID".to_string(),
-        ))
-    } else {
-        match args[0].parse() {
+pub fn delete_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
+    if let Some(v) = args.next() {
+        match v.parse() {
             Ok(v) => Ok(v),
             Err(e) => Err(RepReqError::new(
                 1,
                 format!(
                     "Unable to create integer from value '{}'. Error: {}",
-                    &args[0],
+                    &v,
                     e.to_string()
                 ),
             )),
         }
+    } else {
+        Err(RepReqError::new(
+            1,
+            "No payload found for DELETETASK command. Requires task ID".to_string(),
+        ))
     }
 }
 
@@ -121,31 +119,31 @@ mod tests {
         let args = vec![
             r#"{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#.to_string()
         ];
-        assert!(create_task_payload(args).is_ok())
+        assert!(create_new_task_payload(ZMQArgs::from(args)).is_ok())
     }
 
     #[test]
     fn test_create_task_payload_invalid_json() {
         let args = vec![r#"{"task_name": "#.to_string()];
-        assert!(create_task_payload(args).is_err())
+        assert!(create_new_task_payload(ZMQArgs::from(args)).is_err())
     }
 
     #[test]
     fn test_create_task_payload_valid_json_but_not_task() {
         let args = vec![r#"{"task_name": "missing all other props"}"#.to_string()];
-        assert!(create_task_payload(args).is_err())
+        assert!(create_new_task_payload(ZMQArgs::from(args)).is_err())
     }
 
     #[test]
     fn test_delete_task_happy() {
         let args = vec!["1".to_string()];
-        assert!(delete_task_payload(args).is_ok())
+        assert!(delete_task_payload(ZMQArgs::from(args)).is_ok())
     }
 
     #[test]
     fn test_delete_task_invalid() {
         let args = vec!["not_an_int".to_string()];
-        assert!(delete_task_payload(args).is_err())
+        assert!(delete_task_payload(ZMQArgs::from(args)).is_err())
     }
 
     #[test]

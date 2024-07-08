@@ -6,7 +6,8 @@ macro_rules! args_to_model {
                 "Payload in arg index 0 is required for this command".to_string(),
             ))
         } else {
-            let parse_res: Result<$model, serde_json::Error> = serde_json::from_str(&$args[0]);
+            let args_v: Vec<String> = $args.into();
+            let parse_res: Result<$model, serde_json::Error> = serde_json::from_str(&args_v[0]);
             match parse_res {
                 Ok(task) => Ok(task),
                 Err(e) => Err(RepReqError::new(

@@ -4,16 +4,12 @@ use std::error::Error;
 use zeromq::ZmqMessage;
 use zeromq::{Socket, SocketRecv, SocketSend};
 
-pub trait BaseClientRequestMessage: TryFrom<ZmqMessage, Error = RepReqError> + Send {
-    fn from_zmq_str(s: &str) -> Result<Self, RepReqError>;
-}
-
 /// A standard ZMQ REP server that both the Agent and Principal instances
 /// implement
 #[async_trait]
 pub trait Server<RT>
 where
-    RT: BaseClientRequestMessage,
+    RT: TryFrom<ZmqMessage, Error = RepReqError> + Send,
 {
     /// Method to handle the client request. It returns a tuple of ClientResponseMessage
     /// and a restart flag. This flag is used to determine whether the

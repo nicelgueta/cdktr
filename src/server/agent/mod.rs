@@ -1,11 +1,10 @@
-use crate::{models::Task, utils::AsyncQueue};
+use crate::{models::{Task, ZMQArgs}, utils::AsyncQueue};
 use async_trait::async_trait;
 use zeromq::ZmqMessage;
 mod api;
 use super::{
     models::{ClientResponseMessage, RepReqError},
-    parse_zmq_str,
-    traits::{BaseClientRequestMessage, Server},
+    traits::Server,
 };
 pub enum AgentRequest {
     /// Check the server is online
@@ -23,31 +22,38 @@ pub enum AgentRequest {
     Run(Task),
 }
 
-#[async_trait]
-impl BaseClientRequestMessage for AgentRequest {
-    fn from_zmq_str(s: &str) -> Result<AgentRequest, RepReqError> {
-        let (msg_type, args) = parse_zmq_str(s);
-        match msg_type {
+impl TryFrom<ZmqMessage> for AgentRequest {
+    type Error = RepReqError;
+    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
+        let mut args: ZMQArgs = value.into();
+        let msg_type = if let Some(token) = args.next() {
+            token
+        } else {
+            return Err(RepReqError::ParseError(
+                format!("Empty message")
+            ))
+        };
+        match msg_type.as_str() {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
             "RECONNECT" => {
-                if args.len() == 0 {
-                    Err(RepReqError::new(
+                let pub_id = if let Some(v) = args.next() {
+                    v
+                } else {
+                    return Err(RepReqError::new(
                         1,
                         "RECONNECT command requires 1 argument: publisher_id".to_string(),
                     ))
+                };
+                if pub_id.len() == 0 {
+                    Err(RepReqError::new(
+                        1,
+                        "RECONNECT publisher_id cannot be blank".to_string(),
+                    ))
                 } else {
-                    let pub_id = args[0].clone();
-                    if pub_id.len() == 0 {
-                        Err(RepReqError::new(
-                            1,
-                            "RECONNECT publisher_id cannot be blank".to_string(),
-                        ))
-                    } else {
-                        Ok(Self::Reconnect(pub_id))
-                    }
+                    Ok(Self::Reconnect(pub_id))
                 }
-            }
+            },
             "HEARTBEAT" => Ok(Self::Heartbeat),
             "RUN" => Ok(Self::Run(api::create_task_run_payload(args)?)),
             _ => Err(RepReqError::new(
@@ -55,14 +61,6 @@ impl BaseClientRequestMessage for AgentRequest {
                 format!("Unrecognised message type: {}", msg_type),
             )),
         }
-    }
-}
-impl TryFrom<ZmqMessage> for AgentRequest {
-    type Error = RepReqError;
-    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
-        let zmq_msg_s =
-            String::try_from(value).expect("Unable to convert ZMQ Client message to String");
-        Self::from_zmq_str(&zmq_msg_s)
     }
 }
 
@@ -115,7 +113,7 @@ mod tests {
     fn test_agent_request_from_zmq_str_all_happy() {
         const ALL_HAPPIES: [&str; 3] = ["PING", "RECONNECT|newid", "HEARTBEAT"];
         for zmq_s in ALL_HAPPIES {
-            let res = AgentRequest::from_zmq_str(zmq_s);
+            let res = AgentRequest::try_from(ZmqMessage::from(zmq_s));
             assert!(res.is_ok())
         }
     }
@@ -123,14 +121,14 @@ mod tests {
     #[test]
     fn test_reconnect_missing_param() {
         let zs = "RECONNECT";
-        let res = AgentRequest::from_zmq_str(zs);
+        let res = AgentRequest::try_from(ZmqMessage::from(zs));
         assert!(res.is_err())
     }
 
     #[test]
     fn test_reconnect_blank_param() {
         let zs = "RECONNECT|";
-        let res = AgentRequest::from_zmq_str(zs);
+        let res = AgentRequest::try_from(ZmqMessage::from(zs));
         assert!(res.is_err())
     }
 
@@ -147,7 +145,7 @@ mod tests {
         ];
         let mut server = AgentServer::new(AsyncQueue::new());
         for (zmq_s, response, exp_exit_code) in test_params {
-            let ar = AgentRequest::from_zmq_str(zmq_s)
+            let ar = AgentRequest::try_from(ZmqMessage::from(zmq_s))
                 .expect("Should be able to unwrap the agent from ZMQ command");
             let (resp, exit_code) = server.handle_client_message(ar).await;
             assert_eq!(response, resp);

@@ -8,6 +8,7 @@ mod scheduler;
 mod server;
 mod taskmanager;
 mod utils;
+mod zmq_helpers;
 
 use hub::{Hub, InstanceType};
 use std::env;

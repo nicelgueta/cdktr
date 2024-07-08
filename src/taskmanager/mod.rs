@@ -1,8 +1,7 @@
 use crate::models::traits::EventListener;
-use crate::utils::parse_zmq_message;
 use crate::{
     executors::get_executor,
-    models::{traits::Executor, PubZMQMessageType, Task},
+    models::{traits::Executor, PubZMQMessage, Task},
     utils::AsyncQueue,
 };
 use async_trait::async_trait;
@@ -208,9 +207,9 @@ impl EventListener<Task> for TaskManagerPubListener {
         println!("TASKMANAGER-{}: Starting listening loop", self.instance_id);
         loop {
             let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
-            let parse_res = parse_zmq_message::<PubZMQMessageType>(recv);
+            let parse_res = PubZMQMessage::try_from(recv);
             match parse_res {
-                Ok((msg_type, args)) => api::handle_pub_message(msg_type, args),
+                Ok(msg) => api::handle_pub_message(msg),
                 Err(e) => println!("Unable to parse ZMQ pub message. Error: {}", e.to_string()),
             }
         }

@@ -20,11 +20,3 @@ pub trait Executor {
 pub trait EventListener<T> {
     async fn start_listening_loop(&self, out_queue: AsyncQueue<T>);
 }
-
-/// Represents a type that can be created from a single text token.
-/// This will apply to different types of ZMQ messages that can be received
-/// such as AgentRequest, PrincipalRequest and PubZMQMessageType
-pub trait FromToken<T> {
-    type Error;
-    fn try_from_token(token: &str) -> Result<T, Self::Error>;
-}

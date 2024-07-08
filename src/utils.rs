@@ -1,31 +1,8 @@
-use crate::{
-    exceptions::ZMQParseError,
-    models::{traits::FromToken, ZMQArgs},
-};
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
-use zeromq::ZmqMessage;
 
 pub fn arg_str_to_vec(s: String) -> VecDeque<String> {
     s.split("|").map(|x| x.to_string()).collect()
-}
-
-pub fn parse_zmq_message<T: FromToken<T, Error = ZMQParseError>>(
-    msg: ZmqMessage,
-) -> Result<(T, ZMQArgs), ZMQParseError> {
-    let zmq_str = String::try_from(msg);
-    match zmq_str {
-        Ok(st) => {
-            let mut raw_vec = arg_str_to_vec(st);
-            let first_token = match raw_vec.pop_front() {
-                Some(token) => token,
-                None => return Err(ZMQParseError::InvalidMessageType),
-            };
-            let msg_type = T::try_from_token(&first_token)?;
-            Ok((msg_type, ZMQArgs::from(raw_vec)))
-        }
-        Err(e) => Err(ZMQParseError::ParseError(e.to_string())),
-    }
 }
 
 /// A simple queue that can be accessed across threads. The queue

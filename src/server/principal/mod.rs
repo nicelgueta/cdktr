@@ -1,4 +1,4 @@
-use crate::db::{get_connection, models::NewScheduledTask};
+use crate::{db::{get_connection, models::NewScheduledTask}, models::ZMQArgs};
 use async_trait::async_trait;
 use diesel::SqliteConnection;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ mod api;
 
 use api::{
     // zmq msgs
-    create_task_payload,
+    create_new_task_payload,
     delete_task_payload,
 
     // client handling
@@ -20,8 +20,7 @@ use api::{
 
 use super::{
     models::{ClientResponseMessage, RepReqError},
-    parse_zmq_str,
-    traits::{BaseClientRequestMessage, Server},
+    traits::Server,
 };
 
 // TODO: make an extension of AgentRequest
@@ -34,6 +33,11 @@ pub enum PrincipalRequest {
     ListTasks,
     /// Deletes a specific scheduled task in the database by its id
     DeleteTask(i32),
+
+    // /// Runs task on a specific agent
+    // /// Args:
+    // ///     agent_id, task
+    // RunTask(String, Task)
 }
 
 pub struct PrincipalServer {
@@ -71,14 +75,21 @@ impl Server<PrincipalRequest> for PrincipalServer {
     }
 }
 
-#[async_trait]
-impl BaseClientRequestMessage for PrincipalRequest {
-    fn from_zmq_str(s: &str) -> Result<PrincipalRequest, RepReqError> {
-        let (msg_type, args) = parse_zmq_str(s);
-        match msg_type {
+impl TryFrom<ZmqMessage> for PrincipalRequest {
+    type Error = RepReqError;
+    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
+        let mut args: ZMQArgs = value.into();
+        let msg_type = if let Some(token) = args.next() {
+            token
+        } else {
+            return Err(RepReqError::ParseError(
+                format!("Empty message")
+            ))
+        };
+        match msg_type.as_str() {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
-            "CREATETASK" => Ok(Self::CreateTask(create_task_payload(args)?)),
+            "CREATETASK" => Ok(Self::CreateTask(create_new_task_payload(args)?)),
             "LISTTASKS" => Ok(Self::ListTasks),
             "DELETETASK" => Ok(Self::DeleteTask(delete_task_payload(args)?)),
             _ => Err(RepReqError::new(
@@ -86,14 +97,6 @@ impl BaseClientRequestMessage for PrincipalRequest {
                 format!("Unrecognised message type: {}", msg_type),
             )),
         }
-    }
-}
-impl TryFrom<ZmqMessage> for PrincipalRequest {
-    type Error = RepReqError;
-    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
-        let zmq_msg_s =
-            String::try_from(value).expect("Unable to convert ZMQ Client message to String");
-        Self::from_zmq_str(&zmq_msg_s)
     }
 }
 
@@ -110,7 +113,8 @@ mod tests {
             "DELETETASK|1",
         ];
         for zmq_s in all_happies {
-            let res = PrincipalRequest::from_zmq_str(zmq_s);
+            let zmq_msg = ZmqMessage::from(zmq_s);
+            let res = PrincipalRequest::try_from(zmq_msg);
             assert!(res.is_ok())
         }
     }
@@ -133,7 +137,8 @@ mod tests {
         let fake_publisher = Arc::new(Mutex::new(PubSocket::new()));
         let mut server = PrincipalServer::new(fake_publisher, None);
         for (zmq_s, response, exp_exit_code) in test_params {
-            let ar = PrincipalRequest::from_zmq_str(zmq_s)
+            let zmq_msg = ZmqMessage::from(zmq_s);
+            let ar = PrincipalRequest::try_from(zmq_msg)
                 .expect("Should be able to unwrap the agent from ZMQ command");
             let (resp, exit_code) = server.handle_client_message(ar).await;
             println!("Testing {zmq_s}");
