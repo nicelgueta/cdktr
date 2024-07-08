@@ -1,4 +1,4 @@
-use crate::{db::{get_connection, models::NewScheduledTask}, models::ZMQArgs};
+use crate::{db::{get_connection, models::NewScheduledTask}, models::{Task, ZMQArgs}};
 use async_trait::async_trait;
 use diesel::SqliteConnection;
 use std::sync::Arc;
@@ -11,11 +11,13 @@ use api::{
     // zmq msgs
     create_new_task_payload,
     delete_task_payload,
+    create_run_task_payload,
 
     // client handling
     handle_create_task,
     handle_delete_task,
-    handle_list_tasks,
+    handle_list_tasks, 
+    handle_run_task,
 };
 
 use super::{
@@ -37,22 +39,19 @@ pub enum PrincipalRequest {
     // /// Runs task on a specific agent
     // /// Args:
     // ///     agent_id, task
-    // RunTask(String, Task)
+    RunTask(String, Task)
 }
 
 pub struct PrincipalServer {
     publisher: Arc<Mutex<PubSocket>>,
-    req: zeromq::ReqSocket,
     db_cnxn: SqliteConnection,
 }
 
 impl PrincipalServer {
     pub fn new(publisher: Arc<Mutex<PubSocket>>, database_url: Option<String>) -> Self {
-        let req = zeromq::ReqSocket::new();
         let db_cnxn = get_connection(database_url.as_deref());
         Self {
             publisher,
-            req,
             db_cnxn,
         }
     }
@@ -71,6 +70,7 @@ impl Server<PrincipalRequest> for PrincipalServer {
             }
             PrincipalRequest::ListTasks => handle_list_tasks(&mut self.db_cnxn),
             PrincipalRequest::DeleteTask(task_id) => handle_delete_task(&mut self.db_cnxn, task_id),
+            PrincipalRequest::RunTask(agent_id, task) => handle_run_task(agent_id, task).await
         }
     }
 }
@@ -92,6 +92,10 @@ impl TryFrom<ZmqMessage> for PrincipalRequest {
             "CREATETASK" => Ok(Self::CreateTask(create_new_task_payload(args)?)),
             "LISTTASKS" => Ok(Self::ListTasks),
             "DELETETASK" => Ok(Self::DeleteTask(delete_task_payload(args)?)),
+            "AGENTRUN" => {
+                let (agent_id, task) = create_run_task_payload(args)?;
+                Ok(Self::RunTask(agent_id, task))
+            },
             _ => Err(RepReqError::new(
                 1,
                 format!("Unrecognised message type: {}", msg_type),

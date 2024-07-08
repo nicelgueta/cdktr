@@ -13,18 +13,3 @@ impl Into<ZMQArgs> for ZmqMessage {
         ZMQArgs::from(arg_vec)
     }
 }
-
-impl Into<ZmqMessage> for ClientResponseMessage {
-    fn into(self) -> ZmqMessage {
-        let s = match self {
-            Self::ClientError(payload) => format!("CLIENTERROR|{payload}"),
-            Self::Pong => "PONG".to_string(),
-            Self::Success => "SUCCESS".to_string(),
-            Self::SuccessWithPayload(payload) => format!("SUCCESS|{payload}"),
-            Self::Heartbeat(pub_id) => format!("HEARTBEAT|{pub_id}"),
-            Self::ServerError(payload) => format!("SERVERERROR|{payload}"),
-            Self::Unprocessable(payload) => format!("UNPROC|{payload}"),
-        };
-        ZmqMessage::from(s)
-    }
-}

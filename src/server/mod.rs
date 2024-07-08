@@ -1,4 +1,3 @@
-use zeromq::ZmqMessage;
 
 pub mod agent;
 pub mod models;

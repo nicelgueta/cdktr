@@ -46,19 +46,18 @@ impl TryFrom<ZMQArgs> for Task {
     }
 }
 
-impl TryInto<ZmqMessage> for Task {
-    type Error = ZMQParseError;
-    fn try_into(self) -> Result<ZmqMessage, Self::Error> {
+impl Into<String> for Task {
+    fn into(self) -> String {
         match self {
             Self::Process(pt) => {
-                let mut tokens = vec!["TASKDEF".to_string(), "PROCESS".to_string()];
+                let mut tokens = vec!["PROCESS".to_string()];
                 tokens.push(pt.command.clone());
                 if let Some(args) = &pt.args {
                     for arg in args {
                         tokens.push(arg.clone())
                     }
                 };
-                Ok(ZmqMessage::from(tokens.join("|")))
+                tokens.join("|")
             }
         }
     }
