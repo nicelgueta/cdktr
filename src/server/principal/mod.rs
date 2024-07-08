@@ -137,6 +137,11 @@ mod tests {
                 ClientResponseMessage::Success,
                 0,
             ),
+            (
+                "DELETETASK|1",
+                ClientResponseMessage::Success,
+                0,
+            )
         ];
         let fake_publisher = Arc::new(Mutex::new(PubSocket::new()));
         let mut server = PrincipalServer::new(fake_publisher, None);

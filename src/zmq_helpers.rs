@@ -1,6 +1,5 @@
-use zeromq::ZmqMessage;
+use zeromq::{RepSocket, ReqSocket, Socket, ZmqMessage};
 use crate::{models::ZMQArgs, utils::arg_str_to_vec};
-use crate::server::models::ClientResponseMessage;
 
 impl Into<ZMQArgs> for ZmqMessage {
     fn into(self) -> ZMQArgs {
@@ -12,4 +11,16 @@ impl Into<ZMQArgs> for ZmqMessage {
         let arg_vec = arg_str_to_vec(raw_string);
         ZMQArgs::from(arg_vec)
     }
+}
+
+pub async fn get_zmq_req(endpoint_uri: &str) -> ReqSocket {
+    let mut req = ReqSocket::new();
+    req.connect(endpoint_uri).await.expect("Failed to connect to REQ socket");
+    req
+}
+
+pub async fn get_zmq_rep(endpoint_uri: &str) -> RepSocket {
+    let mut rep = RepSocket::new();
+    rep.bind(endpoint_uri).await.expect("Failed to connect to REQ socket");
+    rep
 }

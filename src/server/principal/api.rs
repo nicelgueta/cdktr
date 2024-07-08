@@ -2,7 +2,10 @@
 /// utilities
 ///
 use crate::{
-    db::models::{NewScheduledTask, ScheduledTask}, macros::args_to_model, models::{Task, ZMQArgs}, server::models::{ClientResponseMessage, RepReqError}
+    db::models::{NewScheduledTask, ScheduledTask}, 
+    macros::args_to_model, models::{Task, ZMQArgs}, 
+    server::models::{ClientResponseMessage, RepReqError},
+    zmq_helpers::get_zmq_req
 };
 use diesel::prelude::*;
 
@@ -121,8 +124,7 @@ pub async fn handle_run_task(
     agent_id: String, task: Task
 ) -> (ClientResponseMessage, usize) {
     let uri = get_agent_tcp_uri(&agent_id);
-    let mut req = zeromq::ReqSocket::new();
-    req.connect(&uri).await.expect("Failed to connect to REQ socket");
+    let mut req = get_zmq_req(&uri).await;
     let task_str: String = task.into();
     let msg = format!("RUN|{}", task_str);
     req.send(ZmqMessage::from(msg)).await.unwrap();
@@ -145,6 +147,7 @@ fn get_agent_tcp_uri(agent_id: &String) -> String {
 mod tests {
 
     use super::*;
+    use crate::zmq_helpers::get_zmq_rep;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
@@ -276,5 +279,38 @@ mod tests {
                 0
             )
         )
+    }
+
+    #[test]
+    fn test_get_agent_tcp_uri() {
+        let agent_id = "1234".to_string();
+        assert_eq!(get_agent_tcp_uri(&agent_id), "tcp://0.0.0.0:1234")
+    }
+
+    #[tokio::test]
+    async fn test_handle_run_task_happy() {
+        // create ZMQ server to respond
+        let join_h = tokio::spawn(async move {
+            let mut rep = get_zmq_rep(
+                "tcp://0.0.0.0:32145"
+            ).await;
+            let msg_recv_s = String::try_from(
+                rep.recv().await.unwrap()
+            ).unwrap();
+            assert_eq!(&msg_recv_s, "RUN|PROCESS|echo|hello");
+            rep.send(ZmqMessage::from("OK")).await
+        });
+
+        let agent_id = "32145".to_string();
+        let task = Task::try_from(ZMQArgs::from(
+            vec!["PROCESS".to_string(), "echo".to_string(), "hello".to_string()]
+        )).expect("Failed to create task for test");
+        let (resp, exit_code) = handle_run_task(agent_id, task).await;
+        assert_eq!(exit_code, 0);
+        match resp {
+            ClientResponseMessage::Success => (),
+            _ => panic!("Expected Success but got {:?}", resp),
+        };
+        let _res = join_h.await.unwrap().unwrap();
     }
 }
