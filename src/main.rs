@@ -9,6 +9,7 @@ mod server;
 mod taskmanager;
 mod utils;
 mod zmq_helpers;
+mod task_router;
 
 use hub::{Hub, InstanceType};
 use std::env;

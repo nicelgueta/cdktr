@@ -18,5 +18,5 @@ pub trait Executor {
 /// the item that will be placed on the queue upon each event.
 #[async_trait]
 pub trait EventListener<T> {
-    async fn start_listening_loop(&self, out_queue: AsyncQueue<T>);
+    async fn start_listening(&mut self, out_queue: AsyncQueue<T>);
 }

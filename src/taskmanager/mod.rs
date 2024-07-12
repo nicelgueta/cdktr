@@ -1,17 +1,15 @@
-use crate::models::traits::EventListener;
 use crate::{
     executors::get_executor,
-    models::{traits::Executor, PubZMQMessage, Task},
+    models::{traits::Executor, Task},
     utils::AsyncQueue,
 };
-use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
-use zeromq::{Socket, SocketOptions, SocketRecv};
+use zeromq::{Socket, SocketOptions};
 mod api;
 
 #[derive(Debug)]
@@ -106,17 +104,7 @@ impl TaskManager {
         Ok(TaskExecutionHandle::new(handle, rx))
     }
 
-    pub async fn start(&mut self, host: String, port: usize) {
-        // create task queue
-        let tqclone = self.task_queue.clone();
-
-        let ins_id = self.instance_id.clone();
-        let host_cl = host.clone();
-        tokio::spawn(async move {
-            let pub_listener = TaskManagerPubListener::new(ins_id, host_cl, port);
-            pub_listener.start_listening_loop(tqclone).await
-        });
-        // spawn_task_execution_loop(task_queue)
+    pub async fn start(&mut self) {
         println!(
             "TASKMANAGER-{}: Beginning task execution loop",
             self.instance_id
@@ -178,43 +166,6 @@ async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSo
     socket
 }
 
-struct TaskManagerPubListener {
-    instance_id: String,
-    host: String,
-    port: usize,
-}
-impl TaskManagerPubListener {
-    pub fn new(instance_id: String, host: String, port: usize) -> Self {
-        Self {
-            instance_id,
-            host,
-            port,
-        }
-    }
-}
-#[async_trait]
-impl EventListener<Task> for TaskManagerPubListener {
-    async fn start_listening_loop(&self, _out_queue: AsyncQueue<Task>) {
-        println!(
-            "TASKMANAGER-{}: Subscribing to tcp://{}:{}",
-            self.instance_id, self.host, self.port
-        );
-        let mut socket = get_socket(&self.host, self.port, &self.instance_id).await;
-        println!(
-            "TASKMANAGER-{}: Successfully created SUB connection to tcp://{}:{}",
-            self.instance_id, self.host, self.port
-        );
-        println!("TASKMANAGER-{}: Starting listening loop", self.instance_id);
-        loop {
-            let recv: zeromq::ZmqMessage = socket.recv().await.expect("Failed to get msg");
-            let parse_res = PubZMQMessage::try_from(recv);
-            match parse_res {
-                Ok(msg) => api::handle_pub_message(msg),
-                Err(e) => println!("Unable to parse ZMQ pub message. Error: {}", e.to_string()),
-            }
-        }
-    }
-}
 // TODO: fix the broken pipe error
 #[cfg(test)]
 mod tests {

@@ -3,6 +3,9 @@ use crate::db::{
     get_connection, get_queueable_schedules,
     models::{ScheduledTask, ToTask},
 };
+use crate::models::traits::EventListener;
+use crate::utils::AsyncQueue;
+use async_trait::async_trait;
 use crate::models::Task;
 use chrono::Utc;
 use cron::Schedule;
@@ -20,22 +23,17 @@ use std::time::Duration;
 /// earliest to latest
 ///
 use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::{mpsc::Sender, Mutex};
+use tokio::sync::Mutex;
 use tokio::time::sleep;
 pub struct Scheduler {
     database_url: Option<String>,
     poll_interval_seconds: i32,
-    pub task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
+    task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
 }
-impl Scheduler {
-    pub fn new(database_url: Option<String>, poll_interval_seconds: i32) -> Self {
-        Self {
-            database_url,
-            poll_interval_seconds,
-            task_queue: Arc::new(Mutex::new(VecDeque::new())),
-        }
-    }
-    pub async fn start(&mut self, sender: Sender<Task>) {
+
+#[async_trait]
+impl EventListener<Task> for Scheduler {
+    async fn start_listening(&mut self, out_queue: AsyncQueue<Task>) {
         let task_queue = self.task_queue.clone();
         let database_url = self.database_url.clone();
         let poll_interval_seconds = self.poll_interval_seconds.clone();
@@ -52,10 +50,20 @@ impl Scheduler {
             .await
         });
         println!("SCHEDULER: Starting main scheduler loop");
-        self.main_loop(sender).await;
+        self.main_loop(out_queue).await;
+    }
+}
+
+impl Scheduler {
+    pub fn new(database_url: Option<String>, poll_interval_seconds: i32) -> Self {
+        Self {
+            database_url,
+            poll_interval_seconds,
+            task_queue: Arc::new(Mutex::new(VecDeque::new())),
+        }
     }
 
-    async fn main_loop(&mut self, sender: Sender<Task>) {
+    async fn main_loop(&mut self, mut out_queue: AsyncQueue<Task>) {
         loop {
             {
                 let internal_task_q = self.task_queue.lock().await;
@@ -74,10 +82,7 @@ impl Scheduler {
                     .expect("Unable to find a task at the front of the queue");
 
                 let task = sched_task.to_task();
-                sender
-                    .send(task)
-                    .await
-                    .expect("Failed to send ScheduledTask to TaskRouter");
+                out_queue.put(task).await
             }
         }
     }
