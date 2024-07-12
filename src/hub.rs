@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use tokio::sync::{
-    mpsc::{channel, Receiver, Sender},
     Mutex,
 };
 use zeromq::{PubSocket, Socket};
@@ -111,7 +110,7 @@ impl Hub {
                 
                 // start REP/REQ server for principal
                 let mut principal_server =
-                    PrincipalServer::new(self.publisher.clone(), database_url);
+                    PrincipalServer::new(database_url);
                 principal_server
                     .start(&pub_host_cl, server_port)
                     .await

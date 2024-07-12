@@ -1,10 +1,9 @@
 use crate::{db::{get_connection, models::NewScheduledTask}, models::{Task, ZMQArgs}};
 use async_trait::async_trait;
 use diesel::SqliteConnection;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use zeromq::{PubSocket, Socket, ZmqMessage};
-
+use std::collections::HashMap;
+use zeromq::{ZmqMessage};
+use chrono::Utc;
 mod api;
 
 use api::{
@@ -35,24 +34,87 @@ pub enum PrincipalRequest {
     ListTasks,
     /// Deletes a specific scheduled task in the database by its id
     DeleteTask(i32),
-
-    // /// Runs task on a specific agent
-    // /// Args:
-    // ///     agent_id, task
-    RunTask(String, Task)
+    /// Runs task on a specific agent
+    /// Args:
+    ///     agent_id, task
+    RunTask(String, Task),
+    /// Allows an agent to register itself with the principal
+    /// so that the principal can set a heartbeat for it. If the agent
+    /// is already registered then this behaves in a similar way to
+    /// a PING/PONG
+    /// Args:
+    ///     agent_id
+    RegisterAgent(String),
+    /// Allows agents to inform the principal of when they have reached 
+    /// their concurrent thread capacity. Sending a negative bool
+    /// unsets this flag
+    /// Args:
+    ///     agent_id, flag
+    AgentCapacityReached(String, bool)
 }
 
+#[derive(PartialEq, Debug)]
+struct AgentConfig {
+    max_threads_reached: bool,
+    last_ping_timestamp: i64
+}
+impl AgentConfig {
+    fn new(max_threads_reached: bool, last_ping_timestamp: i64) -> Self {
+        Self {
+            max_threads_reached, last_ping_timestamp
+        }
+    }
+    fn update_timestamp(&mut self, new_ts: i64) {
+        self.last_ping_timestamp = new_ts
+    }
+    fn set_max_threads_reached(&mut self, reached: bool) {
+        self.max_threads_reached = reached
+    }
+}
 pub struct PrincipalServer {
-    publisher: Arc<Mutex<PubSocket>>,
     db_cnxn: SqliteConnection,
+    live_agents: HashMap<String, AgentConfig>
 }
 
 impl PrincipalServer {
-    pub fn new(publisher: Arc<Mutex<PubSocket>>, database_url: Option<String>) -> Self {
+    pub fn new(database_url: Option<String>) -> Self {
         let db_cnxn = get_connection(database_url.as_deref());
         Self {
-            publisher,
             db_cnxn,
+            live_agents: HashMap::new()
+        }
+    }
+    /// Registers the agent with the principal server. If it exists
+    /// already then it simply updates with the latest timestamp
+    fn register_agent(&mut self, agent_id: &String) -> (ClientResponseMessage, usize) {
+        let now = Utc::now().timestamp_micros();
+        match self.live_agents.get_mut(agent_id) {
+            Some(agent_config) => {
+                agent_config.update_timestamp(now);
+            },
+            None => {
+                let agent_config = AgentConfig::new(
+                    false,
+                    now
+                );
+                self.live_agents.insert(agent_id.clone(), agent_config);
+            }
+        };
+        (ClientResponseMessage::Success, 0)
+    }
+
+    /// sets the flag on the agent config to note it's currently at capacity
+    fn set_agent_at_capacity(&mut self, agent_id: &String, reached: bool) -> (ClientResponseMessage, usize) {
+        let now = Utc::now().timestamp_micros();
+        match self.live_agents.get_mut(agent_id) {
+            Some(agent_config) => {
+                agent_config.set_max_threads_reached(reached);
+                agent_config.update_timestamp(now);
+                (ClientResponseMessage::Success, 0)
+            },
+            None => (ClientResponseMessage::ClientError(String::from(
+                "Agent has not been registered - cannot set max threads reached"
+            )), 0)
         }
     }
 }
@@ -70,7 +132,9 @@ impl Server<PrincipalRequest> for PrincipalServer {
             }
             PrincipalRequest::ListTasks => handle_list_tasks(&mut self.db_cnxn),
             PrincipalRequest::DeleteTask(task_id) => handle_delete_task(&mut self.db_cnxn, task_id),
-            PrincipalRequest::RunTask(agent_id, task) => handle_run_task(agent_id, task).await
+            PrincipalRequest::RunTask(agent_id, task) => handle_run_task(agent_id, task).await,
+            PrincipalRequest::RegisterAgent(agent_id) => self.register_agent(&agent_id),
+            PrincipalRequest::AgentCapacityReached(agent_id, reached) => self.set_agent_at_capacity(&agent_id, reached)
         }
     }
 }
@@ -106,6 +170,8 @@ impl TryFrom<ZmqMessage> for PrincipalRequest {
 
 #[cfg(test)]
 mod tests {
+    use std::{thread::sleep, time::Duration};
+
     use super::*;
 
     #[test]
@@ -143,8 +209,7 @@ mod tests {
                 0,
             )
         ];
-        let fake_publisher = Arc::new(Mutex::new(PubSocket::new()));
-        let mut server = PrincipalServer::new(fake_publisher, None);
+        let mut server = PrincipalServer::new(None);
         for (zmq_s, response, exp_exit_code) in test_params {
             let zmq_msg = ZmqMessage::from(zmq_s);
             let ar = PrincipalRequest::try_from(zmq_msg)
@@ -154,5 +219,51 @@ mod tests {
             assert_eq!(response, resp);
             assert_eq!(exit_code, exp_exit_code);
         }
+    }
+
+    #[test]
+    fn test_register_agent_new(){
+        let mut server = PrincipalServer::new(None);
+        let agent_id = String::from("fake_id");
+        let (resp, exit_code) = server.register_agent(&agent_id);
+        server.live_agents.get(&agent_id).unwrap();
+        assert!(resp == ClientResponseMessage::Success);
+        assert!(exit_code == 0)
+    }
+
+    #[test]
+    fn test_register_agent_already_exists(){
+        let mut server = PrincipalServer::new(None);
+        let agent_id = String::from("fake_id");
+        server.register_agent(&agent_id);
+        let old_timestamp = server.live_agents.get(&agent_id).unwrap().last_ping_timestamp;
+        sleep(Duration::from_micros(10));
+        let (resp, exit_code) = server.register_agent(&agent_id);
+        let new_timestamp = server.live_agents.get(&agent_id).unwrap().last_ping_timestamp;
+        assert!(new_timestamp > old_timestamp);
+        assert!(resp == ClientResponseMessage::Success);
+        assert!(exit_code == 0)
+    }
+
+    #[test]
+    fn test_set_agent_at_capacity_happy(){
+        let mut server = PrincipalServer::new(None);
+        let agent_id = String::from("fake_id");
+        server.register_agent(&agent_id);
+        
+        let (resp, exit_code) = server.set_agent_at_capacity(&agent_id, true);
+        assert!(server.live_agents.get(&agent_id).unwrap().max_threads_reached == true);
+        assert!(resp == ClientResponseMessage::Success);
+        assert!(exit_code == 0)
+    }
+
+    #[test]
+    fn test_set_agent_at_capacity_unregistered(){
+        let mut server = PrincipalServer::new(None);
+        let agent_id = String::from("fake_id");
+        
+        let (resp, exit_code) = server.set_agent_at_capacity(&agent_id, true);
+        assert!(match resp {ClientResponseMessage::ClientError(_) => true, _ => false});
+        assert!(exit_code == 0)
     }
 }

@@ -4,7 +4,7 @@ use tokio::sync::{
     mpsc::Receiver,
     Mutex
 };
-use zeromq::{PubSocket, ReqSocket, Socket};
+use zeromq::{ReqSocket, Socket};
 
 use crate::{models::Task, utils::AsyncQueue};
 
@@ -17,13 +17,12 @@ use crate::{models::Task, utils::AsyncQueue};
 /// of the communication channel that will be used by the scheudler and event listeners
 /// 
 pub struct TaskRouter {
-    publisher: Arc<Mutex<PubSocket>>,
     queue: AsyncQueue<Task>
 }
 
 impl TaskRouter {
-    pub fn new(publisher: Arc<Mutex<PubSocket>>, task_router_queue: AsyncQueue<Task>) -> Self {
-        Self { publisher, queue: task_router_queue }
+    pub fn new(task_router_queue: AsyncQueue<Task>) -> Self {
+        Self { queue: task_router_queue }
     }
     /// Main loop listening on messages received from the scheduler and external 
     /// event listeners that send Tasks for execution
@@ -39,8 +38,7 @@ impl TaskRouter {
             // got task - find agents
         }
     }
-    /// Sends a message on the PUB socket to all agents and waits for a response from
-    /// the main rep server that will send the ID of the agent to send to
+    /// asks the server which agent is available
     fn find_agents(){}
 
 }

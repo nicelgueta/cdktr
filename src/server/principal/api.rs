@@ -10,7 +10,8 @@ use crate::{
 use diesel::prelude::*;
 
 use diesel::RunQueryDsl;
-use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
+use zeromq::{SocketRecv, SocketSend, ZmqMessage};
+
 
 pub fn create_new_task_payload(args: ZMQArgs) -> Result<NewScheduledTask, RepReqError> {
     // TODO: make obvious that we only care about the first arg and that it's JSON
@@ -120,6 +121,12 @@ pub fn handle_delete_task(
     }
 }
 
+fn get_agent_tcp_uri(agent_id: &String) -> String {
+    // TODO: Change to use datastore instead
+    // since these Ids will change
+    return format!("tcp://0.0.0.0:{}", agent_id)
+}
+
 pub async fn handle_run_task(
     agent_id: String, task: Task
 ) -> (ClientResponseMessage, usize) {
@@ -137,11 +144,6 @@ pub async fn handle_run_task(
     }
 }
 
-fn get_agent_tcp_uri(agent_id: &String) -> String {
-    // TODO: Change to use datastore instead
-    // since these Ids will change
-    return format!("tcp://0.0.0.0:{}", agent_id)
-}
 
 #[cfg(test)]
 mod tests {
