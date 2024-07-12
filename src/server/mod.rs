@@ -1,4 +1,3 @@
-
 pub mod agent;
 pub mod models;
 pub mod principal;
@@ -10,9 +9,7 @@ pub use traits::Server;
 mod tests {
     use zeromq::ZmqMessage;
 
-    use super::{
-        agent::AgentRequest, principal::PrincipalRequest,
-    };
+    use super::{agent::AgentRequest, principal::PrincipalRequest};
 
     #[test]
     fn test_agent_req_from_zmq_str() {

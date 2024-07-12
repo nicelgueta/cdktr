@@ -2,16 +2,16 @@
 /// utilities
 ///
 use crate::{
-    db::models::{NewScheduledTask, ScheduledTask}, 
-    macros::args_to_model, models::{Task, ZMQArgs}, 
+    db::models::{NewScheduledTask, ScheduledTask},
+    macros::args_to_model,
+    models::{Task, ZMQArgs},
     server::models::{ClientResponseMessage, RepReqError},
-    zmq_helpers::get_zmq_req
+    zmq_helpers::get_zmq_req,
 };
 use diesel::prelude::*;
 
 use diesel::RunQueryDsl;
 use zeromq::{SocketRecv, SocketSend, ZmqMessage};
-
 
 pub fn create_new_task_payload(args: ZMQArgs) -> Result<NewScheduledTask, RepReqError> {
     // TODO: make obvious that we only care about the first arg and that it's JSON
@@ -22,13 +22,16 @@ pub fn create_run_task_payload(mut args: ZMQArgs) -> Result<(String, Task), RepR
     let agent_id = if let Some(id) = args.next() {
         id
     } else {
-        return Err(RepReqError::ParseError("Missing first argument `agent_id`".to_string()))
+        return Err(RepReqError::ParseError(
+            "Missing first argument `agent_id`".to_string(),
+        ));
     };
-    match Task::try_from(args){
+    match Task::try_from(args) {
         Ok(task) => Ok((agent_id, task)),
-        Err(e) => Err(RepReqError::ParseError(
-            format!("Invalid task definition. Error: {}", e.to_string())
-        ))
+        Err(e) => Err(RepReqError::ParseError(format!(
+            "Invalid task definition. Error: {}",
+            e.to_string()
+        ))),
     }
 }
 
@@ -124,12 +127,10 @@ pub fn handle_delete_task(
 fn get_agent_tcp_uri(agent_id: &String) -> String {
     // TODO: Change to use datastore instead
     // since these Ids will change
-    return format!("tcp://0.0.0.0:{}", agent_id)
+    return format!("tcp://0.0.0.0:{}", agent_id);
 }
 
-pub async fn handle_run_task(
-    agent_id: String, task: Task
-) -> (ClientResponseMessage, usize) {
+pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMessage, usize) {
     let uri = get_agent_tcp_uri(&agent_id);
     let mut req = get_zmq_req(&uri).await;
     let task_str: String = task.into();
@@ -138,12 +139,15 @@ pub async fn handle_run_task(
     let response = req.recv().await;
     match response {
         Ok(msg) => (ClientResponseMessage::from(msg), 0),
-        Err(e) => (ClientResponseMessage::ServerError(
-            format!("Failed to process ZMQ message. Got: {}", e.to_string())
-        ), 0)
+        Err(e) => (
+            ClientResponseMessage::ServerError(format!(
+                "Failed to process ZMQ message. Got: {}",
+                e.to_string()
+            )),
+            0,
+        ),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -293,20 +297,19 @@ mod tests {
     async fn test_handle_run_task_happy() {
         // create ZMQ server to respond
         let join_h = tokio::spawn(async move {
-            let mut rep = get_zmq_rep(
-                "tcp://0.0.0.0:32145"
-            ).await;
-            let msg_recv_s = String::try_from(
-                rep.recv().await.unwrap()
-            ).unwrap();
+            let mut rep = get_zmq_rep("tcp://0.0.0.0:32145").await;
+            let msg_recv_s = String::try_from(rep.recv().await.unwrap()).unwrap();
             assert_eq!(&msg_recv_s, "RUN|PROCESS|echo|hello");
             rep.send(ZmqMessage::from("OK")).await
         });
 
         let agent_id = "32145".to_string();
-        let task = Task::try_from(ZMQArgs::from(
-            vec!["PROCESS".to_string(), "echo".to_string(), "hello".to_string()]
-        )).expect("Failed to create task for test");
+        let task = Task::try_from(ZMQArgs::from(vec![
+            "PROCESS".to_string(),
+            "echo".to_string(),
+            "hello".to_string(),
+        ]))
+        .expect("Failed to create task for test");
         let (resp, exit_code) = handle_run_task(agent_id, task).await;
         assert_eq!(exit_code, 0);
         match resp {

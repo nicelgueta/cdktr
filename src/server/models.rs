@@ -44,9 +44,10 @@ macro_rules! get_payload {
     ($args:expr, $variant:ident) => {
         match $args.next() {
             Some(v) => Self::$variant(v),
-            None => Self::ServerError(
-                format!("{} missing first argument: payload", stringify!($variant))
-            )
+            None => Self::ServerError(format!(
+                "{} missing first argument: payload",
+                stringify!($variant)
+            )),
         }
     };
 }
@@ -57,7 +58,7 @@ impl From<ZmqMessage> for ClientResponseMessage {
         let msg_type = if let Some(v) = args.next() {
             v
         } else {
-            return Self::ClientError("Cannot work with an empty message".to_string())
+            return Self::ClientError("Cannot work with an empty message".to_string());
         };
         match msg_type.as_str() {
             "CLIENTERROR" => get_payload!(&mut args, ClientError),
@@ -67,10 +68,8 @@ impl From<ZmqMessage> for ClientResponseMessage {
             "OK" => Self::Success,
             "SUCCESS" => get_payload!(&mut args, SuccessWithPayload),
             "HEARTBEAT" => get_payload!(&mut args, Heartbeat),
-            mt => Self::ClientError(
-                format!("Unrecognised message type: {}", mt)
-            )
-        }   
+            mt => Self::ClientError(format!("Unrecognised message type: {}", mt)),
+        }
     }
 }
 

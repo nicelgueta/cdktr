@@ -45,11 +45,11 @@ impl TryFrom<ZmqMessage> for PubZMQMessage {
         let msg_type = if let Some(token) = args.next() {
             token
         } else {
-            return Err(exceptions::ZMQParseError::InvalidMessageType)
+            return Err(exceptions::ZMQParseError::InvalidMessageType);
         };
         match msg_type.as_str() {
             "TASKDEF" => Ok(Self::TaskDef(Task::try_from(args)?)),
-            _ => Err(exceptions::ZMQParseError::InvalidTaskType)
+            _ => Err(exceptions::ZMQParseError::InvalidTaskType),
         }
     }
 }

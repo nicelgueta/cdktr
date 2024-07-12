@@ -1,7 +1,5 @@
 use std::sync::Arc;
-use tokio::sync::{
-    Mutex,
-};
+use tokio::sync::Mutex;
 use zeromq::{PubSocket, Socket};
 
 use crate::{
@@ -79,15 +77,19 @@ impl Hub {
     ) {
         match self.instance_type {
             InstanceType::PRINCIPAL => {
-
                 // Create the main task queue for the TaskRouter which multiple
                 // event listeners can add to
                 let task_router_queue = AsyncQueue::new();
 
                 // create the scheduler (which impl the EventListener trait) thread that will poll the database
                 // and send task trigger messages to the main receiver that is passed
-                // to the task router                
-                spawn_scheduler(database_url.clone(), poll_interval_seconds, task_router_queue.clone()).await;
+                // to the task router
+                spawn_scheduler(
+                    database_url.clone(),
+                    poll_interval_seconds,
+                    task_router_queue.clone(),
+                )
+                .await;
 
                 // // start the task manager thread
                 // let pub_host_cl = pub_host.clone();
@@ -107,30 +109,24 @@ impl Hub {
                 };
 
                 // create the TaskRouter component which will wait for tasks in its queue
-                
+
                 // start REP/REQ server for principal
-                let mut principal_server =
-                    PrincipalServer::new(database_url);
+                let mut principal_server = PrincipalServer::new(database_url);
                 principal_server
                     .start(&pub_host_cl, server_port)
                     .await
                     .expect("CDKTR: Unable to start client server");
             }
             InstanceType::AGENT => {
-                // Create the task queue that will be passed to both the task manager and the 
+                // Create the task queue that will be passed to both the task manager and the
                 // server.
                 let main_task_queue = AsyncQueue::new();
 
                 let mut agent_server = AgentServer::new(main_task_queue.clone());
                 loop {
                     let task_q_cl = main_task_queue.clone();
-                    let tm_task = spawn_tm(
-                        instance_id.clone(),
-                        max_tm_threads,
-                        task_q_cl,
-                    )
-                    .await;
-                
+                    let tm_task = spawn_tm(instance_id.clone(), max_tm_threads, task_q_cl).await;
+
                     // start REP/REQ server for agent
                     let agent_loop_exit_code = agent_server
                         .start(&pub_host, server_port)

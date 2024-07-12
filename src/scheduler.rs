@@ -4,9 +4,9 @@ use crate::db::{
     models::{ScheduledTask, ToTask},
 };
 use crate::models::traits::EventListener;
+use crate::models::Task;
 use crate::utils::AsyncQueue;
 use async_trait::async_trait;
-use crate::models::Task;
 use chrono::Utc;
 use cron::Schedule;
 use std::str::FromStr;

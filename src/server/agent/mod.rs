@@ -1,4 +1,7 @@
-use crate::{models::{Task, ZMQArgs}, utils::AsyncQueue};
+use crate::{
+    models::{Task, ZMQArgs},
+    utils::AsyncQueue,
+};
 use async_trait::async_trait;
 use zeromq::ZmqMessage;
 mod api;
@@ -29,9 +32,7 @@ impl TryFrom<ZmqMessage> for AgentRequest {
         let msg_type = if let Some(token) = args.next() {
             token
         } else {
-            return Err(RepReqError::ParseError(
-                format!("Empty message")
-            ))
+            return Err(RepReqError::ParseError(format!("Empty message")));
         };
         match msg_type.as_str() {
             // "GET_TASKS" => Ok(Self::GetTasks),
@@ -43,7 +44,7 @@ impl TryFrom<ZmqMessage> for AgentRequest {
                     return Err(RepReqError::new(
                         1,
                         "RECONNECT command requires 1 argument: publisher_id".to_string(),
-                    ))
+                    ));
                 };
                 if pub_id.len() == 0 {
                     Err(RepReqError::new(
@@ -53,7 +54,7 @@ impl TryFrom<ZmqMessage> for AgentRequest {
                 } else {
                     Ok(Self::Reconnect(pub_id))
                 }
-            },
+            }
             "HEARTBEAT" => Ok(Self::Heartbeat),
             "RUN" => Ok(Self::Run(api::create_task_run_payload(args)?)),
             _ => Err(RepReqError::new(
