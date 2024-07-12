@@ -41,7 +41,7 @@ impl ToTask for ScheduledTask {
     }
 }
 
-#[derive(Insertable, Deserialize, Serialize)]
+#[derive(Insertable, Deserialize, Serialize, Debug)]
 #[diesel(table_name = crate::db::schema::schedules)]
 pub struct NewScheduledTask {
     pub task_name: String,

@@ -51,8 +51,26 @@ pub fn delete_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
     } else {
         Err(RepReqError::new(
             1,
-            "No payload found for DELETETASK command. Requires task ID".to_string(),
+            "No payload found for DELETETASK command. Requires TASK_ID".to_string(),
         ))
+    }
+}
+
+pub fn agent_cap_reached(mut args: ZMQArgs) -> Result<(String, bool), RepReqError> {
+    let agent_id = if let Some(agent_id) = args.next() {
+        agent_id
+    } else {
+        return Err(RepReqError::ParseError("Missing AGENT_ID".to_string()))
+    };
+    if let Some(flag) = args.next() {
+        let r_as_bool = flag.parse();
+        if let Ok(b) = r_as_bool {
+            Ok((agent_id, b))
+        } else {
+            Err(RepReqError::ParseError("Could not parse arg REACHED as bool".to_string()))    
+        }
+    } else {
+        Err(RepReqError::ParseError("Missing bool: REACHED".to_string()))
     }
 }
 

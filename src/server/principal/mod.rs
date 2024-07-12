@@ -13,8 +13,9 @@ use api::{
     // zmq msgs
     create_new_task_payload,
     create_run_task_payload,
-
     delete_task_payload,
+    agent_cap_reached,
+
     // client handling
     handle_create_task,
     handle_delete_task,
@@ -28,6 +29,7 @@ use super::{
 };
 
 // TODO: make an extension of AgentRequest
+#[derive(Debug)]
 pub enum PrincipalRequest {
     /// Check server is online
     Ping,
@@ -168,6 +170,16 @@ impl TryFrom<ZmqMessage> for PrincipalRequest {
                 let (agent_id, task) = create_run_task_payload(args)?;
                 Ok(Self::RunTask(agent_id, task))
             }
+            "REGISTERAGENT" => {
+                match args.next() {
+                    Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
+                    None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string()))
+                }
+            }
+            "AGENTCAPREACHED" => {
+                let (agent_id, reached) = agent_cap_reached(args)?;
+                Ok(Self::AgentCapacityReached(agent_id, reached))
+            },
             _ => Err(RepReqError::new(
                 1,
                 format!("Unrecognised message type: {}", msg_type),
@@ -176,9 +188,12 @@ impl TryFrom<ZmqMessage> for PrincipalRequest {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use std::{thread::sleep, time::Duration};
+
+    use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
     use super::*;
 
@@ -189,16 +204,33 @@ mod tests {
             "LISTTASKS",
             r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#,
             "DELETETASK|1",
+            "AGENTRUN|5562|PROCESS|echo|hello",
+            "REGISTERAGENT|5562",
+            "AGENTCAPREACHED|5562|true"
         ];
         for zmq_s in all_happies {
             let zmq_msg = ZmqMessage::from(zmq_s);
             let res = PrincipalRequest::try_from(zmq_msg);
+            dbg!(&res);
             assert!(res.is_ok())
         }
     }
 
     #[tokio::test]
     async fn test_handle_cli_message_all_happy() {
+        // simulate receipt of a message from a client
+        tokio::spawn(async {
+            let uri = "tcp://0.0.0.0:5562";
+            let mut rep_socket = zeromq::RepSocket::new();
+            rep_socket
+                .bind(uri)
+                .await
+                .expect("Failed to connect")
+            ;
+            let _ = rep_socket.recv().await.unwrap();
+            rep_socket.send("OK".into()).await.expect("Failed to send response")
+
+        });
         let test_params = vec![
             ("PING", ClientResponseMessage::Pong, 0),
             (
@@ -212,6 +244,13 @@ mod tests {
                 0,
             ),
             ("DELETETASK|1", ClientResponseMessage::Success, 0),
+            (
+                "AGENTRUN|5562|PROCESS|echo|hello",
+                ClientResponseMessage::Success,
+                0,
+            ),
+            ("REGISTERAGENT|5562", ClientResponseMessage::Success, 0),
+            ("AGENTCAPREACHED|5562|true", ClientResponseMessage::Success, 0),
         ];
         let mut server = PrincipalServer::new(None);
         for (zmq_s, response, exp_exit_code) in test_params {
@@ -219,6 +258,7 @@ mod tests {
             let ar = PrincipalRequest::try_from(zmq_msg)
                 .expect("Should be able to unwrap the agent from ZMQ command");
             let (resp, exit_code) = server.handle_client_message(ar).await;
+            dbg!(&resp);
             println!("Testing {zmq_s}");
             assert_eq!(response, resp);
             assert_eq!(exit_code, exp_exit_code);
