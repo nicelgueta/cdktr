@@ -5,8 +5,8 @@ use crate::{
     db::models::{NewScheduledTask, ScheduledTask},
     macros::args_to_model,
     models::{Task, ZMQArgs},
-    server::models::{ClientResponseMessage, RepReqError},
-    zmq_helpers::get_zmq_req,
+    server::{agent::AgentRequest, models::{ClientResponseMessage, RepReqError}},
+    zmq_helpers::{get_agent_tcp_uri, get_zmq_req},
 };
 use diesel::prelude::*;
 
@@ -60,14 +60,16 @@ pub fn agent_cap_reached(mut args: ZMQArgs) -> Result<(String, bool), RepReqErro
     let agent_id = if let Some(agent_id) = args.next() {
         agent_id
     } else {
-        return Err(RepReqError::ParseError("Missing AGENT_ID".to_string()))
+        return Err(RepReqError::ParseError("Missing AGENT_ID".to_string()));
     };
     if let Some(flag) = args.next() {
         let r_as_bool = flag.parse();
         if let Ok(b) = r_as_bool {
             Ok((agent_id, b))
         } else {
-            Err(RepReqError::ParseError("Could not parse arg REACHED as bool".to_string()))    
+            Err(RepReqError::ParseError(
+                "Could not parse arg REACHED as bool".to_string(),
+            ))
         }
     } else {
         Err(RepReqError::ParseError("Missing bool: REACHED".to_string()))
@@ -142,18 +144,10 @@ pub fn handle_delete_task(
     }
 }
 
-fn get_agent_tcp_uri(agent_id: &String) -> String {
-    // TODO: Change to use datastore instead
-    // since these Ids will change
-    return format!("tcp://0.0.0.0:{}", agent_id);
-}
-
 pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMessage, usize) {
     let uri = get_agent_tcp_uri(&agent_id);
     let mut req = get_zmq_req(&uri).await;
-    let task_str: String = task.into();
-    let msg = format!("RUN|{}", task_str);
-    req.send(ZmqMessage::from(msg)).await.unwrap();
+    req.send(AgentRequest::Run(task).into()).await.unwrap();
     let response = req.recv().await;
     match response {
         Ok(msg) => (ClientResponseMessage::from(msg), 0),

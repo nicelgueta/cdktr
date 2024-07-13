@@ -1,14 +1,13 @@
 use crate::{
-    models::{Task, ZMQArgs},
-    utils::AsyncQueue,
+    db::get_connection, models::{Task, ZMQArgs}, utils::AsyncQueue, zmq_helpers::get_zmq_req
 };
 use async_trait::async_trait;
-use zeromq::ZmqMessage;
+use zeromq::{ZmqMessage, SocketSend};
 mod api;
 use super::{
-    models::{ClientResponseMessage, RepReqError},
-    traits::Server,
+    models::{ClientResponseMessage, RepReqError}, principal::PrincipalRequest, traits::Server
 };
+
 pub enum AgentRequest {
     /// Check the server is online
     Ping,
@@ -16,9 +15,6 @@ pub enum AgentRequest {
     /// Check the current publisher ID that the agent is subscribed to
     Heartbeat,
 
-    /// Command sent to instruct the agent to reset the publisher ID
-    /// and restart the instance
-    Reconnect(String),
 
     /// Action to run a specific task. This is the main hook used by the
     /// principal to send tasks for execution to the agents
@@ -37,24 +33,6 @@ impl TryFrom<ZmqMessage> for AgentRequest {
         match msg_type.as_str() {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
-            "RECONNECT" => {
-                let pub_id = if let Some(v) = args.next() {
-                    v
-                } else {
-                    return Err(RepReqError::new(
-                        1,
-                        "RECONNECT command requires 1 argument: publisher_id".to_string(),
-                    ));
-                };
-                if pub_id.len() == 0 {
-                    Err(RepReqError::new(
-                        1,
-                        "RECONNECT publisher_id cannot be blank".to_string(),
-                    ))
-                } else {
-                    Ok(Self::Reconnect(pub_id))
-                }
-            }
             "HEARTBEAT" => Ok(Self::Heartbeat),
             "RUN" => Ok(Self::Run(api::create_task_run_payload(args)?)),
             _ => Err(RepReqError::new(
@@ -65,20 +43,40 @@ impl TryFrom<ZmqMessage> for AgentRequest {
     }
 }
 
+impl Into<ZmqMessage> for AgentRequest {
+    fn into(self) -> ZmqMessage {
+        let zmq_s = match self {
+            Self::Heartbeat => "HEARTBEAT".to_string(),
+            Self::Ping => "PING".to_string(),
+            Self::Run(task) => {
+                let s: String = task.into();
+                format!("RUN|{s}")
+            }
+        };
+        ZmqMessage::from(zmq_s)
+    }
+}
+
 pub struct AgentServer {
     /// ID of the publisher currently subscribed to
-    publisher_id: String,
+    instance_id: String,
     task_queue: AsyncQueue<Task>,
 }
 
 impl AgentServer {
-    pub fn new(task_queue: AsyncQueue<Task>) -> Self {
+    pub fn new(instance_id: String, task_queue: AsyncQueue<Task>) -> Self {
         // start with an empty string - the first heartbeat from the principal
         //will correct this to the new value
         Self {
-            publisher_id: "DISCONNECTED".to_string(),
+            instance_id,
             task_queue,
         }
+    }
+    async fn register_with_principal(&self, principal_uri: &str) {
+        let mut req = get_zmq_req(principal_uri).await;
+        let msg = PrincipalRequest::RegisterAgent(self.instance_id.clone());
+        req.send(msg.into()).await;
+
     }
 }
 
@@ -91,13 +89,9 @@ impl Server<AgentRequest> for AgentServer {
         match cli_msg {
             AgentRequest::Ping => (ClientResponseMessage::Pong, 0),
             AgentRequest::Heartbeat => (
-                ClientResponseMessage::Heartbeat(self.publisher_id.clone()),
+                ClientResponseMessage::Heartbeat(self.instance_id.clone()),
                 0,
             ),
-            AgentRequest::Reconnect(pub_id) => {
-                self.publisher_id = pub_id;
-                (ClientResponseMessage::Success, 1)
-            }
             AgentRequest::Run(task) => {
                 self.task_queue.put(task).await;
                 (ClientResponseMessage::Success, 0)
@@ -112,39 +106,24 @@ mod tests {
 
     #[test]
     fn test_agent_request_from_zmq_str_all_happy() {
-        const ALL_HAPPIES: [&str; 3] = ["PING", "RECONNECT|newid", "HEARTBEAT"];
+        const ALL_HAPPIES: [&str; 2] = ["PING", "HEARTBEAT"];
         for zmq_s in ALL_HAPPIES {
             let res = AgentRequest::try_from(ZmqMessage::from(zmq_s));
             assert!(res.is_ok())
         }
     }
 
-    #[test]
-    fn test_reconnect_missing_param() {
-        let zs = "RECONNECT";
-        let res = AgentRequest::try_from(ZmqMessage::from(zs));
-        assert!(res.is_err())
-    }
-
-    #[test]
-    fn test_reconnect_blank_param() {
-        let zs = "RECONNECT|";
-        let res = AgentRequest::try_from(ZmqMessage::from(zs));
-        assert!(res.is_err())
-    }
-
     #[tokio::test]
     async fn test_handle_cli_message_all_happy() {
         let test_params = [
             ("PING", ClientResponseMessage::Pong, 0),
-            ("RECONNECT|newid", ClientResponseMessage::Success, 1),
             (
                 "HEARTBEAT",
                 ClientResponseMessage::Heartbeat("newid".to_string()),
                 0,
             ),
         ];
-        let mut server = AgentServer::new(AsyncQueue::new());
+        let mut server = AgentServer::new("newid".to_string(), AsyncQueue::new());
         for (zmq_s, response, exp_exit_code) in test_params {
             let ar = AgentRequest::try_from(ZmqMessage::from(zmq_s))
                 .expect("Should be able to unwrap the agent from ZMQ command");

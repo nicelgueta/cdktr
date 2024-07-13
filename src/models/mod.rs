@@ -95,6 +95,32 @@ impl From<Vec<String>> for ZMQArgs {
     }
 }
 
+#[derive(PartialEq, Debug)]
+pub struct AgentConfig {
+    max_threads_reached: bool,
+    last_ping_timestamp: i64,
+}
+impl AgentConfig {
+    pub fn new(max_threads_reached: bool, last_ping_timestamp: i64) -> Self {
+        Self {
+            max_threads_reached,
+            last_ping_timestamp,
+        }
+    }
+    pub fn update_timestamp(&mut self, new_ts: i64) {
+        self.last_ping_timestamp = new_ts
+    }
+    pub fn set_max_threads_reached(&mut self, reached: bool) {
+        self.max_threads_reached = reached
+    }
+    pub fn get_last_ping_ts(&self) -> i64 {
+        self.last_ping_timestamp
+    }
+    pub fn get_max_threads_reached(&self) -> bool {
+        self.max_threads_reached
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

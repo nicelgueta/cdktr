@@ -13,6 +13,7 @@ impl Into<ZMQArgs> for ZmqMessage {
     }
 }
 
+/// TODO: add a timeout feature on socket sends
 pub async fn get_zmq_req(endpoint_uri: &str) -> ReqSocket {
     let mut req = ReqSocket::new();
     req.connect(endpoint_uri)
@@ -27,4 +28,10 @@ pub async fn get_zmq_rep(endpoint_uri: &str) -> RepSocket {
         .await
         .expect("Failed to connect to REQ socket");
     rep
+}
+
+pub fn get_agent_tcp_uri(agent_id: &String) -> String {
+    // TODO: Change to use datastore instead
+    // since these Ids will change
+    return format!("tcp://0.0.0.0:{}", agent_id);
 }

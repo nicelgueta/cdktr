@@ -23,7 +23,6 @@ async fn main() {
     };
     let typ = InstanceType::from_str(&args[1]);
     let pub_host = "0.0.0.0".to_string();
-    let pub_port = 5561;
     let server_port: usize = args[2].parse().expect("PORT must be a valid number");
     let database_url: Option<String> = None;
     let poll_interval_seconds = 2;
@@ -39,7 +38,6 @@ async fn main() {
         database_url,
         poll_interval_seconds,
         pub_host,
-        pub_port,
         max_tm_threads,
         server_port,
     )

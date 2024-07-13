@@ -13,3 +13,15 @@ impl ZMQParseError {
         }
     }
 }
+
+#[derive(Debug, PartialEq)]
+pub enum GenericError {
+    MissingAgents,
+}
+impl GenericError {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::MissingAgents => String::from("No running agents found"),
+        }
+    }
+}

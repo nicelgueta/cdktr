@@ -9,6 +9,7 @@ use crate::utils::AsyncQueue;
 use async_trait::async_trait;
 use chrono::Utc;
 use cron::Schedule;
+use diesel::SqliteConnection;
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
@@ -26,7 +27,7 @@ use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 pub struct Scheduler {
-    database_url: Option<String>,
+    db_cnxn: Arc<Mutex<SqliteConnection>>,
     poll_interval_seconds: i32,
     task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
 }
@@ -35,14 +36,13 @@ pub struct Scheduler {
 impl EventListener<Task> for Scheduler {
     async fn start_listening(&mut self, out_queue: AsyncQueue<Task>) {
         let task_queue = self.task_queue.clone();
-        let database_url = self.database_url.clone();
         let poll_interval_seconds = self.poll_interval_seconds.clone();
-        let mut cnxn = get_connection(database_url.as_deref());
+        let db_cnxn_cl = self.db_cnxn.clone();
         tokio::spawn(async move {
             // None passed to kill_after to ensure the loop never ends
             poll_db_loop(
                 task_queue,
-                &mut cnxn,
+                db_cnxn_cl,
                 Utc::now().timestamp() as i32,
                 poll_interval_seconds,
                 None,
@@ -55,9 +55,9 @@ impl EventListener<Task> for Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(database_url: Option<String>, poll_interval_seconds: i32) -> Self {
+    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>>, poll_interval_seconds: i32) -> Self {
         Self {
-            database_url,
+            db_cnxn,
             poll_interval_seconds,
             task_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
@@ -65,31 +65,33 @@ impl Scheduler {
 
     async fn main_loop(&mut self, mut out_queue: AsyncQueue<Task>) {
         loop {
-            {
-                let internal_task_q = self.task_queue.lock().await;
-                while !first_task_is_ready(&*internal_task_q) {
-                    // just hang while we wait for the first task to be ready to send
-                    // to TM
+            let first_task_r = {
+                let mut internal_task_q = self.task_queue.lock().await;
+                internal_task_q.pop_front()
+            };
+            let sched_task = match first_task_r {
+                Some(sched_task) => {
+                    if first_task_is_ready(&sched_task) {
+                        sched_task
+                    } else {
+                        sleep(Duration::from_millis(10)).await;
+                        continue
+                    }
+                },
+                None => {
                     sleep(Duration::from_millis(10)).await;
+                    continue
                 }
-            }
-            {
-                let sched_task = self
-                    .task_queue
-                    .lock()
-                    .await
-                    .pop_front()
-                    .expect("Unable to find a task at the front of the queue");
-
-                let task = sched_task.to_task();
-                out_queue.put(task).await
-            }
+            };
+            let task = sched_task.to_task();
+            println!("SCHEDULER: found task - adding to out queue");
+            out_queue.put(task).await
         }
     }
 }
 async fn poll_db_loop(
     task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
-    cnxn: &mut diesel::SqliteConnection,
+    db_cnxn: Arc<Mutex<SqliteConnection>>,
     start_timestamp: i32,
     poll_interval_seconds: i32,
     kill_after: Option<i32>,
@@ -108,13 +110,17 @@ async fn poll_db_loop(
         };
         let secs = Duration::from_secs(poll_interval_seconds as u64);
         thread::sleep(secs);
-        poll_db(
-            task_queue.clone(),
-            cnxn,
-            current_timestamp,
-            poll_interval_seconds,
-        )
-        .await;
+        println!("Waiting");
+        {
+            let mut cnxn = db_cnxn.lock().await;
+            poll_db(
+                task_queue.clone(),
+                &mut cnxn,
+                current_timestamp,
+                poll_interval_seconds,
+            )
+            .await;
+        }
         current_timestamp += poll_interval_seconds as i32;
     }
     println!("Polling loop has ended");
@@ -126,12 +132,13 @@ async fn poll_db(
     poll_interval_seconds: i32,
 ) {
     let scheds = get_queueable_schedules(cnxn, current_timestamp, poll_interval_seconds);
+    dbg!(&scheds);
     if scheds.len() < 1 {
         return;
     } else {
-        let mut task_mutex = task_queue.lock().await;
+        let mut task_q_mutex = task_queue.lock().await;
         for task in scheds {
-            (*task_mutex).push_back(task.clone());
+            (*task_q_mutex).push_back(task.clone());
             match &task.cron {
                 Some(cron) => {
                     let schedule = Schedule::from_str(cron).unwrap();
@@ -147,13 +154,8 @@ async fn poll_db(
     }
 }
 
-fn first_task_is_ready(task_q: &VecDeque<ScheduledTask>) -> bool {
-    if (task_q).len() == 0 {
-        false
-    } else {
-        let first_task = &task_q[0];
-        (Utc::now().timestamp() as i32) >= first_task.next_run_timestamp
-    }
+fn first_task_is_ready(first_task: &ScheduledTask) -> bool {
+    (Utc::now().timestamp() as i32) >= first_task.next_run_timestamp
 }
 
 #[cfg(test)]
@@ -221,7 +223,7 @@ mod tests {
             q.push_back(task);
         }
 
-        assert!(first_task_is_ready(&q));
+        assert!(first_task_is_ready(&q.pop_front().unwrap()));
     }
 
     #[tokio::test]
@@ -345,7 +347,7 @@ mod tests {
         // runn the test
         poll_db_loop(
             task_queue.clone(),
-            &mut cnxn,
+            Arc::new(Mutex::new(cnxn)),
             curr,
             poll_interval_seconds,
             Some(3),

@@ -1,13 +1,9 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
+
 use tokio::sync::Mutex;
-use zeromq::{PubSocket, Socket};
 
 use crate::{
-    models::{traits::EventListener, Task},
-    scheduler,
-    server::{agent::AgentServer, principal::PrincipalServer, Server},
-    taskmanager,
-    utils::AsyncQueue,
+    db::get_connection, models::{traits::EventListener, AgentConfig, Task}, scheduler, server::{agent::AgentServer, principal::PrincipalServer, Server}, task_router::TaskRouter, taskmanager, utils::AsyncQueue
 };
 
 pub enum InstanceType {
@@ -43,27 +39,35 @@ async fn spawn_tm(
 
 /// Spawns the Scheduler in a separate coroutine
 async fn spawn_scheduler(
-    database_url: Option<String>,
+    db_cnxn: Arc<Mutex<diesel::SqliteConnection>>,
     poll_interval_seconds: i32,
     task_router_queue: AsyncQueue<Task>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut sched = scheduler::Scheduler::new(database_url, poll_interval_seconds);
+        let mut sched = scheduler::Scheduler::new(db_cnxn, poll_interval_seconds);
         sched.start_listening(task_router_queue).await
     })
 }
 
+async fn spawn_task_router(
+    task_router_queue: AsyncQueue<Task>,
+    live_agents: Arc<Mutex<HashMap<String, AgentConfig>>>
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(
+        async move {
+            let mut task_router = TaskRouter::new(task_router_queue, live_agents);
+            task_router.start().await
+        }
+    )
+}
+
 pub struct Hub {
-    publisher: Arc<Mutex<PubSocket>>,
     instance_type: InstanceType,
 }
 
 impl Hub {
     pub fn from_instance_type(instance_type: InstanceType) -> Self {
-        Self {
-            publisher: Arc::new(Mutex::new(PubSocket::new())),
-            instance_type,
-        }
+        Self { instance_type }
     }
     pub async fn start(
         &mut self,
@@ -71,12 +75,14 @@ impl Hub {
         database_url: Option<String>,
         poll_interval_seconds: i32,
         pub_host: String,
-        pub_port: usize,
         max_tm_threads: usize,
         server_port: usize,
     ) {
         match self.instance_type {
             InstanceType::PRINCIPAL => {
+                let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
+                let mut principal_server = PrincipalServer::new(db_cnxn.clone());
+
                 // Create the main task queue for the TaskRouter which multiple
                 // event listeners can add to
                 let task_router_queue = AsyncQueue::new();
@@ -85,35 +91,22 @@ impl Hub {
                 // and send task trigger messages to the main receiver that is passed
                 // to the task router
                 spawn_scheduler(
-                    database_url.clone(),
+                    db_cnxn,
                     poll_interval_seconds,
                     task_router_queue.clone(),
                 )
                 .await;
-
-                // // start the task manager thread
-                // let pub_host_cl = pub_host.clone();
-                // spawn_tm(instance_id, pub_host_cl, pub_port, max_tm_threads).await;
-
-                let pub_host_cl = pub_host.clone();
-                // bind the publisher to its TCP port
-                {
-                    let mut pub_mut = self.publisher.lock().await;
-                    pub_mut
-                        .bind(&format!("tcp://{}:{}", &pub_host_cl, pub_port))
-                        .await
-                        .expect(&format!(
-                            "Unable to create publisher on {}:{}",
-                            &pub_host_cl, pub_port
-                        ));
-                };
-
+                let live_agents_arc = principal_server.get_live_agents_ptr();
+                
                 // create the TaskRouter component which will wait for tasks in its queue
+                spawn_task_router(
+                    task_router_queue, 
+                    live_agents_arc
+                ).await;
 
-                // start REP/REQ server for principal
-                let mut principal_server = PrincipalServer::new(database_url);
+                // start REP/REQ server loop for principal
                 principal_server
-                    .start(&pub_host_cl, server_port)
+                    .start(&pub_host, server_port)
                     .await
                     .expect("CDKTR: Unable to start client server");
             }
@@ -122,7 +115,7 @@ impl Hub {
                 // server.
                 let main_task_queue = AsyncQueue::new();
 
-                let mut agent_server = AgentServer::new(main_task_queue.clone());
+                let mut agent_server = AgentServer::new(instance_id.clone(), main_task_queue.clone());
                 loop {
                     let task_q_cl = main_task_queue.clone();
                     let tm_task = spawn_tm(instance_id.clone(), max_tm_threads, task_q_cl).await;
