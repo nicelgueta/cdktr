@@ -150,7 +150,7 @@ pub fn handle_delete_task(
 }
 
 pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMessage, usize) {
-    let req_r = get_req_timeout(&agent_id, Duration::from_micros(500)).await;
+    let req_r = get_req_timeout(&agent_id, Duration::from_secs(1)).await;
     let mut req = if let Ok(req) = req_r {
         req
     } else {
@@ -179,6 +179,7 @@ mod tests {
     use super::*;
     use crate::zmq_helpers::get_zmq_rep;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+    use tokio::time::sleep;
     use zeromq::ZmqMessage;
     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
@@ -327,7 +328,7 @@ mod tests {
             assert_eq!(&msg_recv_s, "RUN|PROCESS|echo|hello");
             rep.send(ZmqMessage::from("OK")).await
         });
-
+        sleep(Duration::from_millis(1)).await;
         let agent_id = "32145".to_string();
         let task = Task::try_from(ZMQArgs::from(vec![
             "PROCESS".to_string(),

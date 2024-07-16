@@ -245,9 +245,9 @@ mod tests {
             "LISTTASKS",
             r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#,
             "DELETETASK|1",
-            "AGENTRUN|5562|PROCESS|echo|hello",
-            "REGISTERAGENT|5562",
-            "AGENTCAPREACHED|5562|true",
+            "AGENTRUN|8999|PROCESS|echo|hello",
+            "REGISTERAGENT|8999",
+            "AGENTCAPREACHED|8999|true",
         ];
         for zmq_s in all_happies {
             let zmq_msg = ZmqMessage::from(zmq_s);
@@ -284,13 +284,13 @@ mod tests {
             ),
             ("DELETETASK|1", ClientResponseMessage::Success, 0),
             (
-                "AGENTRUN|5562|PROCESS|echo|hello",
+                "AGENTRUN|8999|PROCESS|echo|hello",
                 ClientResponseMessage::Success,
                 0,
             ),
-            ("REGISTERAGENT|5562", ClientResponseMessage::Success, 0),
+            ("REGISTERAGENT|8999", ClientResponseMessage::Success, 0),
             (
-                "AGENTCAPREACHED|5562|true",
+                "AGENTCAPREACHED|8999|true",
                 ClientResponseMessage::Success,
                 0,
             ),
