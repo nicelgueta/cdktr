@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 /// API module to provide all of the principal message handling
 /// utilities
 ///
@@ -9,7 +11,7 @@ use crate::{
         agent::AgentRequest,
         models::{ClientResponseMessage, RepReqError},
     },
-    zmq_helpers::{get_agent_tcp_uri, get_zmq_req},
+    zmq_helpers::{get_agent_tcp_uri, get_req_timeout, get_zmq_req},
 };
 use diesel::prelude::*;
 
@@ -148,8 +150,12 @@ pub fn handle_delete_task(
 }
 
 pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMessage, usize) {
-    let uri = get_agent_tcp_uri(&agent_id);
-    let mut req = get_zmq_req(&uri).await;
+    let req_r = get_req_timeout(&agent_id, Duration::from_micros(500)).await;
+    let mut req = if let Ok(req) = req_r {
+        req
+    } else {
+        return (ClientResponseMessage::Unprocessable(format!("Agent {} is not reachable", &agent_id)), 0)
+    };
     req.send(AgentRequest::Run(task).into()).await.unwrap();
     let response = req.recv().await;
     match response {
@@ -168,9 +174,9 @@ pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMes
 mod tests {
 
     use super::*;
-    use zeromq::ZmqMessage;
     use crate::zmq_helpers::get_zmq_rep;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+    use zeromq::ZmqMessage;
     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
     fn setup_db() -> SqliteConnection {

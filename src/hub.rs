@@ -9,7 +9,8 @@ use crate::{
     server::{agent::AgentServer, principal::PrincipalServer, Server},
     task_router::TaskRouter,
     taskmanager,
-    utils::AsyncQueue, zmq_helpers::get_agent_tcp_uri,
+    utils::AsyncQueue,
+    zmq_helpers::get_agent_tcp_uri,
 };
 
 pub enum InstanceType {
@@ -85,7 +86,7 @@ impl Hub {
         match self.instance_type {
             InstanceType::PRINCIPAL => {
                 let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
-                let mut principal_server = PrincipalServer::new(db_cnxn.clone());
+                let mut principal_server = PrincipalServer::new(db_cnxn.clone(), instance_id.clone());
 
                 // Create the main task queue for the TaskRouter which multiple
                 // event listeners can add to
@@ -115,7 +116,9 @@ impl Hub {
                     AgentServer::new(instance_id.clone(), main_task_queue.clone());
 
                 // TODO: currently hardcoded principal - change to a CLI arg
-                agent_server.register_with_principal(&get_agent_tcp_uri(&"5562".to_string())).await;
+                agent_server
+                    .register_with_principal(&get_agent_tcp_uri(&"5562".to_string()))
+                    .await;
                 loop {
                     let task_q_cl = main_task_queue.clone();
                     let tm_task = spawn_tm(instance_id.clone(), max_tm_threads, task_q_cl).await;

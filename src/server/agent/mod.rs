@@ -79,7 +79,9 @@ impl AgentServer {
     pub async fn register_with_principal(&self, principal_uri: &str) {
         let mut req = get_zmq_req(principal_uri).await;
         let msg = PrincipalRequest::RegisterAgent(self.instance_id.clone());
-        req.send(msg.into()).await.expect("Failed to connect to principal");
+        req.send(msg.into())
+            .await
+            .expect("Failed to connect to principal");
     }
 }
 

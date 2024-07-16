@@ -62,15 +62,17 @@ pub enum PrincipalRequest {
 }
 
 pub struct PrincipalServer {
+    instance_id: String,
     db_cnxn: Arc<Mutex<SqliteConnection>>,
     live_agents: Arc<Mutex<HashMap<String, AgentConfig>>>,
 }
 
 impl PrincipalServer {
-    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>>) -> Self {
+    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>>, instance_id: String) -> Self {
         Self {
             db_cnxn,
             live_agents: Arc::new(Mutex::new(HashMap::new())),
+            instance_id
         }
     }
 
@@ -144,7 +146,13 @@ impl Server<PrincipalRequest> for PrincipalServer {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 handle_delete_task(&mut db_cnxn, task_id)
             }
-            PrincipalRequest::RunTask(agent_id, task) => handle_run_task(agent_id, task).await,
+            PrincipalRequest::RunTask(agent_id, task) => {
+                if agent_id == self.instance_id {
+                    (ClientResponseMessage::ClientError("Cannot send an AGENTRUN to a PRINCIPAL instance".to_string()), 0)
+                } else {
+                    handle_run_task(agent_id, task).await
+                }
+            },
             PrincipalRequest::RegisterAgent(agent_id) => self.register_agent(&agent_id).await,
             PrincipalRequest::AgentCapacityReached(agent_id, reached) => {
                 self.set_agent_at_capacity(&agent_id, reached).await
@@ -282,7 +290,7 @@ mod tests {
                 0,
             ),
         ];
-        let mut server = PrincipalServer::new(get_db());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
         for (zmq_s, response, exp_exit_code) in test_params {
             let zmq_msg = ZmqMessage::from(zmq_s);
             let ar = PrincipalRequest::try_from(zmq_msg)
@@ -297,7 +305,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_new() {
-        let mut server = PrincipalServer::new(get_db());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
         let agent_id = String::from("fake_id");
         let (resp, exit_code) = server.register_agent(&agent_id).await;
         {
@@ -309,7 +317,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_already_exists() {
-        let mut server = PrincipalServer::new(get_db());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
         let agent_id = String::from("fake_id");
         server.register_agent(&agent_id).await;
         let old_timestamp = {
@@ -339,7 +347,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_agent_at_capacity_happy() {
-        let mut server = PrincipalServer::new(get_db());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
         let agent_id = String::from("fake_id");
         server.register_agent(&agent_id).await;
 
@@ -360,7 +368,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_agent_at_capacity_unregistered() {
-        let mut server = PrincipalServer::new(get_db());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
         let agent_id = String::from("fake_id");
 
         let (resp, exit_code) = server.set_agent_at_capacity(&agent_id, true).await;
