@@ -1,11 +1,16 @@
 use crate::{
-    db::get_connection, models::{Task, ZMQArgs}, utils::AsyncQueue, zmq_helpers::get_zmq_req
+    db::get_connection,
+    models::{Task, ZMQArgs},
+    utils::AsyncQueue,
+    zmq_helpers::get_zmq_req,
 };
 use async_trait::async_trait;
-use zeromq::{ZmqMessage, SocketSend};
+use zeromq::{SocketSend, ZmqMessage};
 mod api;
 use super::{
-    models::{ClientResponseMessage, RepReqError}, principal::PrincipalRequest, traits::Server
+    models::{ClientResponseMessage, RepReqError},
+    principal::PrincipalRequest,
+    traits::Server,
 };
 
 pub enum AgentRequest {
@@ -14,7 +19,6 @@ pub enum AgentRequest {
 
     /// Check the current publisher ID that the agent is subscribed to
     Heartbeat,
-
 
     /// Action to run a specific task. This is the main hook used by the
     /// principal to send tasks for execution to the agents
@@ -72,11 +76,10 @@ impl AgentServer {
             task_queue,
         }
     }
-    async fn register_with_principal(&self, principal_uri: &str) {
+    pub async fn register_with_principal(&self, principal_uri: &str) {
         let mut req = get_zmq_req(principal_uri).await;
         let msg = PrincipalRequest::RegisterAgent(self.instance_id.clone());
-        req.send(msg.into()).await;
-
+        req.send(msg.into()).await.expect("Failed to connect to principal");
     }
 }
 

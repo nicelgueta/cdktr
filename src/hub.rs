@@ -3,7 +3,13 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 use crate::{
-    db::get_connection, models::{traits::EventListener, AgentConfig, Task}, scheduler, server::{agent::AgentServer, principal::PrincipalServer, Server}, task_router::TaskRouter, taskmanager, utils::AsyncQueue
+    db::get_connection,
+    models::{traits::EventListener, AgentConfig, Task},
+    scheduler,
+    server::{agent::AgentServer, principal::PrincipalServer, Server},
+    task_router::TaskRouter,
+    taskmanager,
+    utils::AsyncQueue, zmq_helpers::get_agent_tcp_uri,
 };
 
 pub enum InstanceType {
@@ -51,14 +57,12 @@ async fn spawn_scheduler(
 
 async fn spawn_task_router(
     task_router_queue: AsyncQueue<Task>,
-    live_agents: Arc<Mutex<HashMap<String, AgentConfig>>>
+    live_agents: Arc<Mutex<HashMap<String, AgentConfig>>>,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(
-        async move {
-            let mut task_router = TaskRouter::new(task_router_queue, live_agents);
-            task_router.start().await
-        }
-    )
+    tokio::spawn(async move {
+        let mut task_router = TaskRouter::new(task_router_queue, live_agents);
+        task_router.start().await
+    })
 }
 
 pub struct Hub {
@@ -90,19 +94,11 @@ impl Hub {
                 // create the scheduler (which impl the EventListener trait) thread that will poll the database
                 // and send task trigger messages to the main receiver that is passed
                 // to the task router
-                spawn_scheduler(
-                    db_cnxn,
-                    poll_interval_seconds,
-                    task_router_queue.clone(),
-                )
-                .await;
+                spawn_scheduler(db_cnxn, poll_interval_seconds, task_router_queue.clone()).await;
                 let live_agents_arc = principal_server.get_live_agents_ptr();
-                
+
                 // create the TaskRouter component which will wait for tasks in its queue
-                spawn_task_router(
-                    task_router_queue, 
-                    live_agents_arc
-                ).await;
+                spawn_task_router(task_router_queue, live_agents_arc).await;
 
                 // start REP/REQ server loop for principal
                 principal_server
@@ -115,7 +111,11 @@ impl Hub {
                 // server.
                 let main_task_queue = AsyncQueue::new();
 
-                let mut agent_server = AgentServer::new(instance_id.clone(), main_task_queue.clone());
+                let mut agent_server =
+                    AgentServer::new(instance_id.clone(), main_task_queue.clone());
+
+                // TODO: currently hardcoded principal - change to a CLI arg
+                agent_server.register_with_principal(&get_agent_tcp_uri(&"5562".to_string())).await;
                 loop {
                     let task_q_cl = main_task_queue.clone();
                     let tm_task = spawn_tm(instance_id.clone(), max_tm_threads, task_q_cl).await;

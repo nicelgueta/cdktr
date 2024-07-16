@@ -58,6 +58,7 @@ impl TaskRouter {
                     GenericError::MissingAgents => {
                         println!("Failed to execute task as no agents are running")
                     }
+                    _ => panic!("Critical error - expected MissingAgents error")
                 },
             }
         }

@@ -5,13 +5,16 @@ use crate::{
     db::models::{NewScheduledTask, ScheduledTask},
     macros::args_to_model,
     models::{Task, ZMQArgs},
-    server::{agent::AgentRequest, models::{ClientResponseMessage, RepReqError}},
+    server::{
+        agent::AgentRequest,
+        models::{ClientResponseMessage, RepReqError},
+    },
     zmq_helpers::{get_agent_tcp_uri, get_zmq_req},
 };
 use diesel::prelude::*;
 
 use diesel::RunQueryDsl;
-use zeromq::{SocketRecv, SocketSend, ZmqMessage};
+use zeromq::{SocketRecv, SocketSend};
 
 pub fn create_new_task_payload(args: ZMQArgs) -> Result<NewScheduledTask, RepReqError> {
     // TODO: make obvious that we only care about the first arg and that it's JSON
@@ -165,6 +168,7 @@ pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMes
 mod tests {
 
     use super::*;
+    use zeromq::ZmqMessage;
     use crate::zmq_helpers::get_zmq_rep;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");

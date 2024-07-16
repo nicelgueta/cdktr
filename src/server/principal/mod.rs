@@ -4,10 +4,10 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use diesel::SqliteConnection;
 use core::task;
-use std::{collections::HashMap, fmt::format};
+use diesel::SqliteConnection;
 use std::sync::Arc;
+use std::{collections::HashMap, fmt::format};
 use tokio::sync::Mutex;
 use zeromq::ZmqMessage;
 mod api;
@@ -67,7 +67,7 @@ pub struct PrincipalServer {
 }
 
 impl PrincipalServer {
-    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>> ) -> Self {
+    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>>) -> Self {
         Self {
             db_cnxn,
             live_agents: Arc::new(Mutex::new(HashMap::new())),
@@ -133,19 +133,17 @@ impl Server<PrincipalRequest> for PrincipalServer {
         match cli_msg {
             PrincipalRequest::Ping => (ClientResponseMessage::Pong, 0),
             PrincipalRequest::CreateTask(new_task) => {
-                {
-                    let mut db_cnxn = self.db_cnxn.lock().await;
-                    handle_create_task(&mut db_cnxn, new_task)
-                }
+                let mut db_cnxn = self.db_cnxn.lock().await;
+                handle_create_task(&mut db_cnxn, new_task)
             }
             PrincipalRequest::ListTasks => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 handle_list_tasks(&mut db_cnxn)
-            },
+            }
             PrincipalRequest::DeleteTask(task_id) => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 handle_delete_task(&mut db_cnxn, task_id)
-            },
+            }
             PrincipalRequest::RunTask(agent_id, task) => handle_run_task(agent_id, task).await,
             PrincipalRequest::RegisterAgent(agent_id) => self.register_agent(&agent_id).await,
             PrincipalRequest::AgentCapacityReached(agent_id, reached) => {
@@ -195,17 +193,20 @@ impl Into<ZmqMessage> for PrincipalRequest {
         let zmq_s = match self {
             Self::Ping => "PING".to_string(),
             Self::CreateTask(task) => {
-                let task_json = serde_json::to_string(&task).expect("Unable to convert NewScheduledTask to JSON");
+                let task_json = serde_json::to_string(&task)
+                    .expect("Unable to convert NewScheduledTask to JSON");
                 format!("CREATETASK|{}", &task_json)
-            },
+            }
             Self::RunTask(agent_id, task) => {
                 let task_str: String = task.into();
                 format!("AGENTRUN|{agent_id}|{task_str}")
-            },
+            }
             Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
             Self::ListTasks => "LISTTASKS".to_string(),
             Self::RegisterAgent(agent_id) => format!("REGISTERAGENT|{agent_id}"),
-            Self::AgentCapacityReached(agent_id, flag) => format!("AGENTCAPREACHED|{agent_id}|{flag}")
+            Self::AgentCapacityReached(agent_id, flag) => {
+                format!("AGENTCAPREACHED|{agent_id}|{flag}")
+            }
         };
         ZmqMessage::from(zmq_s)
     }
@@ -213,7 +214,7 @@ impl Into<ZmqMessage> for PrincipalRequest {
 
 #[cfg(test)]
 mod tests {
-    use std::{thread::sleep, time::Duration, sync::Arc};
+    use std::{sync::Arc, thread::sleep, time::Duration};
 
     use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 

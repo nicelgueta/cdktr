@@ -17,11 +17,17 @@ impl ZMQParseError {
 #[derive(Debug, PartialEq)]
 pub enum GenericError {
     MissingAgents,
+    TimeoutError,
+    ZMQParseError(ZMQParseError),
+    RuntimeError(String)
 }
 impl GenericError {
     pub fn to_string(&self) -> String {
         match self {
             Self::MissingAgents => String::from("No running agents found"),
+            Self::TimeoutError => String::from("Call timed out"),
+            Self::ZMQParseError(zmq_e) => zmq_e.to_string(),
+            Self::RuntimeError(s) => s.clone()
         }
     }
 }

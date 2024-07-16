@@ -75,12 +75,12 @@ impl Scheduler {
                         sched_task
                     } else {
                         sleep(Duration::from_millis(10)).await;
-                        continue
+                        continue;
                     }
-                },
+                }
                 None => {
                     sleep(Duration::from_millis(10)).await;
-                    continue
+                    continue;
                 }
             };
             let task = sched_task.to_task();
@@ -110,7 +110,6 @@ async fn poll_db_loop(
         };
         let secs = Duration::from_secs(poll_interval_seconds as u64);
         thread::sleep(secs);
-        println!("Waiting");
         {
             let mut cnxn = db_cnxn.lock().await;
             poll_db(
@@ -132,7 +131,6 @@ async fn poll_db(
     poll_interval_seconds: i32,
 ) {
     let scheds = get_queueable_schedules(cnxn, current_timestamp, poll_interval_seconds);
-    dbg!(&scheds);
     if scheds.len() < 1 {
         return;
     } else {
