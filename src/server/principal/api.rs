@@ -154,7 +154,10 @@ pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMes
     let mut req = if let Ok(req) = req_r {
         req
     } else {
-        return (ClientResponseMessage::Unprocessable(format!("Agent {} is not reachable", &agent_id)), 0)
+        return (
+            ClientResponseMessage::Unprocessable(format!("Agent {} is not reachable", &agent_id)),
+            0,
+        );
     };
     req.send(AgentRequest::Run(task).into()).await.unwrap();
     let response = req.recv().await;

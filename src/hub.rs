@@ -86,7 +86,8 @@ impl Hub {
         match self.instance_type {
             InstanceType::PRINCIPAL => {
                 let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
-                let mut principal_server = PrincipalServer::new(db_cnxn.clone(), instance_id.clone());
+                let mut principal_server =
+                    PrincipalServer::new(db_cnxn.clone(), instance_id.clone());
 
                 // Create the main task queue for the TaskRouter which multiple
                 // event listeners can add to

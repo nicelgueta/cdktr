@@ -72,7 +72,7 @@ impl PrincipalServer {
         Self {
             db_cnxn,
             live_agents: Arc::new(Mutex::new(HashMap::new())),
-            instance_id
+            instance_id,
         }
     }
 
@@ -148,11 +148,16 @@ impl Server<PrincipalRequest> for PrincipalServer {
             }
             PrincipalRequest::RunTask(agent_id, task) => {
                 if agent_id == self.instance_id {
-                    (ClientResponseMessage::ClientError("Cannot send an AGENTRUN to a PRINCIPAL instance".to_string()), 0)
+                    (
+                        ClientResponseMessage::ClientError(
+                            "Cannot send an AGENTRUN to a PRINCIPAL instance".to_string(),
+                        ),
+                        0,
+                    )
                 } else {
                     handle_run_task(agent_id, task).await
                 }
-            },
+            }
             PrincipalRequest::RegisterAgent(agent_id) => self.register_agent(&agent_id).await,
             PrincipalRequest::AgentCapacityReached(agent_id, reached) => {
                 self.set_agent_at_capacity(&agent_id, reached).await
@@ -256,7 +261,7 @@ mod tests {
     async fn test_handle_cli_message_all_happy() {
         // simulate receipt of a message from a client
         tokio::spawn(async {
-            let uri = "tcp://0.0.0.0:5562";
+            let uri = "tcp://0.0.0.0:8999";
             let mut rep_socket = zeromq::RepSocket::new();
             rep_socket.bind(uri).await.expect("Failed to connect");
             let _ = rep_socket.recv().await.unwrap();
