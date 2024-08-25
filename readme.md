@@ -1,6 +1,8 @@
 # CDKTR (conducktor)
 
-Super lightweight, distributed, terminal-based workflow orchestration engine for just about anything - built on ZeroMQ Think about it like a TUI for organised cron and event-triggered jobs across different systems.
+Super lightweight, distributed, terminal-based workflow orchestration engine for just about anything - built on ZeroMQ.
+
+Think about it like a TUI for organised cron and event-triggered jobs across different systems.
 Executors are spawned as separate processes to run flows in parallel. When a flow is triggered, the scheduler will look for an agent with available executors to run the flow and send the flow to that instance to be executed.
 
 ## Main Features
