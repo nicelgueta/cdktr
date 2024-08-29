@@ -14,3 +14,5 @@ Executors are spawned as separate processes to run flows in parallel. When a flo
 
 
 ## tbd
+
+This project has only just started out development-wise and still has many features to get to MVP.
