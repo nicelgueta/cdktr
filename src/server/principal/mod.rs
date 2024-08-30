@@ -61,6 +61,65 @@ pub enum PrincipalRequest {
     AgentCapacityReached(String, bool),
 }
 
+impl TryFrom<ZmqMessage> for PrincipalRequest {
+    type Error = RepReqError;
+    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
+        let mut args: ZMQArgs = value.into();
+        let msg_type = if let Some(token) = args.next() {
+            token
+        } else {
+            return Err(RepReqError::ParseError(format!("Empty message")));
+        };
+        match msg_type.as_str() {
+            // "GET_TASKS" => Ok(Self::GetTasks),
+            "PING" => Ok(Self::Ping),
+            "CREATETASK" => Ok(Self::CreateTask(create_new_task_payload(args)?)),
+            "LISTTASKS" => Ok(Self::ListTasks),
+            "DELETETASK" => Ok(Self::DeleteTask(delete_task_payload(args)?)),
+            "AGENTRUN" => {
+                let (agent_id, task) = create_run_task_payload(args)?;
+                Ok(Self::RunTask(agent_id, task))
+            }
+            "REGISTERAGENT" => match args.next() {
+                Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
+                None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
+            },
+            "AGENTCAPREACHED" => {
+                let (agent_id, reached) = agent_cap_reached(args)?;
+                Ok(Self::AgentCapacityReached(agent_id, reached))
+            }
+            _ => Err(RepReqError::new(
+                1,
+                format!("Unrecognised message type: {}", msg_type),
+            )),
+        }
+    }
+}
+
+impl Into<ZmqMessage> for PrincipalRequest {
+    fn into(self) -> ZmqMessage {
+        let zmq_s = match self {
+            Self::Ping => "PING".to_string(),
+            Self::CreateTask(task) => {
+                let task_json = serde_json::to_string(&task)
+                    .expect("Unable to convert NewScheduledTask to JSON");
+                format!("CREATETASK|{}", &task_json)
+            }
+            Self::RunTask(agent_id, task) => {
+                let task_str: String = task.into();
+                format!("AGENTRUN|{agent_id}|{task_str}")
+            }
+            Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
+            Self::ListTasks => "LISTTASKS".to_string(),
+            Self::RegisterAgent(agent_id) => format!("REGISTERAGENT|{agent_id}"),
+            Self::AgentCapacityReached(agent_id, flag) => {
+                format!("AGENTCAPREACHED|{agent_id}|{flag}")
+            }
+        };
+        ZmqMessage::from(zmq_s)
+    }
+}
+
 pub struct PrincipalServer {
     instance_id: String,
     db_cnxn: Arc<Mutex<SqliteConnection>>,
@@ -163,65 +222,6 @@ impl Server<PrincipalRequest> for PrincipalServer {
                 self.set_agent_at_capacity(&agent_id, reached).await
             }
         }
-    }
-}
-
-impl TryFrom<ZmqMessage> for PrincipalRequest {
-    type Error = RepReqError;
-    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
-        let mut args: ZMQArgs = value.into();
-        let msg_type = if let Some(token) = args.next() {
-            token
-        } else {
-            return Err(RepReqError::ParseError(format!("Empty message")));
-        };
-        match msg_type.as_str() {
-            // "GET_TASKS" => Ok(Self::GetTasks),
-            "PING" => Ok(Self::Ping),
-            "CREATETASK" => Ok(Self::CreateTask(create_new_task_payload(args)?)),
-            "LISTTASKS" => Ok(Self::ListTasks),
-            "DELETETASK" => Ok(Self::DeleteTask(delete_task_payload(args)?)),
-            "AGENTRUN" => {
-                let (agent_id, task) = create_run_task_payload(args)?;
-                Ok(Self::RunTask(agent_id, task))
-            }
-            "REGISTERAGENT" => match args.next() {
-                Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
-                None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
-            },
-            "AGENTCAPREACHED" => {
-                let (agent_id, reached) = agent_cap_reached(args)?;
-                Ok(Self::AgentCapacityReached(agent_id, reached))
-            }
-            _ => Err(RepReqError::new(
-                1,
-                format!("Unrecognised message type: {}", msg_type),
-            )),
-        }
-    }
-}
-
-impl Into<ZmqMessage> for PrincipalRequest {
-    fn into(self) -> ZmqMessage {
-        let zmq_s = match self {
-            Self::Ping => "PING".to_string(),
-            Self::CreateTask(task) => {
-                let task_json = serde_json::to_string(&task)
-                    .expect("Unable to convert NewScheduledTask to JSON");
-                format!("CREATETASK|{}", &task_json)
-            }
-            Self::RunTask(agent_id, task) => {
-                let task_str: String = task.into();
-                format!("AGENTRUN|{agent_id}|{task_str}")
-            }
-            Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
-            Self::ListTasks => "LISTTASKS".to_string(),
-            Self::RegisterAgent(agent_id) => format!("REGISTERAGENT|{agent_id}"),
-            Self::AgentCapacityReached(agent_id, flag) => {
-                format!("AGENTCAPREACHED|{agent_id}|{flag}")
-            }
-        };
-        ZmqMessage::from(zmq_s)
     }
 }
 
