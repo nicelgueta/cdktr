@@ -158,15 +158,15 @@ impl AgentPriorityQueue {
     }
     pub async fn push(&mut self, agent_meta: AgentMeta) {
         let agent_id = agent_meta.agent_id.clone();
-
+        
         // add capcity and agent_id tuple to the max heap
         let mut heap = self.heap.lock().await;
         (*heap).push((agent_meta.capacity(), agent_id.clone()));
-
+        
         // move agentmeta node to internal map
         let mut node_map = self.node_map.lock().await;
         (*node_map).insert(agent_id, agent_meta);
-
+        
     }
     pub async fn pop(&mut self) -> Result<AgentMeta, exceptions::GenericError> {
         let mut heap = self.heap.lock().await;
@@ -206,5 +206,55 @@ mod tests {
     fn zmq_message_type_invalid() {
         let zmq_msg = ZmqMessage::from("invalidinvalid");
         assert!(PubZMQMessage::try_from(zmq_msg).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_basic_apq(){
+        let mut pq = AgentPriorityQueue::new();
+        let agents = vec![
+            AgentMeta::new("id1".to_string(), 2, 0),
+            AgentMeta::new("id2".to_string(), 3, 0),
+            AgentMeta::new("id3".to_string(), 1, 0),
+        ];
+        for ag_meta in agents {
+            pq.push(ag_meta).await
+        }
+        // capacity for all should be max - 0 to start
+        let top = pq.pop().await.unwrap();
+        assert_eq!(&top.agent_id, "id2");
+        
+        // not putting top back on the queue so next should be id1
+        let top2 = pq.pop().await.unwrap();
+        assert_eq!(&top2.agent_id, "id1");
+        // put back as is
+        pq.push(top2).await;
+
+        // check is back at top
+        assert_eq!(&pq.pop().await.unwrap().agent_id, "id1")
+    }
+
+    #[tokio::test]
+    async fn test_update_timestamp(){
+        let mut pq = AgentPriorityQueue::new();
+        let agents = vec![
+            AgentMeta::new("id1".to_string(), 3, 0),
+            AgentMeta::new("id2".to_string(), 4, 0),
+            AgentMeta::new("id3".to_string(), 2, 0),
+            AgentMeta::new("id4".to_string(), 1, 0),
+        ];
+        for ag_meta in agents {
+            pq.push(ag_meta).await
+        }
+
+        assert!(pq.update_timestamp(&"id3".to_string(), 2).await.is_ok());
+
+        // check is updated when accessed via pop
+        // (third item)
+        let _ = pq.pop().await;
+        let _ = pq.pop().await;
+        let id3 = pq.pop().await.unwrap();
+        assert_eq!(id3.agent_id, "id3".to_string());
+        assert_eq!(id3.last_ping_timestamp, 2)
+
     }
 }
