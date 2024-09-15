@@ -26,7 +26,7 @@ async fn main() {
     let server_port: usize = args[2].parse().expect("PORT must be a valid number");
     let database_url: Option<String> = None;
     let poll_interval_seconds = 2;
-    let max_tm_threads = 8;
+    let max_tm_tasks = 8;
 
     let instance_id = server_port.to_string();
 
@@ -38,7 +38,7 @@ async fn main() {
         database_url,
         poll_interval_seconds,
         pub_host,
-        max_tm_threads,
+        max_tm_tasks,
         server_port,
     )
     .await

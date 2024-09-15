@@ -1,8 +1,9 @@
 mod task;
 
-use crate::{exceptions, utils::arg_str_to_vec};
-use std::collections::VecDeque;
+use crate::{exceptions::{self, GenericError}, utils::arg_str_to_vec};
+use std::{cmp::Ordering, collections::{BinaryHeap, HashMap, VecDeque}, ops::DerefMut, sync::Arc};
 pub use task::Task;
+use tokio::sync::Mutex;
 use zeromq::ZmqMessage;
 pub mod traits;
 
@@ -95,29 +96,100 @@ impl From<Vec<String>> for ZMQArgs {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub struct AgentConfig {
-    max_threads_reached: bool,
+/// Agent metadata held by principal that is used by the task router
+/// to decide which agent to route tasks to and by the server to determine
+/// status
+#[derive(Clone, Debug)]
+pub struct AgentMeta {
+    pub agent_id: String,
+    max_tasks: usize,
+    running_tasks: usize,
     last_ping_timestamp: i64,
 }
-impl AgentConfig {
-    pub fn new(max_threads_reached: bool, last_ping_timestamp: i64) -> Self {
+impl AgentMeta {
+    pub fn new(
+        agent_id: String, 
+        max_tasks: usize, 
+        last_ping_timestamp: i64
+    ) -> Self {
         Self {
-            max_threads_reached,
+            agent_id,
             last_ping_timestamp,
+            max_tasks,
+            running_tasks: 0
         }
     }
     pub fn update_timestamp(&mut self, new_ts: i64) {
         self.last_ping_timestamp = new_ts
     }
-    pub fn set_max_threads_reached(&mut self, reached: bool) {
-        self.max_threads_reached = reached
+    /// Shows the capacity of tasks that an agent can handle.
+    /// Agent tasks managers have internal queues for holding tasks
+    /// if they have reached capacity so we will allow negative values 
+    /// as the priority queue will naturally handle this
+    pub fn capacity(&self) -> i32 {
+        (self.max_tasks - self.running_tasks) as i32
+    }
+    pub fn inc_running_task(&mut self) {
+        self.running_tasks+=1
+    }
+    pub fn dec_running_tasks(&mut self) {
+        self.running_tasks-=1
     }
     pub fn get_last_ping_ts(&self) -> i64 {
         self.last_ping_timestamp
     }
-    pub fn get_max_threads_reached(&self) -> bool {
-        self.max_threads_reached
+}
+
+#[derive(Clone, Debug)]
+pub struct AgentPriorityQueue {
+    heap: Arc<Mutex<BinaryHeap<(i32, String)>>>,
+    node_map: Arc<Mutex<HashMap<String, AgentMeta>>>
+}
+impl AgentPriorityQueue {
+    pub fn new() -> Self {
+        Self {
+            heap: Arc::new(Mutex::new(BinaryHeap::new())),
+            node_map: Arc::new(Mutex::new(HashMap::new()))
+        }
+    }
+    pub async fn is_empty(&self) -> bool {
+        let heap = self.heap.lock().await;
+        (*heap).is_empty()
+    }
+    pub async fn push(&mut self, agent_meta: AgentMeta) {
+        let agent_id = agent_meta.agent_id.clone();
+
+        // add capcity and agent_id tuple to the max heap
+        let mut heap = self.heap.lock().await;
+        (*heap).push((agent_meta.capacity(), agent_id.clone()));
+
+        // move agentmeta node to internal map
+        let mut node_map = self.node_map.lock().await;
+        (*node_map).insert(agent_id, agent_meta);
+
+    }
+    pub async fn pop(&mut self) -> Result<AgentMeta, exceptions::GenericError> {
+        let mut heap = self.heap.lock().await;
+        if let Some((_capacity, agent_id)) = (*heap).pop() {
+            let mut node_map = self.node_map.lock().await;
+            let agent_meta = node_map.remove(&agent_id).expect(
+                "Failed to find node in map when it appeared in max heap"
+            );
+            Ok(agent_meta)
+        } else {
+            Err(exceptions::GenericError::MissingAgents)
+        }
+    }
+    pub async fn update_timestamp(&self, agent_id: &String, timestamp: i64) -> Result<(), GenericError> {
+        let mut node_map = self.node_map.lock().await;
+        let agent_meta_res = node_map.get_mut(agent_id);
+        match agent_meta_res {
+            Some(agent_meta) => {
+                agent_meta.update_timestamp(timestamp);
+                Ok(())
+            },
+            None => Err(GenericError::MissingAgents)
+        }
     }
 }
 

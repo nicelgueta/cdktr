@@ -1,13 +1,11 @@
 use crate::{
     db::{get_connection, models::NewScheduledTask},
-    models::{AgentConfig, Task, ZMQArgs},
+    models::{AgentMeta, AgentPriorityQueue, Task, ZMQArgs},
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use core::task;
 use diesel::SqliteConnection;
-use std::sync::Arc;
-use std::{collections::HashMap, fmt::format};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use zeromq::ZmqMessage;
 mod api;
@@ -31,9 +29,9 @@ use super::{
     traits::Server,
 };
 
-// TODO: make an extension of AgentRequest
+// TODO: make an extension of AgentAPI
 #[derive(Debug)]
-pub enum PrincipalRequest {
+pub enum PrincipalAPI {
     /// Check server is online
     Ping,
     /// Creates a new scheudled task in the principal database
@@ -51,17 +49,11 @@ pub enum PrincipalRequest {
     /// is already registered then this behaves in a similar way to
     /// a PING/PONG
     /// Args:
-    ///     agent_id
-    RegisterAgent(String),
-    /// Allows agents to inform the principal of when they have reached
-    /// their concurrent thread capacity. Sending a negative bool
-    /// unsets this flag
-    /// Args:
-    ///     agent_id, flag
-    AgentCapacityReached(String, bool),
+    ///     agent_id, max_tasks
+    RegisterAgent(String, usize),
 }
 
-impl TryFrom<ZmqMessage> for PrincipalRequest {
+impl TryFrom<ZmqMessage> for PrincipalAPI {
     type Error = RepReqError;
     fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
         let mut args: ZMQArgs = value.into();
@@ -81,13 +73,19 @@ impl TryFrom<ZmqMessage> for PrincipalRequest {
                 Ok(Self::RunTask(agent_id, task))
             }
             "REGISTERAGENT" => match args.next() {
-                Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
+                Some(agent_id) => match args.next() {
+                    Some(max_tasks) => {
+                        let max_tasks = if let Ok(v) = max_tasks.parse::<usize>() {
+                            v
+                        } else {
+                            return Err(RepReqError::ParseError("Arg MAX_TASKS is not a valid integer".to_string()))
+                        };
+                        Ok(Self::RegisterAgent(agent_id, max_tasks))
+                    },
+                    None => Err(RepReqError::ParseError("Missing arg MAX_TASKS".to_string()))
+                },
                 None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
             },
-            "AGENTCAPREACHED" => {
-                let (agent_id, reached) = agent_cap_reached(args)?;
-                Ok(Self::AgentCapacityReached(agent_id, reached))
-            }
             _ => Err(RepReqError::new(
                 1,
                 format!("Unrecognised message type: {}", msg_type),
@@ -96,7 +94,7 @@ impl TryFrom<ZmqMessage> for PrincipalRequest {
     }
 }
 
-impl Into<ZmqMessage> for PrincipalRequest {
+impl Into<ZmqMessage> for PrincipalAPI {
     fn into(self) -> ZmqMessage {
         let zmq_s = match self {
             Self::Ping => "PING".to_string(),
@@ -111,10 +109,7 @@ impl Into<ZmqMessage> for PrincipalRequest {
             }
             Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
             Self::ListTasks => "LISTTASKS".to_string(),
-            Self::RegisterAgent(agent_id) => format!("REGISTERAGENT|{agent_id}"),
-            Self::AgentCapacityReached(agent_id, flag) => {
-                format!("AGENTCAPREACHED|{agent_id}|{flag}")
-            }
+            Self::RegisterAgent(agent_id, max_tasks) => format!("REGISTERAGENT|{agent_id}|{max_tasks}"),
         };
         ZmqMessage::from(zmq_s)
     }
@@ -123,89 +118,62 @@ impl Into<ZmqMessage> for PrincipalRequest {
 pub struct PrincipalServer {
     instance_id: String,
     db_cnxn: Arc<Mutex<SqliteConnection>>,
-    live_agents: Arc<Mutex<HashMap<String, AgentConfig>>>,
+    live_agents: AgentPriorityQueue,
 }
 
 impl PrincipalServer {
-    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>>, instance_id: String) -> Self {
+    pub fn new(
+        db_cnxn: Arc<Mutex<SqliteConnection>>, 
+        instance_id: String,
+        live_agents: Option<AgentPriorityQueue>,
+    ) -> Self {
+        let live_agents = live_agents.unwrap_or(AgentPriorityQueue::new());
         Self {
             db_cnxn,
-            live_agents: Arc::new(Mutex::new(HashMap::new())),
+            live_agents,
             instance_id,
         }
     }
 
-    /// clones the internally created live_agents hashmap ptr for use
-    /// by other tokio coroutines
-    pub fn get_live_agents_ptr(&self) -> Arc<Mutex<HashMap<String, AgentConfig>>> {
-        self.live_agents.clone()
-    }
     /// Registers the agent with the principal server. If it exists
     /// already then it simply updates with the latest timestamp
-    async fn register_agent(&mut self, agent_id: &String) -> (ClientResponseMessage, usize) {
+    async fn register_agent(&mut self, agent_id: &String, max_tasks: usize) -> (ClientResponseMessage, usize) {
         let now = Utc::now().timestamp_micros();
-        {
-            let mut agents_mut = self.live_agents.lock().await;
-            match agents_mut.get_mut(agent_id) {
-                Some(agent_config) => {
-                    agent_config.update_timestamp(now);
-                }
-                None => {
-                    let agent_config = AgentConfig::new(false, now);
-                    agents_mut.insert(agent_id.clone(), agent_config);
-                }
-            };
-        }
+        let update_result = self.live_agents.update_timestamp(agent_id, now).await;
+        match update_result {
+            Ok(_) => (),
+            Err(_e) => {
+                // agent not registered before so add new
+                let agent_meta = AgentMeta::new(agent_id.clone(), max_tasks, now);
+                self.live_agents.push(agent_meta).await
+            }
+        };
         (ClientResponseMessage::Success, 0)
     }
 
-    /// sets the flag on the agent config to note it's currently at capacity
-    async fn set_agent_at_capacity(
-        &mut self,
-        agent_id: &String,
-        reached: bool,
-    ) -> (ClientResponseMessage, usize) {
-        let now = Utc::now().timestamp_micros();
-        {
-            let mut agents_mut = self.live_agents.lock().await;
-            match agents_mut.get_mut(agent_id) {
-                Some(agent_config) => {
-                    agent_config.set_max_threads_reached(reached);
-                    agent_config.update_timestamp(now);
-                    (ClientResponseMessage::Success, 0)
-                }
-                None => (
-                    ClientResponseMessage::ClientError(String::from(
-                        "Agent has not been registered - cannot set max threads reached",
-                    )),
-                    0,
-                ),
-            }
-        }
-    }
 }
 
 #[async_trait]
-impl Server<PrincipalRequest> for PrincipalServer {
+impl Server<PrincipalAPI> for PrincipalServer {
     async fn handle_client_message(
         &mut self,
-        cli_msg: PrincipalRequest,
+        cli_msg: PrincipalAPI,
     ) -> (ClientResponseMessage, usize) {
         match cli_msg {
-            PrincipalRequest::Ping => (ClientResponseMessage::Pong, 0),
-            PrincipalRequest::CreateTask(new_task) => {
+            PrincipalAPI::Ping => (ClientResponseMessage::Pong, 0),
+            PrincipalAPI::CreateTask(new_task) => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 handle_create_task(&mut db_cnxn, new_task)
             }
-            PrincipalRequest::ListTasks => {
+            PrincipalAPI::ListTasks => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 handle_list_tasks(&mut db_cnxn)
             }
-            PrincipalRequest::DeleteTask(task_id) => {
+            PrincipalAPI::DeleteTask(task_id) => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 handle_delete_task(&mut db_cnxn, task_id)
             }
-            PrincipalRequest::RunTask(agent_id, task) => {
+            PrincipalAPI::RunTask(agent_id, task) => {
                 if agent_id == self.instance_id {
                     (
                         ClientResponseMessage::ClientError(
@@ -217,10 +185,7 @@ impl Server<PrincipalRequest> for PrincipalServer {
                     handle_run_task(agent_id, task).await
                 }
             }
-            PrincipalRequest::RegisterAgent(agent_id) => self.register_agent(&agent_id).await,
-            PrincipalRequest::AgentCapacityReached(agent_id, reached) => {
-                self.set_agent_at_capacity(&agent_id, reached).await
-            }
+            PrincipalAPI::RegisterAgent(agent_id, max_tasks) => self.register_agent(&agent_id, max_tasks).await,
         }
     }
 }
@@ -246,12 +211,11 @@ mod tests {
             r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#,
             "DELETETASK|1",
             "AGENTRUN|8999|PROCESS|echo|hello",
-            "REGISTERAGENT|8999",
-            "AGENTCAPREACHED|8999|true",
+            "REGISTERAGENT|8999|2",
         ];
         for zmq_s in all_happies {
             let zmq_msg = ZmqMessage::from(zmq_s);
-            let res = PrincipalRequest::try_from(zmq_msg);
+            let res = PrincipalAPI::try_from(zmq_msg);
             dbg!(&res);
             assert!(res.is_ok())
         }
@@ -288,17 +252,12 @@ mod tests {
                 ClientResponseMessage::Success,
                 0,
             ),
-            ("REGISTERAGENT|8999", ClientResponseMessage::Success, 0),
-            (
-                "AGENTCAPREACHED|8999|true",
-                ClientResponseMessage::Success,
-                0,
-            ),
+            ("REGISTERAGENT|8999|3", ClientResponseMessage::Success, 0),
         ];
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
         for (zmq_s, response, exp_exit_code) in test_params {
             let zmq_msg = ZmqMessage::from(zmq_s);
-            let ar = PrincipalRequest::try_from(zmq_msg)
+            let ar = PrincipalAPI::try_from(zmq_msg)
                 .expect("Should be able to unwrap the agent from ZMQ command");
             let (resp, exit_code) = server.handle_client_message(ar).await;
             dbg!(&resp);
@@ -310,11 +269,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_new() {
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
         let agent_id = String::from("fake_id");
-        let (resp, exit_code) = server.register_agent(&agent_id).await;
+        let (resp, exit_code) = server.register_agent(&agent_id, 3).await;
         {
-            server.live_agents.lock().await.get(&agent_id).unwrap();
+            server.live_agents.pop().await.unwrap();
         }
         assert!(resp == ClientResponseMessage::Success);
         assert!(exit_code == 0)
@@ -322,26 +281,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_already_exists() {
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
         let agent_id = String::from("fake_id");
-        server.register_agent(&agent_id).await;
+        let max_tasks = 3;
+        server.register_agent(&agent_id, max_tasks).await;
         let old_timestamp = {
             server
                 .live_agents
-                .lock()
+                .pop()
                 .await
-                .get(&agent_id)
                 .unwrap()
                 .get_last_ping_ts()
         };
         sleep(Duration::from_micros(10));
-        let (resp, exit_code) = server.register_agent(&agent_id).await;
+        let (resp, exit_code) = server.register_agent(&agent_id, 3).await;
         let new_timestamp = {
             server
                 .live_agents
-                .lock()
+                .pop()
                 .await
-                .get(&agent_id)
                 .unwrap()
                 .get_last_ping_ts()
         };
@@ -350,37 +308,4 @@ mod tests {
         assert!(exit_code == 0)
     }
 
-    #[tokio::test]
-    async fn test_set_agent_at_capacity_happy() {
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
-        let agent_id = String::from("fake_id");
-        server.register_agent(&agent_id).await;
-
-        let (resp, exit_code) = server.set_agent_at_capacity(&agent_id, true).await;
-        assert!(
-            server
-                .live_agents
-                .lock()
-                .await
-                .get(&agent_id)
-                .unwrap()
-                .get_max_threads_reached()
-                == true
-        );
-        assert!(resp == ClientResponseMessage::Success);
-        assert!(exit_code == 0)
-    }
-
-    #[tokio::test]
-    async fn test_set_agent_at_capacity_unregistered() {
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
-        let agent_id = String::from("fake_id");
-
-        let (resp, exit_code) = server.set_agent_at_capacity(&agent_id, true).await;
-        assert!(match resp {
-            ClientResponseMessage::ClientError(_) => true,
-            _ => false,
-        });
-        assert!(exit_code == 0)
-    }
 }

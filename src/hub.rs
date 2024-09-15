@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     db::get_connection,
-    models::{traits::EventListener, AgentConfig, Task},
+    models::{traits::EventListener, AgentMeta, AgentPriorityQueue, Task},
     scheduler,
     server::{agent::AgentServer, principal::PrincipalServer, Server},
     task_router::TaskRouter,
@@ -35,11 +35,11 @@ impl InstanceType {
 /// Spawns the TaskManager in a separate coroutine
 async fn spawn_tm(
     instance_id: String,
-    max_tm_threads: usize,
+    max_tm_tasks: usize,
     task_queue: AsyncQueue<Task>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut tm = taskmanager::TaskManager::new(instance_id, max_tm_threads, task_queue);
+        let mut tm = taskmanager::TaskManager::new(instance_id, max_tm_tasks, task_queue);
         tm.start().await
     })
 }
@@ -58,7 +58,7 @@ async fn spawn_scheduler(
 
 async fn spawn_task_router(
     task_router_queue: AsyncQueue<Task>,
-    live_agents: Arc<Mutex<HashMap<String, AgentConfig>>>,
+    live_agents: AgentPriorityQueue,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut task_router = TaskRouter::new(task_router_queue, live_agents);
@@ -80,14 +80,18 @@ impl Hub {
         database_url: Option<String>,
         poll_interval_seconds: i32,
         pub_host: String,
-        max_tm_threads: usize,
+        max_tm_tasks: usize,
         server_port: usize,
     ) {
         match self.instance_type {
             InstanceType::PRINCIPAL => {
                 let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
+                
+                // create the priority queue of agent meta that will be used by the server
+                // and task router
+                let live_agents = AgentPriorityQueue::new();
                 let mut principal_server =
-                    PrincipalServer::new(db_cnxn.clone(), instance_id.clone());
+                    PrincipalServer::new(db_cnxn.clone(), instance_id.clone(), Some(live_agents.clone()));
 
                 // Create the main task queue for the TaskRouter which multiple
                 // event listeners can add to
@@ -97,10 +101,9 @@ impl Hub {
                 // and send task trigger messages to the main receiver that is passed
                 // to the task router
                 spawn_scheduler(db_cnxn, poll_interval_seconds, task_router_queue.clone()).await;
-                let live_agents_arc = principal_server.get_live_agents_ptr();
 
                 // create the TaskRouter component which will wait for tasks in its queue
-                spawn_task_router(task_router_queue, live_agents_arc).await;
+                spawn_task_router(task_router_queue, live_agents).await;
 
                 // start REP/REQ server loop for principal
                 principal_server
@@ -118,11 +121,14 @@ impl Hub {
 
                 // TODO: currently hardcoded principal - change to a CLI arg
                 agent_server
-                    .register_with_principal(&get_agent_tcp_uri(&"5562".to_string()))
+                    .register_with_principal(
+                        &get_agent_tcp_uri(&"5562".to_string()),
+                        max_tm_tasks
+                    )
                     .await;
                 loop {
                     let task_q_cl = main_task_queue.clone();
-                    let tm_task = spawn_tm(instance_id.clone(), max_tm_threads, task_q_cl).await;
+                    let tm_task = spawn_tm(instance_id.clone(), max_tm_tasks, task_q_cl).await;
 
                     // start REP/REQ server for agent
                     let agent_loop_exit_code = agent_server

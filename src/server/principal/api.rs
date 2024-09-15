@@ -8,7 +8,7 @@ use crate::{
     macros::args_to_model,
     models::{Task, ZMQArgs},
     server::{
-        agent::AgentRequest,
+        agent::AgentAPI,
         models::{ClientResponseMessage, RepReqError},
     },
     zmq_helpers::{get_agent_tcp_uri, get_req_timeout, get_zmq_req},
@@ -159,7 +159,7 @@ pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMes
             0,
         );
     };
-    req.send(AgentRequest::Run(task).into()).await.unwrap();
+    req.send(AgentAPI::Run(task).into()).await.unwrap();
     let response = req.recv().await;
     match response {
         Ok(msg) => (ClientResponseMessage::from(msg), 0),

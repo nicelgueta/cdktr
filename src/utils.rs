@@ -6,7 +6,8 @@ pub fn arg_str_to_vec(s: String) -> VecDeque<String> {
 }
 
 /// A simple queue that can be accessed across threads. The queue
-/// holds an internal Arc<Mutex<T>> on the
+/// holds an internal Arc<Mutex<T>> to abstract the verbose handling 
+/// of the mutex from the consumer
 ///
 #[derive(Clone, Debug)]
 pub struct AsyncQueue<T> {
