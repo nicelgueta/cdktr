@@ -78,11 +78,13 @@ impl TryFrom<ZmqMessage> for PrincipalAPI {
                         let max_tasks = if let Ok(v) = max_tasks.parse::<usize>() {
                             v
                         } else {
-                            return Err(RepReqError::ParseError("Arg MAX_TASKS is not a valid integer".to_string()))
+                            return Err(RepReqError::ParseError(
+                                "Arg MAX_TASKS is not a valid integer".to_string(),
+                            ));
                         };
                         Ok(Self::RegisterAgent(agent_id, max_tasks))
-                    },
-                    None => Err(RepReqError::ParseError("Missing arg MAX_TASKS".to_string()))
+                    }
+                    None => Err(RepReqError::ParseError("Missing arg MAX_TASKS".to_string())),
                 },
                 None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
             },
@@ -109,7 +111,9 @@ impl Into<ZmqMessage> for PrincipalAPI {
             }
             Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
             Self::ListTasks => "LISTTASKS".to_string(),
-            Self::RegisterAgent(agent_id, max_tasks) => format!("REGISTERAGENT|{agent_id}|{max_tasks}"),
+            Self::RegisterAgent(agent_id, max_tasks) => {
+                format!("REGISTERAGENT|{agent_id}|{max_tasks}")
+            }
         };
         ZmqMessage::from(zmq_s)
     }
@@ -123,7 +127,7 @@ pub struct PrincipalServer {
 
 impl PrincipalServer {
     pub fn new(
-        db_cnxn: Arc<Mutex<SqliteConnection>>, 
+        db_cnxn: Arc<Mutex<SqliteConnection>>,
         instance_id: String,
         live_agents: Option<AgentPriorityQueue>,
     ) -> Self {
@@ -137,7 +141,11 @@ impl PrincipalServer {
 
     /// Registers the agent with the principal server. If it exists
     /// already then it simply updates with the latest timestamp
-    async fn register_agent(&mut self, agent_id: &String, max_tasks: usize) -> (ClientResponseMessage, usize) {
+    async fn register_agent(
+        &mut self,
+        agent_id: &String,
+        max_tasks: usize,
+    ) -> (ClientResponseMessage, usize) {
         let now = Utc::now().timestamp_micros();
         let update_result = self.live_agents.update_timestamp(agent_id, now).await;
         match update_result {
@@ -150,7 +158,6 @@ impl PrincipalServer {
         };
         (ClientResponseMessage::Success, 0)
     }
-
 }
 
 #[async_trait]
@@ -185,7 +192,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
                     handle_run_task(agent_id, task).await
                 }
             }
-            PrincipalAPI::RegisterAgent(agent_id, max_tasks) => self.register_agent(&agent_id, max_tasks).await,
+            PrincipalAPI::RegisterAgent(agent_id, max_tasks) => {
+                self.register_agent(&agent_id, max_tasks).await
+            }
         }
     }
 }
@@ -285,27 +294,12 @@ mod tests {
         let agent_id = String::from("fake_id");
         let max_tasks = 3;
         server.register_agent(&agent_id, max_tasks).await;
-        let old_timestamp = {
-            server
-                .live_agents
-                .pop()
-                .await
-                .unwrap()
-                .get_last_ping_ts()
-        };
+        let old_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };
         sleep(Duration::from_micros(10));
         let (resp, exit_code) = server.register_agent(&agent_id, 3).await;
-        let new_timestamp = {
-            server
-                .live_agents
-                .pop()
-                .await
-                .unwrap()
-                .get_last_ping_ts()
-        };
+        let new_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };
         assert!(new_timestamp > old_timestamp);
         assert!(resp == ClientResponseMessage::Success);
         assert!(exit_code == 0)
     }
-
 }

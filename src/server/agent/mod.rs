@@ -87,10 +87,7 @@ impl AgentServer {
 
 #[async_trait]
 impl Server<AgentAPI> for AgentServer {
-    async fn handle_client_message(
-        &mut self,
-        cli_msg: AgentAPI,
-    ) -> (ClientResponseMessage, usize) {
+    async fn handle_client_message(&mut self, cli_msg: AgentAPI) -> (ClientResponseMessage, usize) {
         match cli_msg {
             AgentAPI::Ping => (ClientResponseMessage::Pong, 0),
             AgentAPI::Heartbeat => (

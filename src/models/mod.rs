@@ -1,7 +1,15 @@
 mod task;
 
-use crate::{exceptions::{self, GenericError}, utils::arg_str_to_vec};
-use std::{cmp::Ordering, collections::{BinaryHeap, HashMap, VecDeque}, ops::DerefMut, sync::Arc};
+use crate::{
+    exceptions::{self, GenericError},
+    utils::arg_str_to_vec,
+};
+use std::{
+    cmp::Ordering,
+    collections::{BinaryHeap, HashMap, VecDeque},
+    ops::DerefMut,
+    sync::Arc,
+};
 pub use task::Task;
 use tokio::sync::Mutex;
 use zeromq::ZmqMessage;
@@ -107,34 +115,30 @@ pub struct AgentMeta {
     last_ping_timestamp: i64,
 }
 impl AgentMeta {
-    pub fn new(
-        agent_id: String, 
-        max_tasks: usize, 
-        last_ping_timestamp: i64
-    ) -> Self {
+    pub fn new(agent_id: String, max_tasks: usize, last_ping_timestamp: i64) -> Self {
         Self {
             agent_id,
             last_ping_timestamp,
             max_tasks,
-            running_tasks: 0
+            running_tasks: 0,
         }
     }
-    
+
     pub fn update_timestamp(&mut self, new_ts: i64) {
         self.last_ping_timestamp = new_ts
     }
     /// Shows the capacity of tasks that an agent can handle.
     /// Agent tasks managers have internal queues for holding tasks
-    /// if they have reached capacity so we will allow negative values 
+    /// if they have reached capacity so we will allow negative values
     /// as the priority queue will naturally handle this
     pub fn capacity(&self) -> i32 {
         (self.max_tasks - self.running_tasks) as i32
     }
     pub fn inc_running_task(&mut self) {
-        self.running_tasks+=1
+        self.running_tasks += 1
     }
     pub fn dec_running_tasks(&mut self) {
-        self.running_tasks-=1
+        self.running_tasks -= 1
     }
     pub fn get_last_ping_ts(&self) -> i64 {
         self.last_ping_timestamp
@@ -144,13 +148,13 @@ impl AgentMeta {
 #[derive(Clone, Debug)]
 pub struct AgentPriorityQueue {
     heap: Arc<Mutex<BinaryHeap<(i32, String)>>>,
-    node_map: Arc<Mutex<HashMap<String, AgentMeta>>>
+    node_map: Arc<Mutex<HashMap<String, AgentMeta>>>,
 }
 impl AgentPriorityQueue {
     pub fn new() -> Self {
         Self {
             heap: Arc::new(Mutex::new(BinaryHeap::new())),
-            node_map: Arc::new(Mutex::new(HashMap::new()))
+            node_map: Arc::new(Mutex::new(HashMap::new())),
         }
     }
     pub async fn is_empty(&self) -> bool {
@@ -159,37 +163,40 @@ impl AgentPriorityQueue {
     }
     pub async fn push(&mut self, agent_meta: AgentMeta) {
         let agent_id = agent_meta.agent_id.clone();
-        
+
         // add capcity and agent_id tuple to the max heap
         let mut heap = self.heap.lock().await;
         (*heap).push((agent_meta.capacity(), agent_id.clone()));
-        
+
         // move agentmeta node to internal map
         let mut node_map = self.node_map.lock().await;
         (*node_map).insert(agent_id, agent_meta);
-        
     }
     pub async fn pop(&mut self) -> Result<AgentMeta, exceptions::GenericError> {
         let mut heap = self.heap.lock().await;
         if let Some((_capacity, agent_id)) = (*heap).pop() {
             let mut node_map = self.node_map.lock().await;
-            let agent_meta = node_map.remove(&agent_id).expect(
-                "Failed to find node in map when it appeared in max heap"
-            );
+            let agent_meta = node_map
+                .remove(&agent_id)
+                .expect("Failed to find node in map when it appeared in max heap");
             Ok(agent_meta)
         } else {
             Err(exceptions::GenericError::MissingAgents)
         }
     }
-    pub async fn update_timestamp(&self, agent_id: &String, timestamp: i64) -> Result<(), GenericError> {
+    pub async fn update_timestamp(
+        &self,
+        agent_id: &String,
+        timestamp: i64,
+    ) -> Result<(), GenericError> {
         let mut node_map = self.node_map.lock().await;
         let agent_meta_res = node_map.get_mut(agent_id);
         match agent_meta_res {
             Some(agent_meta) => {
                 agent_meta.update_timestamp(timestamp);
                 Ok(())
-            },
-            None => Err(GenericError::MissingAgents)
+            }
+            None => Err(GenericError::MissingAgents),
         }
     }
 }
@@ -210,7 +217,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_basic_apq(){
+    async fn test_basic_apq() {
         let mut pq = AgentPriorityQueue::new();
         let agents = vec![
             AgentMeta::new("id1".to_string(), 2, 0),
@@ -223,7 +230,7 @@ mod tests {
         // capacity for all should be max - 0 to start
         let top = pq.pop().await.unwrap();
         assert_eq!(&top.agent_id, "id2");
-        
+
         // not putting top back on the queue so next should be id1
         let top2 = pq.pop().await.unwrap();
         assert_eq!(&top2.agent_id, "id1");
@@ -235,7 +242,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_timestamp(){
+    async fn test_update_timestamp() {
         let mut pq = AgentPriorityQueue::new();
         let agents = vec![
             AgentMeta::new("id1".to_string(), 3, 0),
@@ -256,6 +263,5 @@ mod tests {
         let id3 = pq.pop().await.unwrap();
         assert_eq!(id3.agent_id, "id3".to_string());
         assert_eq!(id3.last_ping_timestamp, 2)
-
     }
 }

@@ -86,12 +86,15 @@ impl Hub {
         match self.instance_type {
             InstanceType::PRINCIPAL => {
                 let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
-                
+
                 // create the priority queue of agent meta that will be used by the server
                 // and task router
                 let live_agents = AgentPriorityQueue::new();
-                let mut principal_server =
-                    PrincipalServer::new(db_cnxn.clone(), instance_id.clone(), Some(live_agents.clone()));
+                let mut principal_server = PrincipalServer::new(
+                    db_cnxn.clone(),
+                    instance_id.clone(),
+                    Some(live_agents.clone()),
+                );
 
                 // Create the main task queue for the TaskRouter which multiple
                 // event listeners can add to
@@ -121,10 +124,7 @@ impl Hub {
 
                 // TODO: currently hardcoded principal - change to a CLI arg
                 agent_server
-                    .register_with_principal(
-                        &get_agent_tcp_uri(&"5562".to_string()),
-                        max_tm_tasks
-                    )
+                    .register_with_principal(&get_agent_tcp_uri(&"5562".to_string()), max_tm_tasks)
                     .await;
                 loop {
                     let task_q_cl = main_task_queue.clone();

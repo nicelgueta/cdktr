@@ -1,8 +1,7 @@
-use std::fmt::format;
 
 use zeromq::ZmqMessage;
 
-use crate::{exceptions::ZMQParseError, models::ZMQArgs};
+use crate::models::ZMQArgs;
 
 #[derive(Debug)]
 pub enum RepReqError {
@@ -73,9 +72,9 @@ impl From<ZmqMessage> for ClientResponseMessage {
     }
 }
 
-impl Into<ZmqMessage> for ClientResponseMessage {
-    fn into(self) -> ZmqMessage {
-        let s = match self {
+impl Into<String> for ClientResponseMessage {
+    fn into(self) -> String {
+        match self {
             Self::ClientError(payload) => format!("CLIENTERROR|{payload}"),
             Self::Pong => "PONG".to_string(),
             Self::Success => "OK".to_string(),
@@ -83,7 +82,13 @@ impl Into<ZmqMessage> for ClientResponseMessage {
             Self::Heartbeat(pub_id) => format!("HEARTBEAT|{pub_id}"),
             Self::ServerError(payload) => format!("SERVERERROR|{payload}"),
             Self::Unprocessable(payload) => format!("UNPROC|{payload}"),
-        };
-        ZmqMessage::from(s)
+        }
+    }
+}
+
+impl Into<ZmqMessage> for ClientResponseMessage {
+    fn into(self) -> ZmqMessage {
+        let msg: String = self.into();
+        ZmqMessage::from(msg)
     }
 }

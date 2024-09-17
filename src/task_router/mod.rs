@@ -1,16 +1,21 @@
 use crate::{
     exceptions::GenericError,
     models::{AgentMeta, AgentPriorityQueue, Task},
-    server::agent::AgentAPI,
+    server::{agent::AgentAPI, models::ClientResponseMessage},
     utils::AsyncQueue,
-    zmq_helpers::{get_agent_tcp_uri, get_zmq_req},
+    zmq_helpers::{
+        get_agent_tcp_uri, 
+        get_zmq_req, 
+        wait_on_recv, 
+        DEFAULT_TIMEOUT
+    },
 };
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use tokio::time::sleep;
-use zeromq::SocketSend;
+use zeromq::{SocketRecv, SocketSend};
 
 /// The Task Router is responsible for distributing tasks to agent workers.
-/// It is implemented using a max-heap (priority queue) of AgentMeta, 
+/// It is implemented using a max-heap (priority queue) of AgentMeta,
 /// prioritised by the capacity of tasks that the agent can handle. Tasks
 /// are stored on an AsyncQueue
 pub struct TaskRouter {
@@ -19,10 +24,7 @@ pub struct TaskRouter {
 }
 
 impl TaskRouter {
-    pub fn new(
-        task_router_queue: AsyncQueue<Task>,
-        live_agents: AgentPriorityQueue,
-    ) -> Self {
+    pub fn new(task_router_queue: AsyncQueue<Task>, live_agents: AgentPriorityQueue) -> Self {
         Self {
             queue: task_router_queue,
             live_agents,
@@ -42,11 +44,46 @@ impl TaskRouter {
             // got task - find agents
             let agent_res = self.find_agent().await;
             match agent_res {
-                Ok(agent_meta) => {
+                Ok(mut agent_meta) => {
                     let mut req = get_zmq_req(&get_agent_tcp_uri(&agent_meta.agent_id)).await;
                     req.send(AgentAPI::Run(task).into())
                         .await
-                        .expect("ZMQ error whle sending msg")
+                        .expect("ZMQ error whle sending msg");
+                    
+                    // check task successfully executed on agent
+                    let resp = wait_on_recv(
+                        req, DEFAULT_TIMEOUT
+                    ).await;
+                    match resp {
+                        Ok(msg) => {
+                            let parsed_resp = ClientResponseMessage::from(msg);
+                            match parsed_resp {
+                                ClientResponseMessage::Success => {
+                                    // record the task as running in the agent meta
+                                    agent_meta.inc_running_task();
+                                },
+                                cli_msg => {
+                                    let str_msg: String = cli_msg.into();
+                                    println!(
+                                        "Failed to execute task on agent {}. Got message {}", 
+                                        agent_meta.agent_id,
+                                        str_msg
+                                    )
+                                }
+                            }
+                        },
+                        Err(e) => match e {
+                            GenericError::TimeoutError => {
+                                println!(
+                                    "Timed out wating on response from agent for task execution"
+                                )
+                            },
+                            e => println!("Failed to execute task. Error: {}", e.to_string())
+                        }
+                    };
+                    // return the agent meta back to queue
+                    self.return_agent_meta(agent_meta).await
+
                 }
                 Err(e) => match e {
                     GenericError::MissingAgents => {
@@ -60,9 +97,14 @@ impl TaskRouter {
     /// returns the next agent from the priority queue
     async fn find_agent(&mut self) -> Result<AgentMeta, GenericError> {
         if self.live_agents.is_empty().await {
-            return Err(GenericError::MissingAgents)
+            return Err(GenericError::MissingAgents);
         };
         self.live_agents.pop().await
+    }
+
+    /// retuns the agent meta back to the queue
+    async fn return_agent_meta(&mut self, agent_meta: AgentMeta) {
+        self.live_agents.push(agent_meta).await
     }
 }
 
