@@ -3,13 +3,14 @@ use std::io;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
-    layout::{Alignment, Rect},
+    layout::{Alignment, Rect, Constraint},
     style::{Style, Stylize},
     symbols::border,
     text::{Line, Text},
     widgets::{
         block::{Position, Title},
         Block, Paragraph, Widget,
+        Tabs, Table, Row
     },
     Frame,
 };
@@ -18,11 +19,17 @@ mod tui;
 
 #[derive(Debug, Default)]
 pub struct App {
-    counter: u8,
+    tab: usize,
+    tabs: Vec<String>,
     exit: bool,
 }
 
 impl App {
+    pub fn new(tabs: Vec<String>) -> Self {
+        Self {
+            tab: 0, tabs, exit: false
+        }
+    }
     /// runs the application's main loop until the user quits
     pub fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
         while !self.exit {
@@ -36,19 +43,20 @@ impl App {
         self.exit = true;
     }
 
-    fn increment_counter(&mut self) {
-        self.counter += 1;
-    }
-
-    fn decrement_counter(&mut self) {
-        self.counter -= 1;
+    fn change_tab(&mut self, up: bool) {
+        if up {
+            if self.tab == self.tabs.len() - 1 {} else {self.tab+=1}
+        } else {
+            if self.tab == 0 {} else {self.tab-=1}
+        }
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
-            KeyCode::Left => self.decrement_counter(),
-            KeyCode::Right => self.increment_counter(),
+            KeyCode::Char('Q') => self.exit(),
+            KeyCode::Left => self.change_tab(false),
+            KeyCode::Right => self.change_tab(true),
             _ => {}
         }
     }
@@ -72,39 +80,31 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Title::from(" Counter App Tutorial ".bold());
-        let instructions = Title::from(Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().bold(),
-            " Quit ".into(),
-            "<Q> ".blue().bold(),
-        ]));
-        let block = Block::bordered()
-            .title(title.alignment(Alignment::Center))
-            .title(
-                instructions
-                    .alignment(Alignment::Center)
-                    .position(Position::Bottom),
-            )
-            .border_set(border::THICK);
+        let tabs = Tabs::new(self.tabs.iter().map(|tab_name| tab_name.as_str()))
+            .block(Block::bordered().title(" CDKTR "))
+            .style(Style::default().white())
+            .highlight_style(Style::default().cyan())
+            .select(self.tab)
+            .divider("|")
+            .padding(" ", " ");
+        tabs.render(area, buf);
+        let text = "Mary had a\nlittle lamb.";
 
-        let counter_text = Text::from(vec![Line::from(vec![
-            "Value: ".into(),
-            self.counter.to_string().yellow(),
-        ])]);
-
-        Paragraph::new(counter_text)
-            .centered()
-            .block(block)
-            .render(area, buf);
-    }
+        let table = text
+            .split("\n")
+            .map(|line: &str| -> Row { line.split_ascii_whitespace().collect() })
+            .collect::<Table>()
+            .widths([Constraint::Length(10); 3]);
+        table.render(area, buf)
+    }   
 }
 
 fn main() -> io::Result<()> {
     let mut terminal = tui::init()?;
-    let app_result = App::default().run(&mut terminal);
+    let app_result = App::new(vec![
+        "DASHBOARD".to_string(),
+        "FLOW MANAGER".to_string(),
+    ]).run(&mut terminal);
     tui::restore()?;
     app_result
 }
@@ -113,46 +113,47 @@ fn main() -> io::Result<()> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn render() {
-        let app = App::default();
-        let mut buf = Buffer::empty(Rect::new(0, 0, 50, 4));
+    // #[test]
+    // fn render() {
+    //     let app = App::default();
+    //     let mut buf = Buffer::empty(Rect::new(0, 0, 50, 4));
 
-        app.render(buf.area, &mut buf);
+    //     app.render(buf.area, &mut buf);
 
-        let mut expected = Buffer::with_lines(vec![
-            "┏━━━━━━━━━━━━━ Counter App Tutorial ━━━━━━━━━━━━━┓",
-            "┃                    Value: 0                    ┃",
-            "┃                                                ┃",
-            "┗━ Decrement <Left> Increment <Right> Quit <Q> ━━┛",
-        ]);
-        let title_style = Style::new().bold();
-        let counter_style = Style::new().yellow();
-        let key_style = Style::new().blue().bold();
-        expected.set_style(Rect::new(14, 0, 22, 1), title_style);
-        expected.set_style(Rect::new(28, 1, 1, 1), counter_style);
-        expected.set_style(Rect::new(13, 3, 6, 1), key_style);
-        expected.set_style(Rect::new(30, 3, 7, 1), key_style);
-        expected.set_style(Rect::new(43, 3, 4, 1), key_style);
 
-        // note ratatui also has an assert_buffer_eq! macro that can be used to
-        // compare buffers and display the differences in a more readable way
-        assert_eq!(buf, expected);
-    }
+    //     let mut expected = Buffer::with_lines(vec![
+    //         "┏━━━━━━━━━━━━━ Counter App Tutorial ━━━━━━━━━━━━━┓",
+    //         "┃                    Value: 0                    ┃",
+    //         "┃                                                ┃",
+    //         "┗━ Decrement <Left> Increment <Right> Quit <Q> ━━┛",
+    //     ]);
+    //     let title_style = Style::new().bold();
+    //     let counter_style = Style::new().yellow();
+    //     let key_style = Style::new().blue().bold();
+    //     expected.set_style(Rect::new(14, 0, 22, 1), title_style);
+    //     expected.set_style(Rect::new(28, 1, 1, 1), counter_style);
+    //     expected.set_style(Rect::new(13, 3, 6, 1), key_style);
+    //     expected.set_style(Rect::new(30, 3, 7, 1), key_style);
+    //     expected.set_style(Rect::new(43, 3, 4, 1), key_style);
 
-    #[test]
-    fn handle_key_event() -> io::Result<()> {
-        let mut app = App::default();
-        app.handle_key_event(KeyCode::Right.into());
-        assert_eq!(app.counter, 1);
+    //     // note ratatui also has an assert_buffer_eq! macro that can be used to
+    //     // compare buffers and display the differences in a more readable way
+    //     assert_eq!(buf, expected);
+    // }
 
-        app.handle_key_event(KeyCode::Left.into());
-        assert_eq!(app.counter, 0);
+    // #[test]
+    // fn handle_key_event() -> io::Result<()> {
+    //     let mut app = App::default();
+    //     app.handle_key_event(KeyCode::Right.into());
+    //     assert_eq!(app.counter, 1);
 
-        let mut app = App::default();
-        app.handle_key_event(KeyCode::Char('q').into());
-        assert_eq!(app.exit, true);
+    //     app.handle_key_event(KeyCode::Left.into());
+    //     assert_eq!(app.counter, 0);
 
-        Ok(())
-    }
+    //     let mut app = App::default();
+    //     app.handle_key_event(KeyCode::Char('q').into());
+    //     assert_eq!(app.exit, true);
+
+    //     Ok(())
+    // }
 }

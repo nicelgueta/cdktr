@@ -119,6 +119,7 @@ impl AgentMeta {
             running_tasks: 0
         }
     }
+    
     pub fn update_timestamp(&mut self, new_ts: i64) {
         self.last_ping_timestamp = new_ts
     }
