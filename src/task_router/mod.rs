@@ -3,12 +3,7 @@ use crate::{
     models::{AgentMeta, AgentPriorityQueue, Task},
     server::{agent::AgentAPI, models::ClientResponseMessage},
     utils::AsyncQueue,
-    zmq_helpers::{
-        get_agent_tcp_uri, 
-        get_zmq_req, 
-        wait_on_recv, 
-        DEFAULT_TIMEOUT
-    },
+    zmq_helpers::{get_agent_tcp_uri, get_zmq_req, wait_on_recv, DEFAULT_TIMEOUT},
 };
 use std::time::Duration;
 use tokio::time::sleep;
@@ -49,11 +44,9 @@ impl TaskRouter {
                     req.send(AgentAPI::Run(task).into())
                         .await
                         .expect("ZMQ error whle sending msg");
-                    
+
                     // check task successfully executed on agent
-                    let resp = wait_on_recv(
-                        req, DEFAULT_TIMEOUT
-                    ).await;
+                    let resp = wait_on_recv(req, DEFAULT_TIMEOUT).await;
                     match resp {
                         Ok(msg) => {
                             let parsed_resp = ClientResponseMessage::from(msg);
@@ -61,29 +54,27 @@ impl TaskRouter {
                                 ClientResponseMessage::Success => {
                                     // record the task as running in the agent meta
                                     agent_meta.inc_running_task();
-                                },
+                                }
                                 cli_msg => {
                                     let str_msg: String = cli_msg.into();
                                     println!(
-                                        "Failed to execute task on agent {}. Got message {}", 
-                                        agent_meta.agent_id,
-                                        str_msg
+                                        "Failed to execute task on agent {}. Got message {}",
+                                        agent_meta.agent_id, str_msg
                                     )
                                 }
                             }
-                        },
+                        }
                         Err(e) => match e {
                             GenericError::TimeoutError => {
                                 println!(
                                     "Timed out wating on response from agent for task execution"
                                 )
-                            },
-                            e => println!("Failed to execute task. Error: {}", e.to_string())
-                        }
+                            }
+                            e => println!("Failed to execute task. Error: {}", e.to_string()),
+                        },
                     };
                     // return the agent meta back to queue
                     self.return_agent_meta(agent_meta).await
-
                 }
                 Err(e) => match e {
                     GenericError::MissingAgents => {

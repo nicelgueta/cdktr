@@ -3,14 +3,13 @@ use std::io;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
-    layout::{Alignment, Rect, Constraint},
+    layout::{Alignment, Constraint, Rect},
     style::{Style, Stylize},
     symbols::border,
     text::{Line, Text},
     widgets::{
         block::{Position, Title},
-        Block, Paragraph, Widget,
-        Tabs, Table, Row
+        Block, Paragraph, Row, Table, Tabs, Widget,
     },
     Frame,
 };
@@ -27,7 +26,9 @@ pub struct App {
 impl App {
     pub fn new(tabs: Vec<String>) -> Self {
         Self {
-            tab: 0, tabs, exit: false
+            tab: 0,
+            tabs,
+            exit: false,
         }
     }
     /// runs the application's main loop until the user quits
@@ -45,9 +46,15 @@ impl App {
 
     fn change_tab(&mut self, up: bool) {
         if up {
-            if self.tab == self.tabs.len() - 1 {} else {self.tab+=1}
+            if self.tab == self.tabs.len() - 1 {
+            } else {
+                self.tab += 1
+            }
         } else {
-            if self.tab == 0 {} else {self.tab-=1}
+            if self.tab == 0 {
+            } else {
+                self.tab -= 1
+            }
         }
     }
 
@@ -96,15 +103,13 @@ impl Widget for &App {
             .collect::<Table>()
             .widths([Constraint::Length(10); 3]);
         table.render(area, buf)
-    }   
+    }
 }
 
 fn main() -> io::Result<()> {
     let mut terminal = tui::init()?;
-    let app_result = App::new(vec![
-        "DASHBOARD".to_string(),
-        "FLOW MANAGER".to_string(),
-    ]).run(&mut terminal);
+    let app_result =
+        App::new(vec!["DASHBOARD".to_string(), "FLOW MANAGER".to_string()]).run(&mut terminal);
     tui::restore()?;
     app_result
 }
@@ -119,7 +124,6 @@ mod tests {
     //     let mut buf = Buffer::empty(Rect::new(0, 0, 50, 4));
 
     //     app.render(buf.area, &mut buf);
-
 
     //     let mut expected = Buffer::with_lines(vec![
     //         "┏━━━━━━━━━━━━━ Counter App Tutorial ━━━━━━━━━━━━━┓",

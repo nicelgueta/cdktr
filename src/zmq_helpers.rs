@@ -8,7 +8,6 @@ use crate::{
 use tokio::time::timeout;
 use zeromq::{RepSocket, ReqSocket, Socket, SocketRecv, ZmqMessage};
 
-
 pub static DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
 
 impl Into<ZMQArgs> for ZmqMessage {
