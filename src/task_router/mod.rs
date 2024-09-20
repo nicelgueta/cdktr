@@ -3,7 +3,7 @@ use crate::{
     models::{AgentMeta, AgentPriorityQueue, Task},
     server::{agent::AgentAPI, models::ClientResponseMessage},
     utils::AsyncQueue,
-    zmq_helpers::{get_server_tcp_uri, get_zmq_req, wait_on_recv, DEFAULT_TIMEOUT},
+    zmq_helpers::{get_server_tcp_uri, get_zmq_req, send_recv_with_timeout, DEFAULT_TIMEOUT},
 };
 use std::time::Duration;
 use tokio::time::sleep;
@@ -40,15 +40,11 @@ impl TaskRouter {
             let agent_res = self.find_agent().await;
             match agent_res {
                 Ok(mut agent_meta) => {
-                    let mut agent_socket =
-                        get_zmq_req(&get_server_tcp_uri(&agent_meta.host, agent_meta.port)).await;
-                    agent_socket.send(AgentAPI::Run(task).into()).await.expect(
-                        "ZMQ error whi
-                        le sending msg",
-                    );
-
-                    // check task successfully executed on agent
-                    let resp = wait_on_recv(agent_socket, DEFAULT_TIMEOUT).await;
+                    let resp = send_recv_with_timeout(
+                        get_server_tcp_uri(&agent_meta.host, agent_meta.port), 
+                        AgentAPI::Run(task).into(), 
+                        DEFAULT_TIMEOUT
+                    ).await;
                     match resp {
                         Ok(msg) => {
                             let parsed_resp = ClientResponseMessage::from(msg);

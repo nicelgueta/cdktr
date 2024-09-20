@@ -10,7 +10,6 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use zeromq::{Socket, SocketOptions};
-mod api;
 
 #[derive(Debug)]
 pub struct TaskExecutionHandle {

@@ -14,6 +14,22 @@ pub enum Task {
     Process(ProcessTask),
 }
 
+impl Task {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Process(pt) => {
+                let mut tokens = vec!["PROCESS".to_string()];
+                tokens.push(pt.command.clone());
+                if let Some(args) = &pt.args {
+                    for arg in args {
+                        tokens.push(arg.clone())
+                    }
+                };
+                tokens.join("|")
+            }
+        }
+    }
+}
 impl TryFrom<ZMQArgs> for Task {
     type Error = ZMQParseError;
     fn try_from(mut zmq_args: ZMQArgs) -> Result<Self, Self::Error> {
@@ -46,22 +62,6 @@ impl TryFrom<ZMQArgs> for Task {
     }
 }
 
-impl Into<String> for Task {
-    fn into(self) -> String {
-        match self {
-            Self::Process(pt) => {
-                let mut tokens = vec!["PROCESS".to_string()];
-                tokens.push(pt.command.clone());
-                if let Some(args) = &pt.args {
-                    for arg in args {
-                        tokens.push(arg.clone())
-                    }
-                };
-                tokens.join("|")
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

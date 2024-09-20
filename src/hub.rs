@@ -1,4 +1,5 @@
 use std::{sync::Arc, time::Duration};
+use log::{debug, error, info, trace, warn};
 use tokio::{sync::Mutex, time::sleep};
 use zeromq::{SocketRecv, SocketSend};
 
@@ -16,7 +17,7 @@ use crate::{
     task_router::TaskRouter,
     taskmanager,
     utils::{get_instance_id, AsyncQueue},
-    zmq_helpers::{get_server_tcp_uri, get_zmq_req, wait_on_recv},
+    zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT, send_recv_with_timeout},
 };
 
 pub enum InstanceType {
@@ -34,6 +35,12 @@ impl InstanceType {
                 "Cannot create a Server instance of {}. Must be either PRINCIPAL or AGENT",
                 _o
             ),
+        }
+    }
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::AGENT => String::from("AGENT"),
+            Self::PRINCIPAL => String::from("PRINCIPAL"),
         }
     }
 }
@@ -56,20 +63,26 @@ async fn spawn_scheduler(
     poll_interval_seconds: i32,
     task_router_queue: AsyncQueue<Task>,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+    debug!("Spawning scheduler");
+    let handle = tokio::spawn(async move {
         let mut sched = scheduler::Scheduler::new(db_cnxn, poll_interval_seconds);
         sched.start_listening(task_router_queue).await
-    })
+    });
+    debug!("Scheduler spawned");
+    handle
 }
 
 async fn spawn_task_router(
     task_router_queue: AsyncQueue<Task>,
     live_agents: AgentPriorityQueue,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+    debug!("Spawning Task Router");
+    let handle = tokio::spawn(async move {
         let mut task_router = TaskRouter::new(task_router_queue, live_agents);
         task_router.start().await
-    })
+    });
+    debug!("Task Router spawned");
+    handle
 }
 
 async fn spawn_principal_heartbeat(
@@ -77,38 +90,47 @@ async fn spawn_principal_heartbeat(
     principal_uri: String,
     max_tm_tasks: usize,
 ) {
+    debug!("Spawning agent heartbeat loop");
     tokio::spawn(async move {
         loop {
             loop {
-                sleep(Duration::from_millis(10)).await;
+                sleep(Duration::from_millis(1000)).await;
                 let msg = PrincipalAPI::Ping;
-                let mut req = get_zmq_req(&principal_uri).await;
-                req.send(msg.into())
-                    .await
-                    .expect("Failed to connect to principal");
-                let resp_res = wait_on_recv(req, Duration::from_millis(10)).await;
-                if let Err(e) = resp_res {
-                    match e {
-                        GenericError::TimeoutError => break,
-                        _ => panic!("Unspecified error in principal heartbeat"),
+                trace!("Pinging principal @ {} with msg: {}", &principal_uri, msg.to_string());
+                let resp_res = send_recv_with_timeout(
+                    principal_uri.clone(),
+                    msg.into(),
+                    DEFAULT_TIMEOUT
+                ).await;
+                match resp_res {
+                    Ok(zmq_msg) => {
+                        let msg: String = ClientResponseMessage::from(zmq_msg).into();
+                        trace!("Principal response: {}", msg)
+                    },
+                    Err(e) => match e {
+                            GenericError::TimeoutError => {
+                                error!("Agent heartbeat timed out pinging principal");
+                                break
+                            },
+                            _ => panic!("Unspecified error in principal heartbeat"),
+                        }
                     }
-                }
+                
             }
             // broken out of loop owing to timeout so we need to re-register with the principal
+            warn!("Attempting to reconnect to principal @ {}", &principal_uri);
             let msg = PrincipalAPI::RegisterAgent(instance_id.clone(), max_tm_tasks);
-            let mut req = get_zmq_req(&principal_uri).await;
-            req.send(msg.into())
-                .await
-                .expect("Failed to connect to principal - aborting");
-            let resp_res = wait_on_recv(req, Duration::from_millis(10)).await;
+            let resp_res = send_recv_with_timeout(
+                principal_uri.clone(), msg.into(), DEFAULT_TIMEOUT
+            ).await;
             match resp_res {
                 Ok(zmq_message) => {
                     let cli_msg = ClientResponseMessage::from(zmq_message);
                     match cli_msg {
-                        ClientResponseMessage::Success => (),
+                        ClientResponseMessage::Success => info!("Successfully reconnected to principal"),
                         e => {
                             let msg_str: String = e.into();
-                            println!(
+                            error!(
                                 "Established connection to principal but got unexpected message: {msg_str}", 
                             );
                             break; // kill the loop for good
@@ -116,7 +138,7 @@ async fn spawn_principal_heartbeat(
                     }
                 }
                 Err(e) => {
-                    println!(
+                    error!(
                         "Failed to re-register with principal. Got error {}",
                         e.to_string()
                     );
@@ -149,6 +171,7 @@ impl Hub {
         match self.instance_type {
             InstanceType::PRINCIPAL => {
                 let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
+                debug!("Created db connection to {}", database_url.unwrap_or(String::from(":memory:")));
 
                 // create the priority queue of agent meta that will be used by the server
                 // and task router

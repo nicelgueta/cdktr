@@ -1,5 +1,5 @@
 [package]
-name = "conducktor"
+name = "cdktr"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,6 +11,9 @@ chrono = "0.4.38"
 cron = "0.12.1"
 diesel = { version = "2.2.0", features = ["sqlite", "chrono"] }
 diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
+dotenv = "0.15.0"
+env_logger = "0.11.5"
+log = "0.4.22"
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread", "io-std", "process", "io-util", "sync", "time"] }

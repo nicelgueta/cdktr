@@ -2,17 +2,14 @@ mod task;
 
 use crate::{
     exceptions::{self, GenericError},
-    utils::{arg_str_to_vec, get_instance_id},
+    utils::get_instance_id,
 };
 use std::{
-    cmp::Ordering,
     collections::{BinaryHeap, HashMap, VecDeque},
-    ops::DerefMut,
     sync::Arc,
 };
 pub use task::Task;
 use tokio::sync::Mutex;
-use zeromq::ZmqMessage;
 pub mod traits;
 
 #[derive(Debug, PartialEq)]
@@ -29,36 +26,6 @@ impl FlowExecutionResult {
             Self::CRASHED(v) => v,
             _ => "".to_string(), // Self::ABORTED(v) => v,
                                  // Self::FAILURE(v) => v,
-        }
-    }
-}
-
-/// PubZMQMessageType enum defines the possible messages that are published
-/// on the PUB wire between different components and externally. The first token
-/// in a ZMQString is matched against this enum to determine whether a message
-/// appears to be a supported message based on this token. It is up to the actual
-/// implementation of the ZMQEncodable itself to determine whether the rest of the string
-/// is valid or not for the message type.
-pub enum PubZMQMessage {
-    /// Standard task definition for a task without a specific executor context
-    /// A message sent from the publisher like this is executed by all agents
-    /// listening to the feed
-    /// eg.
-    /// TASKDEF|PROCESS|ls|thisdir
-    TaskDef(Task),
-}
-impl TryFrom<ZmqMessage> for PubZMQMessage {
-    type Error = exceptions::ZMQParseError;
-    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
-        let mut args: ZMQArgs = value.into();
-        let msg_type = if let Some(token) = args.next() {
-            token
-        } else {
-            return Err(exceptions::ZMQParseError::InvalidMessageType);
-        };
-        match msg_type.as_str() {
-            "TASKDEF" => Ok(Self::TaskDef(Task::try_from(args)?)),
-            _ => Err(exceptions::ZMQParseError::InvalidTaskType),
         }
     }
 }
@@ -137,7 +104,7 @@ impl AgentMeta {
     /// if they have reached capacity so we will allow negative values
     /// as the priority queue will naturally handle this
     pub fn capacity(&self) -> i32 {
-        (self.max_tasks - self.running_tasks) as i32
+        self.max_tasks as i32 - self.running_tasks as i32
     }
     pub fn inc_running_task(&mut self) {
         self.running_tasks += 1
@@ -209,17 +176,6 @@ impl AgentPriorityQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn zmq_message_type_taskdef() {
-        let zmq_msg = ZmqMessage::from("TASKDEF|PROCESS|ls");
-        assert!(PubZMQMessage::try_from(zmq_msg).is_ok());
-    }
-
-    #[test]
-    fn zmq_message_type_invalid() {
-        let zmq_msg = ZmqMessage::from("invalidinvalid");
-        assert!(PubZMQMessage::try_from(zmq_msg).is_err());
-    }
 
     #[tokio::test]
     async fn test_basic_apq() {

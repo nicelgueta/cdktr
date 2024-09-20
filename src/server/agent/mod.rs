@@ -1,10 +1,10 @@
 use crate::{
-    hub::InstanceType,
     models::{Task, ZMQArgs},
     utils::AsyncQueue,
     zmq_helpers::get_zmq_req,
 };
 use async_trait::async_trait;
+use log::debug;
 use zeromq::{SocketSend, ZmqMessage};
 mod api;
 use super::{
@@ -53,8 +53,7 @@ impl Into<ZmqMessage> for AgentAPI {
             Self::Heartbeat => "HEARTBEAT".to_string(),
             Self::Ping => "PING".to_string(),
             Self::Run(task) => {
-                let s: String = task.into();
-                format!("RUN|{s}")
+                format!("RUN|{}", task.to_string())
             }
         };
         ZmqMessage::from(zmq_s)
@@ -77,11 +76,13 @@ impl AgentServer {
         }
     }
     pub async fn register_with_principal(&self, principal_uri: &str, max_tasks: usize) {
+        debug!("Registering agent with principal @ {}", &principal_uri);
         let mut req = get_zmq_req(principal_uri).await;
         let msg = PrincipalAPI::RegisterAgent(self.instance_id.clone(), max_tasks);
         req.send(msg.into())
             .await
-            .expect("Failed to connect to principal");
+            .expect("Got ZMQ Error attempting to connect to principal");
+        debug!("Successfully registered agent with principal");
     }
 }
 

@@ -13,10 +13,15 @@ mod zmq_helpers;
 
 use hub::{Hub, InstanceType};
 use std::env;
-use utils::get_instance_id;
+use dotenv::dotenv;
+
+use log::info;
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+    env_logger::init();
+
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         println!("Needs at least arg (1) of either AGENT or PRINCIPAL and (2) PORT");
@@ -37,7 +42,7 @@ async fn main() {
             .expect("Principal port must be a valid port number"),
         InstanceType::PRINCIPAL => instance_port,
     };
-
+    info!("Starting {} instance on {}:{}", typ.to_string(), &instance_host, instance_port);
     let mut hub = Hub::from_instance_type(typ);
 
     // begin main app loop

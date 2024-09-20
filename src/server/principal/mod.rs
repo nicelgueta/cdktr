@@ -55,6 +55,27 @@ pub enum PrincipalAPI {
     RegisterAgent(String, usize),
 }
 
+impl PrincipalAPI {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Ping => "PING".to_string(),
+            Self::CreateTask(task) => {
+                let task_json = serde_json::to_string(&task)
+                    .expect("Unable to convert NewScheduledTask to JSON");
+                format!("CREATETASK|{}", &task_json)
+            }
+            Self::RunTask(agent_id, task) => {
+                let task_str: String = task.to_string();
+                format!("AGENTRUN|{agent_id}|{task_str}")
+            }
+            Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
+            Self::ListTasks => "LISTTASKS".to_string(),
+            Self::RegisterAgent(agent_id, max_tasks) => {
+                format!("REGISTERAGENT|{agent_id}|{max_tasks}")
+            }
+        }
+    }
+}
 impl TryFrom<ZmqMessage> for PrincipalAPI {
     type Error = RepReqError;
     fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
@@ -100,24 +121,7 @@ impl TryFrom<ZmqMessage> for PrincipalAPI {
 
 impl Into<ZmqMessage> for PrincipalAPI {
     fn into(self) -> ZmqMessage {
-        let zmq_s = match self {
-            Self::Ping => "PING".to_string(),
-            Self::CreateTask(task) => {
-                let task_json = serde_json::to_string(&task)
-                    .expect("Unable to convert NewScheduledTask to JSON");
-                format!("CREATETASK|{}", &task_json)
-            }
-            Self::RunTask(agent_id, task) => {
-                let task_str: String = task.into();
-                format!("AGENTRUN|{agent_id}|{task_str}")
-            }
-            Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
-            Self::ListTasks => "LISTTASKS".to_string(),
-            Self::RegisterAgent(agent_id, max_tasks) => {
-                format!("REGISTERAGENT|{agent_id}|{max_tasks}")
-            }
-        };
-        ZmqMessage::from(zmq_s)
+        ZmqMessage::from(self.to_string())
     }
 }
 
