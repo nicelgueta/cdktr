@@ -1,6 +1,5 @@
 use crate::{
-    db::{get_connection, models::NewScheduledTask},
-    models::{AgentMeta, AgentPriorityQueue, Task, ZMQArgs},
+    db::{get_connection, models::NewScheduledTask}, hub::InstanceType, models::{AgentMeta, AgentPriorityQueue, Task, ZMQArgs}, utils::split_instance_id
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -152,7 +151,8 @@ impl PrincipalServer {
             Ok(_) => (),
             Err(_e) => {
                 // agent not registered before so add new
-                let agent_meta = AgentMeta::new(agent_id.clone(), max_tasks, now);
+                let (a_host, a_port) = split_instance_id(agent_id);
+                let agent_meta = AgentMeta::new(a_host, a_port, max_tasks, now);
                 self.live_agents.push(agent_meta).await
             }
         };
@@ -257,11 +257,11 @@ mod tests {
             ),
             ("DELETETASK|1", ClientResponseMessage::Success, 0),
             (
-                "AGENTRUN|8999|PROCESS|echo|hello",
+                "AGENTRUN|localhost-8999|PROCESS|echo|hello",
                 ClientResponseMessage::Success,
                 0,
             ),
-            ("REGISTERAGENT|8999|3", ClientResponseMessage::Success, 0),
+            ("REGISTERAGENT|localhost-8999|3", ClientResponseMessage::Success, 0),
         ];
         let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
         for (zmq_s, response, exp_exit_code) in test_params {
@@ -279,7 +279,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_agent_new() {
         let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
-        let agent_id = String::from("fake_id");
+        let agent_id = String::from("localhost-4567");
         let (resp, exit_code) = server.register_agent(&agent_id, 3).await;
         {
             server.live_agents.pop().await.unwrap();
@@ -291,7 +291,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_agent_already_exists() {
         let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
-        let agent_id = String::from("fake_id");
+        let agent_id = String::from("localhost-4567");
         let max_tasks = 3;
         server.register_agent(&agent_id, max_tasks).await;
         let old_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };

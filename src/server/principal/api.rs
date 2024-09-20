@@ -4,14 +4,10 @@ use std::time::Duration;
 /// utilities
 ///
 use crate::{
-    db::models::{NewScheduledTask, ScheduledTask},
-    macros::args_to_model,
-    models::{Task, ZMQArgs},
-    server::{
+    db::models::{NewScheduledTask, ScheduledTask}, macros::args_to_model, models::{Task, ZMQArgs}, server::{
         agent::AgentAPI,
         models::{ClientResponseMessage, RepReqError},
-    },
-    zmq_helpers::{get_agent_tcp_uri, get_req_timeout, get_zmq_req},
+    }, utils::split_instance_id, zmq_helpers::get_req_timeout
 };
 use diesel::prelude::*;
 
@@ -150,8 +146,9 @@ pub fn handle_delete_task(
 }
 
 pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMessage, usize) {
-    let req_r = get_req_timeout(&agent_id, Duration::from_secs(1)).await;
-    let mut req = if let Ok(req) = req_r {
+    let (host, port) = split_instance_id(&agent_id);
+    let req_r = get_req_timeout(&host, port, Duration::from_secs(1)).await;
+    let mut agent_socket = if let Ok(req) = req_r {
         req
     } else {
         return (
@@ -159,8 +156,8 @@ pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMes
             0,
         );
     };
-    req.send(AgentAPI::Run(task).into()).await.unwrap();
-    let response = req.recv().await;
+    agent_socket.send(AgentAPI::Run(task).into()).await.unwrap();
+    let response = agent_socket.recv().await;
     match response {
         Ok(msg) => (ClientResponseMessage::from(msg), 0),
         Err(e) => (
@@ -177,7 +174,7 @@ pub async fn handle_run_task(agent_id: String, task: Task) -> (ClientResponseMes
 mod tests {
 
     use super::*;
-    use crate::zmq_helpers::get_zmq_rep;
+    use crate::zmq_helpers::{get_server_tcp_uri, get_zmq_rep};
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
     use tokio::time::sleep;
     use zeromq::ZmqMessage;
@@ -315,8 +312,9 @@ mod tests {
 
     #[test]
     fn test_get_agent_tcp_uri() {
-        let agent_id = "1234".to_string();
-        assert_eq!(get_agent_tcp_uri(&agent_id), "tcp://0.0.0.0:1234")
+        let host = "localhost";
+        let port = 1234 as usize;
+        assert_eq!(get_server_tcp_uri(host, port), "tcp://localhost:1234")
     }
 
     #[tokio::test]
@@ -329,7 +327,7 @@ mod tests {
             rep.send(ZmqMessage::from("OK")).await
         });
         sleep(Duration::from_millis(1)).await;
-        let agent_id = "32145".to_string();
+        let agent_id = "localhost-32145".to_string();
         let task = Task::try_from(ZMQArgs::from(vec![
             "PROCESS".to_string(),
             "echo".to_string(),

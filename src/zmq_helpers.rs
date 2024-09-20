@@ -32,10 +32,11 @@ pub async fn get_zmq_req(endpoint_uri: &str) -> ReqSocket {
 }
 
 pub async fn get_req_timeout(
-    remote_id: &String,
+    host: &str,
+    port: usize,
     duration: Duration,
 ) -> Result<ReqSocket, GenericError> {
-    let uri = get_agent_tcp_uri(remote_id);
+    let uri = get_server_tcp_uri(host, port);
     let res = tokio::spawn(timeout(duration, async move { get_zmq_req(&uri).await }))
         .await
         .expect("Encountered join error");
@@ -53,10 +54,8 @@ pub async fn get_zmq_rep(endpoint_uri: &str) -> RepSocket {
     rep
 }
 
-pub fn get_agent_tcp_uri(agent_id: &String) -> String {
-    // TODO: Change to use datastore instead
-    // since these Ids will change
-    return format!("tcp://0.0.0.0:{}", agent_id);
+pub fn get_server_tcp_uri(host: &str, port: usize) -> String {
+    return format!("tcp://{host}:{port}");
 }
 
 /// calling .await on a ReqSocket.recv() could hang if the agent has died
@@ -88,32 +87,35 @@ mod tests {
     use super::*;
     use zeromq::{SocketRecv, SocketSend};
 
-    async fn get_req(agent_id: &String) -> Result<ReqSocket, GenericError> {
-        get_req_timeout(agent_id, Duration::from_millis(500)).await
+    async fn get_req(host: &str, port: usize,) -> Result<ReqSocket, GenericError> {
+        get_req_timeout(host, port, Duration::from_millis(500)).await
     }
 
     #[tokio::test]
     async fn test_get_req_ok() {
-        let agent_id = String::from("9999");
-        let endpoint = get_agent_tcp_uri(&agent_id);
+        let host = String::from("0.0.0.0");
+        let port = 9999;
+        let endpoint = get_server_tcp_uri(&host, port);
         let mut rep = get_zmq_rep(&endpoint).await;
         tokio::spawn(async move {
             rep.recv().await.unwrap();
             rep.send("OK".into()).await.unwrap()
         });
-        assert!(get_req(&agent_id).await.is_ok());
+        assert!(get_req(&host, port).await.is_ok());
     }
 
     #[tokio::test]
     async fn test_get_req_timeout() {
-        let agent_id = String::from("9998");
-        assert!(get_req(&agent_id).await.is_err());
+        let host = String::from("0.0.0.0");
+        let port = 9998;
+        assert!(get_req(&host, port).await.is_err());
     }
 
     #[tokio::test]
     async fn test_wait_on_recv_ok() {
-        let agent_id = String::from("9997");
-        let endpoint = get_agent_tcp_uri(&agent_id);
+        let host = String::from("0.0.0.0");
+        let port = 9997;
+        let endpoint = get_server_tcp_uri(&host, port);
         let mut rep = get_zmq_rep(&endpoint).await;
         tokio::spawn(async move {
             rep.recv().await.unwrap();

@@ -5,6 +5,24 @@ pub fn arg_str_to_vec(s: String) -> VecDeque<String> {
     s.split("|").map(|x| x.to_string()).collect()
 }
 
+pub fn get_instance_id(host: &str, port: usize) -> String {
+    let mut id = String::new();
+    id.push_str(host);
+    id.push_str("-");
+    let port_s = port.to_string();
+    id.push_str(&port_s);
+    id
+}
+
+/// Splits an instance id into server and port
+pub fn split_instance_id(id: &str) -> (String, usize) {
+    let splits: Vec<&str> = id.split("-").collect();
+    (splits[0].to_string(), splits[1].parse().expect(
+        &format!("Port does not appear to be a valid port number. Got: {}", splits[1])
+    ))
+
+}
+
 /// A simple queue that can be accessed across threads. The queue
 /// holds an internal Arc<Mutex<T>> to abstract the verbose handling
 /// of the mutex from the consumer

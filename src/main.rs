@@ -12,6 +12,7 @@ mod utils;
 mod zmq_helpers;
 
 use hub::{Hub, InstanceType};
+use utils::get_instance_id;
 use std::env;
 
 #[tokio::main]
@@ -22,24 +23,31 @@ async fn main() {
         return;
     };
     let typ = InstanceType::from_str(&args[1]);
-    let pub_host = "0.0.0.0".to_string();
-    let server_port: usize = args[2].parse().expect("PORT must be a valid number");
+    let instance_host = env::var("CDKT_INSTANCE_HOST").unwrap_or("0.0.0.0".to_string());
+    let principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
+    let instance_port: usize = args[2].parse().expect("PORT must be a valid number");
     let database_url: Option<String> = None;
     let poll_interval_seconds = 2;
     let max_tm_tasks = 8;
 
-    let instance_id = server_port.to_string();
+    let principal_port = match typ {
+        InstanceType::AGENT => env::var("CDKTR_PRINCIPAL_PORT").expect(
+            "env var CDKTR_PRINCIPAL_PORT must be set when spawning an agent instance"
+        ).parse().expect("Principal port must be a valid port number"),
+        InstanceType::PRINCIPAL => instance_port
+    };
 
     let mut hub = Hub::from_instance_type(typ);
 
     // begin main app loop
     hub.start(
-        instance_id,
+        instance_host,
+        instance_port,
+        principal_host,
+        principal_port,
         database_url,
         poll_interval_seconds,
-        pub_host,
         max_tm_tasks,
-        server_port,
     )
     .await
 }

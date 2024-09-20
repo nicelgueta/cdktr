@@ -2,7 +2,7 @@ mod task;
 
 use crate::{
     exceptions::{self, GenericError},
-    utils::arg_str_to_vec,
+    utils::{arg_str_to_vec, get_instance_id},
 };
 use std::{
     cmp::Ordering,
@@ -109,19 +109,24 @@ impl From<Vec<String>> for ZMQArgs {
 /// status
 #[derive(Clone, Debug)]
 pub struct AgentMeta {
-    pub agent_id: String,
+    pub host: String,
+    pub port:usize,
     max_tasks: usize,
     running_tasks: usize,
     last_ping_timestamp: i64,
 }
 impl AgentMeta {
-    pub fn new(agent_id: String, max_tasks: usize, last_ping_timestamp: i64) -> Self {
+    pub fn new(host: String, port: usize, max_tasks: usize, last_ping_timestamp: i64) -> Self {
         Self {
-            agent_id,
+            host, 
+            port,
             last_ping_timestamp,
             max_tasks,
             running_tasks: 0,
         }
+    }
+    pub fn agent_id(&self) -> String {
+        get_instance_id(&self.host, self.port)
     }
 
     pub fn update_timestamp(&mut self, new_ts: i64) {
@@ -143,6 +148,7 @@ impl AgentMeta {
     pub fn get_last_ping_ts(&self) -> i64 {
         self.last_ping_timestamp
     }
+
 }
 
 #[derive(Clone, Debug)]
@@ -162,7 +168,7 @@ impl AgentPriorityQueue {
         (*heap).is_empty()
     }
     pub async fn push(&mut self, agent_meta: AgentMeta) {
-        let agent_id = agent_meta.agent_id.clone();
+        let agent_id = agent_meta.agent_id();
 
         // add capcity and agent_id tuple to the max heap
         let mut heap = self.heap.lock().await;
@@ -220,48 +226,48 @@ mod tests {
     async fn test_basic_apq() {
         let mut pq = AgentPriorityQueue::new();
         let agents = vec![
-            AgentMeta::new("id1".to_string(), 2, 0),
-            AgentMeta::new("id2".to_string(), 3, 0),
-            AgentMeta::new("id3".to_string(), 1, 0),
+            AgentMeta::new("localhost".to_string(), 9999, 2, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 3, 0),
+            AgentMeta::new("localhost".to_string(), 9997, 1, 0),
         ];
         for ag_meta in agents {
             pq.push(ag_meta).await
         }
         // capacity for all should be max - 0 to start
         let top = pq.pop().await.unwrap();
-        assert_eq!(&top.agent_id, "id2");
+        assert_eq!(&top.agent_id(), "localhost-9998");
 
         // not putting top back on the queue so next should be id1
         let top2 = pq.pop().await.unwrap();
-        assert_eq!(&top2.agent_id, "id1");
+        assert_eq!(&top2.agent_id(), "localhost-9999");
         // put back as is
         pq.push(top2).await;
 
         // check is back at top
-        assert_eq!(&pq.pop().await.unwrap().agent_id, "id1")
+        assert_eq!(&pq.pop().await.unwrap().agent_id(), "localhost-9999")
     }
 
     #[tokio::test]
     async fn test_update_timestamp() {
         let mut pq = AgentPriorityQueue::new();
         let agents = vec![
-            AgentMeta::new("id1".to_string(), 3, 0),
-            AgentMeta::new("id2".to_string(), 4, 0),
-            AgentMeta::new("id3".to_string(), 2, 0),
-            AgentMeta::new("id4".to_string(), 1, 0),
+            AgentMeta::new("localhost".to_string(), 9999, 3, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 4, 0),
+            AgentMeta::new("localhost".to_string(), 9997, 2, 0),
+            AgentMeta::new("localhost".to_string(), 9996, 1, 0),
         ];
         for ag_meta in agents {
             pq.push(ag_meta).await
         }
 
-        assert!(pq.update_timestamp(&"id3".to_string(), 2).await.is_ok());
+        assert!(pq.update_timestamp(&"localhost-9997".to_string(), 2).await.is_ok());
 
         // check is updated when accessed via pop
         // (third item)
         let _ = pq.pop().await;
         let _ = pq.pop().await;
         let id3 = pq.pop().await.unwrap();
-        assert_eq!(id3.agent_id, "id3".to_string());
+        assert_eq!(id3.agent_id(), "localhost-9997".to_string());
         assert_eq!(id3.last_ping_timestamp, 2)
     }
 }

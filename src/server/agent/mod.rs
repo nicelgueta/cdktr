@@ -1,8 +1,5 @@
 use crate::{
-    db::get_connection,
-    models::{Task, ZMQArgs},
-    utils::AsyncQueue,
-    zmq_helpers::get_zmq_req,
+    hub::InstanceType, models::{Task, ZMQArgs}, utils::AsyncQueue, zmq_helpers::get_zmq_req
 };
 use async_trait::async_trait;
 use zeromq::{SocketSend, ZmqMessage};
@@ -100,6 +97,7 @@ impl Server<AgentAPI> for AgentServer {
             }
         }
     }
+    
 }
 
 #[cfg(test)]

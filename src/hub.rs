@@ -1,16 +1,17 @@
-use std::{collections::HashMap, sync::Arc};
-
-use tokio::sync::Mutex;
+use std::{sync::Arc, time::Duration};
+use zeromq::{SocketRecv, SocketSend};
+use tokio::{sync::Mutex, time::sleep};
 
 use crate::{
-    db::get_connection,
-    models::{traits::EventListener, AgentMeta, AgentPriorityQueue, Task},
-    scheduler,
-    server::{agent::AgentServer, principal::PrincipalServer, Server},
-    task_router::TaskRouter,
-    taskmanager,
-    utils::AsyncQueue,
-    zmq_helpers::get_agent_tcp_uri,
+    db::get_connection, 
+    exceptions::GenericError, 
+    models::{traits::EventListener, AgentPriorityQueue, Task}, 
+    scheduler, 
+    server::{agent::AgentServer, models::ClientResponseMessage, principal::{PrincipalAPI, PrincipalServer}, Server}, 
+    task_router::TaskRouter, 
+    taskmanager, 
+    utils::{get_instance_id, AsyncQueue}, 
+    zmq_helpers::{get_server_tcp_uri, get_zmq_req, wait_on_recv}
 };
 
 pub enum InstanceType {
@@ -66,6 +67,54 @@ async fn spawn_task_router(
     })
 }
 
+async fn spawn_principal_heartbeat(instance_id: String, principal_uri: String, max_tm_tasks: usize){
+    tokio::spawn(async move {
+        loop {
+            loop {
+                sleep(Duration::from_millis(10)).await;
+                let msg = PrincipalAPI::Ping;
+                let mut req = get_zmq_req(&principal_uri).await;
+                req.send(msg.into())
+                    .await
+                    .expect("Failed to connect to principal");
+                let resp_res = wait_on_recv(req, Duration::from_millis(10)).await;
+                if let Err(e) = resp_res {
+                    match e {
+                        GenericError::TimeoutError => break,
+                        _ => panic!("Unspecified error in principal heartbeat")
+                    }
+                }
+            }
+            // broken out of loop owing to timeout so we need to re-register with the principal
+            let msg = PrincipalAPI::RegisterAgent(instance_id.clone(), max_tm_tasks);
+            let mut req = get_zmq_req(&principal_uri).await;
+            req.send(msg.into())
+                    .await
+                    .expect("Failed to connect to principal - aborting");
+            let resp_res = wait_on_recv(req, Duration::from_millis(10)).await;
+            match resp_res {
+                Ok(zmq_message) => {
+                    let cli_msg = ClientResponseMessage::from(zmq_message);
+                    match cli_msg{
+                        ClientResponseMessage::Success => (),
+                        e => {
+                            let msg_str: String = e.into();
+                            println!(
+                                "Established connection to principal but got unexpected message: {msg_str}", 
+                            );
+                            break // kill the loop for good
+                        }
+                    }
+                },
+                Err(e) => {
+                    println!("Failed to re-register with principal. Got error {}", e.to_string());
+                    break;
+                }
+            };
+        }
+    });
+}
+
 pub struct Hub {
     instance_type: InstanceType,
 }
@@ -76,13 +125,15 @@ impl Hub {
     }
     pub async fn start(
         &mut self,
-        instance_id: String,
+        instance_host: String,
+        instance_port: usize,
+        principal_host: String,
+        principal_port: usize,
         database_url: Option<String>,
         poll_interval_seconds: i32,
-        pub_host: String,
         max_tm_tasks: usize,
-        server_port: usize,
     ) {
+        let instance_id = get_instance_id(&instance_host, instance_port);
         match self.instance_type {
             InstanceType::PRINCIPAL => {
                 let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
@@ -110,7 +161,7 @@ impl Hub {
 
                 // start REP/REQ server loop for principal
                 principal_server
-                    .start(&pub_host, server_port)
+                    .start(&principal_host, instance_port)
                     .await
                     .expect("CDKTR: Unable to start client server");
             }
@@ -121,18 +172,21 @@ impl Hub {
 
                 let mut agent_server =
                     AgentServer::new(instance_id.clone(), main_task_queue.clone());
-
-                // TODO: currently hardcoded principal - change to a CLI arg
+                let principal_uri = get_server_tcp_uri(&principal_host, principal_port);
                 agent_server
-                    .register_with_principal(&get_agent_tcp_uri(&"5562".to_string()), max_tm_tasks)
+                    .register_with_principal(&principal_uri, max_tm_tasks)
                     .await;
+
+                // start heartbeat coroutine loop to check if reconnecting is required
+                spawn_principal_heartbeat(instance_id.clone(), principal_uri.clone(), max_tm_tasks).await;
+                
                 loop {
                     let task_q_cl = main_task_queue.clone();
                     let tm_task = spawn_tm(instance_id.clone(), max_tm_tasks, task_q_cl).await;
 
                     // start REP/REQ server for agent
                     let agent_loop_exit_code = agent_server
-                        .start(&pub_host, server_port)
+                        .start(&instance_host, instance_port)
                         .await
                         .expect("CDKTR: Unable to start client server");
                     println!("SERVER: Loop exited with code {}", agent_loop_exit_code);

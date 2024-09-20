@@ -3,11 +3,11 @@ use crate::{
     models::{AgentMeta, AgentPriorityQueue, Task},
     server::{agent::AgentAPI, models::ClientResponseMessage},
     utils::AsyncQueue,
-    zmq_helpers::{get_agent_tcp_uri, get_zmq_req, wait_on_recv, DEFAULT_TIMEOUT},
+    zmq_helpers::{get_server_tcp_uri, get_zmq_req, wait_on_recv, DEFAULT_TIMEOUT},
 };
 use std::time::Duration;
 use tokio::time::sleep;
-use zeromq::{SocketRecv, SocketSend};
+use zeromq::SocketSend;
 
 /// The Task Router is responsible for distributing tasks to agent workers.
 /// It is implemented using a max-heap (priority queue) of AgentMeta,
@@ -40,13 +40,14 @@ impl TaskRouter {
             let agent_res = self.find_agent().await;
             match agent_res {
                 Ok(mut agent_meta) => {
-                    let mut req = get_zmq_req(&get_agent_tcp_uri(&agent_meta.agent_id)).await;
-                    req.send(AgentAPI::Run(task).into())
+                    let mut agent_socket = get_zmq_req(&get_server_tcp_uri(&agent_meta.host, agent_meta.port)).await;
+                    agent_socket.send(AgentAPI::Run(task).into())
                         .await
-                        .expect("ZMQ error whle sending msg");
+                        .expect("ZMQ error whi
+                        le sending msg");
 
                     // check task successfully executed on agent
-                    let resp = wait_on_recv(req, DEFAULT_TIMEOUT).await;
+                    let resp = wait_on_recv(agent_socket, DEFAULT_TIMEOUT).await;
                     match resp {
                         Ok(msg) => {
                             let parsed_resp = ClientResponseMessage::from(msg);
@@ -59,7 +60,7 @@ impl TaskRouter {
                                     let str_msg: String = cli_msg.into();
                                     println!(
                                         "Failed to execute task on agent {}. Got message {}",
-                                        agent_meta.agent_id, str_msg
+                                        agent_meta.agent_id(), str_msg
                                     )
                                 }
                             }
@@ -85,7 +86,8 @@ impl TaskRouter {
             }
         }
     }
-    /// returns the next agent from the priority queue
+    /// returns metadata object for the agent with the highest capacity
+    /// from the priority queue
     async fn find_agent(&mut self) -> Result<AgentMeta, GenericError> {
         if self.live_agents.is_empty().await {
             return Err(GenericError::MissingAgents);
