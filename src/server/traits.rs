@@ -12,7 +12,7 @@ use zeromq::{Socket, SocketRecv, SocketSend};
 pub trait Server<RT>
 where
     RT: TryFrom<ZmqMessage, Error = RepReqError> + Send,
-{    
+{
     /// Method to handle the client request. It returns a tuple of ClientResponseMessage
     /// and a restart flag. This flag is used to determine whether the
     /// instance should be restarted or not

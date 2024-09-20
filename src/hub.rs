@@ -1,17 +1,22 @@
 use std::{sync::Arc, time::Duration};
-use zeromq::{SocketRecv, SocketSend};
 use tokio::{sync::Mutex, time::sleep};
+use zeromq::{SocketRecv, SocketSend};
 
 use crate::{
-    db::get_connection, 
-    exceptions::GenericError, 
-    models::{traits::EventListener, AgentPriorityQueue, Task}, 
-    scheduler, 
-    server::{agent::AgentServer, models::ClientResponseMessage, principal::{PrincipalAPI, PrincipalServer}, Server}, 
-    task_router::TaskRouter, 
-    taskmanager, 
-    utils::{get_instance_id, AsyncQueue}, 
-    zmq_helpers::{get_server_tcp_uri, get_zmq_req, wait_on_recv}
+    db::get_connection,
+    exceptions::GenericError,
+    models::{traits::EventListener, AgentPriorityQueue, Task},
+    scheduler,
+    server::{
+        agent::AgentServer,
+        models::ClientResponseMessage,
+        principal::{PrincipalAPI, PrincipalServer},
+        Server,
+    },
+    task_router::TaskRouter,
+    taskmanager,
+    utils::{get_instance_id, AsyncQueue},
+    zmq_helpers::{get_server_tcp_uri, get_zmq_req, wait_on_recv},
 };
 
 pub enum InstanceType {
@@ -67,7 +72,11 @@ async fn spawn_task_router(
     })
 }
 
-async fn spawn_principal_heartbeat(instance_id: String, principal_uri: String, max_tm_tasks: usize){
+async fn spawn_principal_heartbeat(
+    instance_id: String,
+    principal_uri: String,
+    max_tm_tasks: usize,
+) {
     tokio::spawn(async move {
         loop {
             loop {
@@ -81,7 +90,7 @@ async fn spawn_principal_heartbeat(instance_id: String, principal_uri: String, m
                 if let Err(e) = resp_res {
                     match e {
                         GenericError::TimeoutError => break,
-                        _ => panic!("Unspecified error in principal heartbeat")
+                        _ => panic!("Unspecified error in principal heartbeat"),
                     }
                 }
             }
@@ -89,25 +98,28 @@ async fn spawn_principal_heartbeat(instance_id: String, principal_uri: String, m
             let msg = PrincipalAPI::RegisterAgent(instance_id.clone(), max_tm_tasks);
             let mut req = get_zmq_req(&principal_uri).await;
             req.send(msg.into())
-                    .await
-                    .expect("Failed to connect to principal - aborting");
+                .await
+                .expect("Failed to connect to principal - aborting");
             let resp_res = wait_on_recv(req, Duration::from_millis(10)).await;
             match resp_res {
                 Ok(zmq_message) => {
                     let cli_msg = ClientResponseMessage::from(zmq_message);
-                    match cli_msg{
+                    match cli_msg {
                         ClientResponseMessage::Success => (),
                         e => {
                             let msg_str: String = e.into();
                             println!(
                                 "Established connection to principal but got unexpected message: {msg_str}", 
                             );
-                            break // kill the loop for good
+                            break; // kill the loop for good
                         }
                     }
-                },
+                }
                 Err(e) => {
-                    println!("Failed to re-register with principal. Got error {}", e.to_string());
+                    println!(
+                        "Failed to re-register with principal. Got error {}",
+                        e.to_string()
+                    );
                     break;
                 }
             };
@@ -178,8 +190,9 @@ impl Hub {
                     .await;
 
                 // start heartbeat coroutine loop to check if reconnecting is required
-                spawn_principal_heartbeat(instance_id.clone(), principal_uri.clone(), max_tm_tasks).await;
-                
+                spawn_principal_heartbeat(instance_id.clone(), principal_uri.clone(), max_tm_tasks)
+                    .await;
+
                 loop {
                     let task_q_cl = main_task_queue.clone();
                     let tm_task = spawn_tm(instance_id.clone(), max_tm_tasks, task_q_cl).await;

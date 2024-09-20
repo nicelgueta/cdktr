@@ -4,10 +4,15 @@ use std::time::Duration;
 /// utilities
 ///
 use crate::{
-    db::models::{NewScheduledTask, ScheduledTask}, macros::args_to_model, models::{Task, ZMQArgs}, server::{
+    db::models::{NewScheduledTask, ScheduledTask},
+    macros::args_to_model,
+    models::{Task, ZMQArgs},
+    server::{
         agent::AgentAPI,
         models::{ClientResponseMessage, RepReqError},
-    }, utils::split_instance_id, zmq_helpers::get_req_timeout
+    },
+    utils::split_instance_id,
+    zmq_helpers::get_req_timeout,
 };
 use diesel::prelude::*;
 

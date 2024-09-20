@@ -110,7 +110,7 @@ impl From<Vec<String>> for ZMQArgs {
 #[derive(Clone, Debug)]
 pub struct AgentMeta {
     pub host: String,
-    pub port:usize,
+    pub port: usize,
     max_tasks: usize,
     running_tasks: usize,
     last_ping_timestamp: i64,
@@ -118,7 +118,7 @@ pub struct AgentMeta {
 impl AgentMeta {
     pub fn new(host: String, port: usize, max_tasks: usize, last_ping_timestamp: i64) -> Self {
         Self {
-            host, 
+            host,
             port,
             last_ping_timestamp,
             max_tasks,
@@ -148,7 +148,6 @@ impl AgentMeta {
     pub fn get_last_ping_ts(&self) -> i64 {
         self.last_ping_timestamp
     }
-
 }
 
 #[derive(Clone, Debug)]
@@ -260,7 +259,10 @@ mod tests {
             pq.push(ag_meta).await
         }
 
-        assert!(pq.update_timestamp(&"localhost-9997".to_string(), 2).await.is_ok());
+        assert!(pq
+            .update_timestamp(&"localhost-9997".to_string(), 2)
+            .await
+            .is_ok());
 
         // check is updated when accessed via pop
         // (third item)

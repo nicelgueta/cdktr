@@ -87,7 +87,7 @@ mod tests {
     use super::*;
     use zeromq::{SocketRecv, SocketSend};
 
-    async fn get_req(host: &str, port: usize,) -> Result<ReqSocket, GenericError> {
+    async fn get_req(host: &str, port: usize) -> Result<ReqSocket, GenericError> {
         get_req_timeout(host, port, Duration::from_millis(500)).await
     }
 

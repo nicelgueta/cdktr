@@ -17,10 +17,13 @@ pub fn get_instance_id(host: &str, port: usize) -> String {
 /// Splits an instance id into server and port
 pub fn split_instance_id(id: &str) -> (String, usize) {
     let splits: Vec<&str> = id.split("-").collect();
-    (splits[0].to_string(), splits[1].parse().expect(
-        &format!("Port does not appear to be a valid port number. Got: {}", splits[1])
-    ))
-
+    (
+        splits[0].to_string(),
+        splits[1].parse().expect(&format!(
+            "Port does not appear to be a valid port number. Got: {}",
+            splits[1]
+        )),
+    )
 }
 
 /// A simple queue that can be accessed across threads. The queue

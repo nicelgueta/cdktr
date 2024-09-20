@@ -1,5 +1,8 @@
 use crate::{
-    db::{get_connection, models::NewScheduledTask}, hub::InstanceType, models::{AgentMeta, AgentPriorityQueue, Task, ZMQArgs}, utils::split_instance_id
+    db::{get_connection, models::NewScheduledTask},
+    hub::InstanceType,
+    models::{AgentMeta, AgentPriorityQueue, Task, ZMQArgs},
+    utils::split_instance_id,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -261,7 +264,11 @@ mod tests {
                 ClientResponseMessage::Success,
                 0,
             ),
-            ("REGISTERAGENT|localhost-8999|3", ClientResponseMessage::Success, 0),
+            (
+                "REGISTERAGENT|localhost-8999|3",
+                ClientResponseMessage::Success,
+                0,
+            ),
         ];
         let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
         for (zmq_s, response, exp_exit_code) in test_params {

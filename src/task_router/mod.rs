@@ -40,11 +40,12 @@ impl TaskRouter {
             let agent_res = self.find_agent().await;
             match agent_res {
                 Ok(mut agent_meta) => {
-                    let mut agent_socket = get_zmq_req(&get_server_tcp_uri(&agent_meta.host, agent_meta.port)).await;
-                    agent_socket.send(AgentAPI::Run(task).into())
-                        .await
-                        .expect("ZMQ error whi
-                        le sending msg");
+                    let mut agent_socket =
+                        get_zmq_req(&get_server_tcp_uri(&agent_meta.host, agent_meta.port)).await;
+                    agent_socket.send(AgentAPI::Run(task).into()).await.expect(
+                        "ZMQ error whi
+                        le sending msg",
+                    );
 
                     // check task successfully executed on agent
                     let resp = wait_on_recv(agent_socket, DEFAULT_TIMEOUT).await;
@@ -60,7 +61,8 @@ impl TaskRouter {
                                     let str_msg: String = cli_msg.into();
                                     println!(
                                         "Failed to execute task on agent {}. Got message {}",
-                                        agent_meta.agent_id(), str_msg
+                                        agent_meta.agent_id(),
+                                        str_msg
                                     )
                                 }
                             }
