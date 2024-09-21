@@ -69,21 +69,25 @@ pub async fn send_recv_with_timeout(
     duration: Duration,
 ) -> Result<ZmqMessage, GenericError> {
     // spawn the timeout coroutine
-    let join_res = tokio::spawn(timeout(duration, async move { 
+    let join_res = tokio::spawn(timeout(duration, async move {
         let mut req = get_zmq_req(&tcp_uri).await;
-        let send_res = req.send(zmq_msg)
-            .await;
+        let send_res = req.send(zmq_msg).await;
         match send_res {
             Ok(_) => {
                 let recv_res = req.recv().await;
                 match recv_res {
                     Ok(zmq_msg) => Ok(zmq_msg),
-                    Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))
+                    Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
+                        e.to_string(),
+                    ))),
                 }
             }
-            Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))
+            Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
+                e.to_string(),
+            ))),
         }
-    })).await;
+    }))
+    .await;
 
     // handle the outcome
     match join_res {
@@ -99,7 +103,6 @@ pub async fn send_recv_with_timeout(
         Err(e) => Err(GenericError::RuntimeError(e.to_string())),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -141,9 +144,11 @@ mod tests {
             rep.recv().await.unwrap();
             rep.send("OK".into()).await.unwrap()
         });
-        assert!(send_recv_with_timeout(
-            endpoint, ZmqMessage::from("hello"), Duration::from_secs(1)
-        ).await.is_ok())
+        assert!(
+            send_recv_with_timeout(endpoint, ZmqMessage::from("hello"), Duration::from_secs(1))
+                .await
+                .is_ok()
+        )
     }
 
     #[tokio::test]
@@ -158,7 +163,11 @@ mod tests {
             rep.send("OK".into()).await.unwrap()
         });
         assert!(send_recv_with_timeout(
-            endpoint, ZmqMessage::from("hello"), Duration::from_millis(1)
-        ).await.is_err())
+            endpoint,
+            ZmqMessage::from("hello"),
+            Duration::from_millis(1)
+        )
+        .await
+        .is_err())
     }
 }

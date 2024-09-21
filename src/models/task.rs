@@ -62,7 +62,6 @@ impl TryFrom<ZMQArgs> for Task {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

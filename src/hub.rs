@@ -1,5 +1,5 @@
-use std::{sync::Arc, time::Duration};
 use log::{debug, error, info, trace, warn};
+use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 use zeromq::{SocketRecv, SocketSend};
 
@@ -17,7 +17,7 @@ use crate::{
     task_router::TaskRouter,
     taskmanager,
     utils::{get_instance_id, AsyncQueue},
-    zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT, send_recv_with_timeout},
+    zmq_helpers::{get_server_tcp_uri, send_recv_with_timeout, DEFAULT_TIMEOUT},
 };
 
 pub enum InstanceType {
@@ -96,38 +96,40 @@ async fn spawn_principal_heartbeat(
             loop {
                 sleep(Duration::from_millis(1000)).await;
                 let msg = PrincipalAPI::Ping;
-                trace!("Pinging principal @ {} with msg: {}", &principal_uri, msg.to_string());
-                let resp_res = send_recv_with_timeout(
-                    principal_uri.clone(),
-                    msg.into(),
-                    DEFAULT_TIMEOUT
-                ).await;
+                trace!(
+                    "Pinging principal @ {} with msg: {}",
+                    &principal_uri,
+                    msg.to_string()
+                );
+                let resp_res =
+                    send_recv_with_timeout(principal_uri.clone(), msg.into(), DEFAULT_TIMEOUT)
+                        .await;
                 match resp_res {
                     Ok(zmq_msg) => {
                         let msg: String = ClientResponseMessage::from(zmq_msg).into();
                         trace!("Principal response: {}", msg)
-                    },
-                    Err(e) => match e {
-                            GenericError::TimeoutError => {
-                                error!("Agent heartbeat timed out pinging principal");
-                                break
-                            },
-                            _ => panic!("Unspecified error in principal heartbeat"),
-                        }
                     }
-                
+                    Err(e) => match e {
+                        GenericError::TimeoutError => {
+                            error!("Agent heartbeat timed out pinging principal");
+                            break;
+                        }
+                        _ => panic!("Unspecified error in principal heartbeat"),
+                    },
+                }
             }
             // broken out of loop owing to timeout so we need to re-register with the principal
             warn!("Attempting to reconnect to principal @ {}", &principal_uri);
             let msg = PrincipalAPI::RegisterAgent(instance_id.clone(), max_tm_tasks);
-            let resp_res = send_recv_with_timeout(
-                principal_uri.clone(), msg.into(), DEFAULT_TIMEOUT
-            ).await;
+            let resp_res =
+                send_recv_with_timeout(principal_uri.clone(), msg.into(), DEFAULT_TIMEOUT).await;
             match resp_res {
                 Ok(zmq_message) => {
                     let cli_msg = ClientResponseMessage::from(zmq_message);
                     match cli_msg {
-                        ClientResponseMessage::Success => info!("Successfully reconnected to principal"),
+                        ClientResponseMessage::Success => {
+                            info!("Successfully reconnected to principal")
+                        }
                         e => {
                             let msg_str: String = e.into();
                             error!(
@@ -171,7 +173,10 @@ impl Hub {
         match self.instance_type {
             InstanceType::PRINCIPAL => {
                 let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
-                debug!("Created db connection to {}", database_url.unwrap_or(String::from(":memory:")));
+                debug!(
+                    "Created db connection to {}",
+                    database_url.unwrap_or(String::from(":memory:"))
+                );
 
                 // create the priority queue of agent meta that will be used by the server
                 // and task router

@@ -11,9 +11,9 @@ mod taskmanager;
 mod utils;
 mod zmq_helpers;
 
+use dotenv::dotenv;
 use hub::{Hub, InstanceType};
 use std::env;
-use dotenv::dotenv;
 
 use log::info;
 
@@ -42,7 +42,12 @@ async fn main() {
             .expect("Principal port must be a valid port number"),
         InstanceType::PRINCIPAL => instance_port,
     };
-    info!("Starting {} instance on {}:{}", typ.to_string(), &instance_host, instance_port);
+    info!(
+        "Starting {} instance on {}:{}",
+        typ.to_string(),
+        &instance_host,
+        instance_port
+    );
     let mut hub = Hub::from_instance_type(typ);
 
     // begin main app loop

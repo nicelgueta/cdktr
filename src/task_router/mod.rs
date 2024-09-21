@@ -41,10 +41,11 @@ impl TaskRouter {
             match agent_res {
                 Ok(mut agent_meta) => {
                     let resp = send_recv_with_timeout(
-                        get_server_tcp_uri(&agent_meta.host, agent_meta.port), 
-                        AgentAPI::Run(task).into(), 
-                        DEFAULT_TIMEOUT
-                    ).await;
+                        get_server_tcp_uri(&agent_meta.host, agent_meta.port),
+                        AgentAPI::Run(task).into(),
+                        DEFAULT_TIMEOUT,
+                    )
+                    .await;
                     match resp {
                         Ok(msg) => {
                             let parsed_resp = ClientResponseMessage::from(msg);
