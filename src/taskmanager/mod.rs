@@ -5,6 +5,7 @@ use crate::{
 };
 use std::sync::Arc;
 use std::time::Duration;
+use log::{info, trace};
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -104,7 +105,7 @@ impl TaskManager {
     }
 
     pub async fn start(&mut self) {
-        println!(
+        info!(
             "TASKMANAGER-{}: Beginning task execution loop",
             self.instance_id
         );
@@ -118,7 +119,7 @@ impl TaskManager {
             {
                 // if the queue is empty (no tasks to do) or the manager is currently running the
                 // maxium allowes concurrent threads then just hang tight
-                // println!("Waiting");
+                trace!("Waiting");
                 sleep(Duration::from_micros(500)).await
             }
             let task = {
@@ -137,7 +138,7 @@ impl TaskManager {
                     // to go back to looking at the queue
                     tokio::spawn(async move {
                         while let Some(msg) = task_exe.wait_stdout().await {
-                            println!("LOGGING: {}", msg);
+                            info!("STDOUT | {}", msg);
                         }
                     });
                 }

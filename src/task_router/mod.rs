@@ -3,11 +3,9 @@ use crate::{
     models::{AgentMeta, AgentPriorityQueue, Task},
     server::{agent::AgentAPI, models::ClientResponseMessage},
     utils::AsyncQueue,
-    zmq_helpers::{get_server_tcp_uri, get_zmq_req, send_recv_with_timeout, DEFAULT_TIMEOUT},
+    zmq_helpers::{get_server_tcp_uri, send_recv_with_timeout, DEFAULT_TIMEOUT},
 };
-use std::time::Duration;
-use tokio::time::sleep;
-use zeromq::SocketSend;
+use log::error;
 
 /// The Task Router is responsible for distributing tasks to agent workers.
 /// It is implemented using a max-heap (priority queue) of AgentMeta,
@@ -29,14 +27,7 @@ impl TaskRouter {
     /// event listeners that send Tasks for execution
     pub async fn start(&mut self) {
         loop {
-            let item_r = self.queue.get().await;
-            let task = if let Some(t) = item_r {
-                t
-            } else {
-                sleep(Duration::from_micros(10)).await;
-                continue;
-            };
-            // got task - find agents
+            let task = self.queue.get_wait().await;
             let agent_res = self.find_agent().await;
             match agent_res {
                 Ok(mut agent_meta) => {
@@ -56,7 +47,7 @@ impl TaskRouter {
                                 }
                                 cli_msg => {
                                     let str_msg: String = cli_msg.into();
-                                    println!(
+                                    error!(
                                         "Failed to execute task on agent {}. Got message {}",
                                         agent_meta.agent_id(),
                                         str_msg
@@ -66,11 +57,11 @@ impl TaskRouter {
                         }
                         Err(e) => match e {
                             GenericError::TimeoutError => {
-                                println!(
+                                error!(
                                     "Timed out wating on response from agent for task execution"
                                 )
                             }
-                            e => println!("Failed to execute task. Error: {}", e.to_string()),
+                            e => error!("Failed to execute task. Error: {}", e.to_string()),
                         },
                     };
                     // return the agent meta back to queue
@@ -78,7 +69,7 @@ impl TaskRouter {
                 }
                 Err(e) => match e {
                     GenericError::MissingAgents => {
-                        println!("Failed to execute task as no agents are running")
+                        error!("Failed to execute task as no agents are running")
                     }
                     _ => panic!("Critical error - expected MissingAgents error"),
                 },

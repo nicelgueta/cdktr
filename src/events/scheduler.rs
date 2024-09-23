@@ -10,9 +10,15 @@ use async_trait::async_trait;
 use chrono::Utc;
 use cron::Schedule;
 use diesel::SqliteConnection;
+use log::{debug, info};
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
+
+use std::{collections::VecDeque, sync::Arc};
+use tokio::sync::Mutex;
+use tokio::time::sleep;
+
 /// Main scheduling component. This component has an internal task queue for tasks
 /// that are to be scheduled within the next poll interval.
 /// There are two main loops that this component runs.
@@ -22,10 +28,6 @@ use std::time::Duration;
 /// to read diesel async) to poll the DB for schedules and when it finds flows that
 /// are supposed to start within the next poll interval it queues them in order of
 /// earliest to latest
-///
-use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::Mutex;
-use tokio::time::sleep;
 pub struct Scheduler {
     db_cnxn: Arc<Mutex<SqliteConnection>>,
     poll_interval_seconds: i32,
@@ -49,7 +51,7 @@ impl EventListener<Task> for Scheduler {
             )
             .await
         });
-        println!("SCHEDULER: Starting main scheduler loop");
+        info!("SCHEDULER: Starting main scheduler loop");
         self.main_loop(out_queue).await;
     }
 }
@@ -84,7 +86,7 @@ impl Scheduler {
                 }
             };
             let task = sched_task.to_task();
-            println!("SCHEDULER: found task - adding to out queue");
+            debug!("SCHEDULER: found task - adding to out queue");
             out_queue.put(task).await
         }
     }
@@ -122,7 +124,7 @@ async fn poll_db_loop(
         }
         current_timestamp += poll_interval_seconds as i32;
     }
-    println!("Polling loop has ended");
+    info!("Polling loop has ended");
 }
 async fn poll_db(
     task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,

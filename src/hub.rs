@@ -1,13 +1,11 @@
 use log::{debug, error, info, trace, warn};
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
-use zeromq::{SocketRecv, SocketSend};
 
 use crate::{
     db::get_connection,
     exceptions::GenericError,
-    models::{traits::EventListener, AgentPriorityQueue, Task},
-    scheduler,
+    models::{AgentPriorityQueue, Task},
     server::{
         agent::AgentServer,
         models::ClientResponseMessage,
@@ -57,20 +55,6 @@ async fn spawn_tm(
     })
 }
 
-/// Spawns the Scheduler in a separate coroutine
-async fn spawn_scheduler(
-    db_cnxn: Arc<Mutex<diesel::SqliteConnection>>,
-    poll_interval_seconds: i32,
-    task_router_queue: AsyncQueue<Task>,
-) -> tokio::task::JoinHandle<()> {
-    debug!("Spawning scheduler");
-    let handle = tokio::spawn(async move {
-        let mut sched = scheduler::Scheduler::new(db_cnxn, poll_interval_seconds);
-        sched.start_listening(task_router_queue).await
-    });
-    debug!("Scheduler spawned");
-    handle
-}
 
 async fn spawn_task_router(
     task_router_queue: AsyncQueue<Task>,
@@ -166,7 +150,6 @@ impl Hub {
         principal_host: String,
         principal_port: usize,
         database_url: Option<String>,
-        poll_interval_seconds: i32,
         max_tm_tasks: usize,
     ) {
         let instance_id = get_instance_id(&instance_host, instance_port);
@@ -191,10 +174,6 @@ impl Hub {
                 // event listeners can add to
                 let task_router_queue = AsyncQueue::new();
 
-                // create the scheduler (which impl the EventListener trait) thread that will poll the database
-                // and send task trigger messages to the main receiver that is passed
-                // to the task router
-                spawn_scheduler(db_cnxn, poll_interval_seconds, task_router_queue.clone()).await;
 
                 // create the TaskRouter component which will wait for tasks in its queue
                 spawn_task_router(task_router_queue, live_agents).await;
@@ -230,9 +209,9 @@ impl Hub {
                         .start(&instance_host, instance_port)
                         .await
                         .expect("CDKTR: Unable to start client server");
-                    println!("SERVER: Loop exited with code {}", agent_loop_exit_code);
+                    error!("SERVER: Loop exited with code {}", agent_loop_exit_code);
                     tm_task.abort();
-                    println!("SERVER: Task Manager killed");
+                    error!("SERVER: Task Manager killed");
                 }
             }
         };

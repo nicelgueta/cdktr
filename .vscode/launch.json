@@ -1,0 +1,100 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'tui'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=tui",
+                    "--package=tui"
+                ],
+                "filter": {
+                    "name": "tui",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'tui'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=tui",
+                    "--package=tui"
+                ],
+                "filter": {
+                    "name": "tui",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'cdktr'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=cdktr",
+                    "--package=cdktr"
+                ],
+                "filter": {
+                    "name": "cdktr",
+                    "kind": "bin"
+                }
+            },
+            "args": ["principal", "5561"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug run executable 'cdktr'",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--bin=cdktr",
+                    "--package=cdktr"
+                ],
+                "filter": {
+                    "name": "cdktr",
+                    "kind": "bin"
+                }
+            },
+            "args": ["principal", "5561"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'cdktr'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=cdktr",
+                    "--package=cdktr"
+                ],
+                "filter": {
+                    "name": "cdktr",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

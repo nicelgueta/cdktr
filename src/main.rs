@@ -4,7 +4,7 @@ mod executors;
 mod hub;
 mod macros;
 mod models;
-mod scheduler;
+mod events;
 mod server;
 mod task_router;
 mod taskmanager;
@@ -15,7 +15,7 @@ use dotenv::dotenv;
 use hub::{Hub, InstanceType};
 use std::env;
 
-use log::info;
+use log::{info, error};
 
 #[tokio::main]
 async fn main() {
@@ -24,7 +24,7 @@ async fn main() {
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
-        println!("Needs at least arg (1) of either AGENT or PRINCIPAL and (2) PORT");
+        error!("Needs at least arg (1) of either AGENT or PRINCIPAL and (2) PORT");
         return;
     };
     let typ = InstanceType::from_str(&args[1]);
@@ -57,7 +57,6 @@ async fn main() {
         principal_host,
         principal_port,
         database_url,
-        poll_interval_seconds,
         max_tm_tasks,
     )
     .await

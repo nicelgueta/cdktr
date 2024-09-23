@@ -2,6 +2,7 @@ use crate::hub::InstanceType;
 
 use super::models::{ClientResponseMessage, RepReqError};
 use async_trait::async_trait;
+use log::info;
 use std::error::Error;
 use zeromq::ZmqMessage;
 use zeromq::{Socket, SocketRecv, SocketSend};
@@ -27,7 +28,7 @@ where
         current_host: &str,
         rep_port: usize,
     ) -> Result<usize, Box<dyn Error>> {
-        println!(
+        info!(
             "SERVER: Starting REP Server on tcp://{}:{}",
             current_host, rep_port
         );
@@ -36,7 +37,7 @@ where
             .bind(&format!("tcp://{}:{}", current_host, rep_port))
             .await
             .expect("Failed to connect");
-        println!("SERVER: Successfully connected");
+        info!("SERVER: Successfully connected");
 
         let exit_code = loop {
             let zmq_recv = socket.recv().await?;
