@@ -37,6 +37,8 @@ pub enum PrincipalAPI {
     /// Lists all scheduled tasks currently stored in the database
     ListTasks,
     /// Deletes a specific scheduled task in the database by its id
+    /// Args:
+    ///     task_id : i32
     DeleteTask(i32),
     /// Sends a task definition to the principal for execution on
     /// an agent
