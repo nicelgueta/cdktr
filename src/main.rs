@@ -1,10 +1,10 @@
 mod db;
+mod events;
 mod exceptions;
 mod executors;
 mod hub;
 mod macros;
 mod models;
-mod events;
 mod server;
 mod task_router;
 mod taskmanager;
@@ -15,7 +15,7 @@ use dotenv::dotenv;
 use hub::{Hub, InstanceType};
 use std::env;
 
-use log::{info, error};
+use log::{error, info};
 
 #[tokio::main]
 async fn main() {

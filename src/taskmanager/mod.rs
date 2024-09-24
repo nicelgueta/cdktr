@@ -3,9 +3,9 @@ use crate::{
     models::{traits::Executor, Task},
     utils::AsyncQueue,
 };
+use log::{info, trace};
 use std::sync::Arc;
 use std::time::Duration;
-use log::{info, trace};
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;

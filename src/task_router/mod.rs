@@ -57,9 +57,7 @@ impl TaskRouter {
                         }
                         Err(e) => match e {
                             GenericError::TimeoutError => {
-                                error!(
-                                    "Timed out wating on response from agent for task execution"
-                                )
+                                error!("Timed out wating on response from agent for task execution")
                             }
                             e => error!("Failed to execute task. Error: {}", e.to_string()),
                         },

@@ -40,7 +40,7 @@ impl<T> AsyncQueue<T> {
             inner: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
-    /// Gets the next item from the queue. 
+    /// Gets the next item from the queue.
     pub async fn get(&mut self) -> Option<T> {
         let mut queue = self.inner.lock().await;
         (*queue).pop_front()
@@ -57,7 +57,7 @@ impl<T> AsyncQueue<T> {
         self.inner.lock().await.is_empty()
     }
 
-    /// Similar to .get() but intead of returning an Option<T> it repeatedly polls 
+    /// Similar to .get() but intead of returning an Option<T> it repeatedly polls
     /// the inner VecDeque until an item T is available
     /// TODO: loop currently set to 500 millis. this dependency needs to be inverted
     pub async fn get_wait(&mut self) -> T {
@@ -68,10 +68,10 @@ impl<T> AsyncQueue<T> {
                 (*queue).pop_front()
             };
             if let Some(t) = item_res {
-                return t
+                return t;
             } else {
                 sleep(Duration::from_millis(500)).await;
-                continue
+                continue;
             }
         }
     }
@@ -117,22 +117,22 @@ mod tests {
     #[tokio::test]
     async fn test_async_queue_put_and_get_wait() {
         let mut queue: AsyncQueue<i32> = AsyncQueue::new();
-        // spawn another coroutine to wait for 500ms before putting item on 
+        // spawn another coroutine to wait for 500ms before putting item on
         // queue to check that the wait works
         let mut q_clone = queue.clone();
         tokio::spawn(async move {
             sleep(Duration::from_millis(200)).await;
             q_clone.put(1).await;
         });
-        // check that nothing on queue - this check is almost certain to actually 
-        // occur before the 200 millis is up that the spawned task will take to 
+        // check that nothing on queue - this check is almost certain to actually
+        // occur before the 200 millis is up that the spawned task will take to
         // put something on the queue
         assert!(queue.is_empty().await);
 
         // wait on receipt of item
         let item = timeout(Duration::from_secs(1), queue.get_wait()).await;
         assert_eq!(item.unwrap(), 1);
-        
+
         assert!(queue.is_empty().await);
     }
 

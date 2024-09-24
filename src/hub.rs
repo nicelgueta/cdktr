@@ -55,7 +55,6 @@ async fn spawn_tm(
     })
 }
 
-
 async fn spawn_task_router(
     task_router_queue: AsyncQueue<Task>,
     live_agents: AgentPriorityQueue,
@@ -173,7 +172,6 @@ impl Hub {
                 // Create the main task queue for the TaskRouter which multiple
                 // event listeners can add to
                 let task_router_queue = AsyncQueue::new();
-
 
                 // create the TaskRouter component which will wait for tasks in its queue
                 spawn_task_router(task_router_queue, live_agents).await;

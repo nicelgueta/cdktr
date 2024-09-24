@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use crate::{
-    models::{Task, traits::EventListener},
-    utils::AsyncQueue
+    models::{traits::EventListener, Task},
+    utils::AsyncQueue,
 };
 use log::debug;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-mod scheduler; 
+mod scheduler;
 
 /// Spawns the Scheduler in a separate coroutine
 async fn spawn_scheduler(
