@@ -160,6 +160,10 @@ impl Hub {
                     database_url.unwrap_or(String::from(":memory:"))
                 );
 
+                // Create the main task queue for the TaskRouter which multiple
+                // event listeners can add to
+                let task_router_queue = AsyncQueue::new();
+
                 // create the priority queue of agent meta that will be used by the server
                 // and task router
                 let live_agents = AgentPriorityQueue::new();
@@ -167,11 +171,8 @@ impl Hub {
                     db_cnxn.clone(),
                     instance_id.clone(),
                     Some(live_agents.clone()),
+                    task_router_queue.clone(),
                 );
-
-                // Create the main task queue for the TaskRouter which multiple
-                // event listeners can add to
-                let task_router_queue = AsyncQueue::new();
 
                 // create the TaskRouter component which will wait for tasks in its queue
                 spawn_task_router(task_router_queue, live_agents).await;

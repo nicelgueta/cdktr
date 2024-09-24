@@ -1,20 +1,17 @@
 use crate::{
-    db::{get_connection, models::NewScheduledTask},
-    hub::InstanceType,
+    db::models::NewScheduledTask,
     models::{AgentMeta, AgentPriorityQueue, Task, ZMQArgs},
-    utils::split_instance_id,
+    utils::{split_instance_id, AsyncQueue},
 };
 use async_trait::async_trait;
 use chrono::Utc;
 use diesel::SqliteConnection;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use zeromq::ZmqMessage;
 mod api;
 
 use api::{
-    agent_cap_reached,
-
     // zmq msgs
     create_new_task_payload,
     create_run_task_payload,
@@ -23,7 +20,6 @@ use api::{
     handle_create_task,
     handle_delete_task,
     handle_list_tasks,
-    handle_run_task,
 };
 
 use super::{
@@ -42,10 +38,11 @@ pub enum PrincipalAPI {
     ListTasks,
     /// Deletes a specific scheduled task in the database by its id
     DeleteTask(i32),
-    /// Runs task on a specific agent
+    /// Sends a task definition to the principal for execution on
+    /// an agent
     /// Args:
-    ///     agent_id, task
-    RunTask(String, Task),
+    ///     task: Task
+    RunTask(Task),
     /// Allows an agent to register itself with the principal
     /// so that the principal can set a heartbeat for it. If the agent
     /// is already registered then this behaves in a similar way to
@@ -64,9 +61,9 @@ impl PrincipalAPI {
                     .expect("Unable to convert NewScheduledTask to JSON");
                 format!("CREATETASK|{}", &task_json)
             }
-            Self::RunTask(agent_id, task) => {
+            Self::RunTask(task) => {
                 let task_str: String = task.to_string();
-                format!("AGENTRUN|{agent_id}|{task_str}")
+                format!("RUNTASK|{task_str}")
             }
             Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
             Self::ListTasks => "LISTTASKS".to_string(),
@@ -91,9 +88,9 @@ impl TryFrom<ZmqMessage> for PrincipalAPI {
             "CREATETASK" => Ok(Self::CreateTask(create_new_task_payload(args)?)),
             "LISTTASKS" => Ok(Self::ListTasks),
             "DELETETASK" => Ok(Self::DeleteTask(delete_task_payload(args)?)),
-            "AGENTRUN" => {
-                let (agent_id, task) = create_run_task_payload(args)?;
-                Ok(Self::RunTask(agent_id, task))
+            "RUNTASK" => {
+                let task = create_run_task_payload(args)?;
+                Ok(Self::RunTask(task))
             }
             "REGISTERAGENT" => match args.next() {
                 Some(agent_id) => match args.next() {
@@ -129,6 +126,7 @@ pub struct PrincipalServer {
     instance_id: String,
     db_cnxn: Arc<Mutex<SqliteConnection>>,
     live_agents: AgentPriorityQueue,
+    task_queue: AsyncQueue<Task>,
 }
 
 impl PrincipalServer {
@@ -136,12 +134,14 @@ impl PrincipalServer {
         db_cnxn: Arc<Mutex<SqliteConnection>>,
         instance_id: String,
         live_agents: Option<AgentPriorityQueue>,
+        task_queue: AsyncQueue<Task>,
     ) -> Self {
         let live_agents = live_agents.unwrap_or(AgentPriorityQueue::new());
         Self {
             db_cnxn,
             live_agents,
             instance_id,
+            task_queue,
         }
     }
 
@@ -187,17 +187,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 handle_delete_task(&mut db_cnxn, task_id)
             }
-            PrincipalAPI::RunTask(agent_id, task) => {
-                if agent_id == self.instance_id {
-                    (
-                        ClientResponseMessage::ClientError(
-                            "Cannot send an AGENTRUN to a PRINCIPAL instance".to_string(),
-                        ),
-                        0,
-                    )
-                } else {
-                    handle_run_task(agent_id, task).await
-                }
+            PrincipalAPI::RunTask(task) => {
+                self.task_queue.put(task).await;
+                (ClientResponseMessage::Success, 0)
             }
             PrincipalAPI::RegisterAgent(agent_id, max_tasks) => {
                 self.register_agent(&agent_id, max_tasks).await
@@ -213,6 +205,7 @@ mod tests {
     use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
     use super::*;
+    use crate::db::get_connection;
 
     fn get_db() -> Arc<Mutex<SqliteConnection>> {
         let db = get_connection(None);
@@ -226,7 +219,7 @@ mod tests {
             "LISTTASKS",
             r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#,
             "DELETETASK|1",
-            "AGENTRUN|8999|PROCESS|echo|hello",
+            "RUNTASK|PROCESS|echo|hello",
             "REGISTERAGENT|8999|2",
         ];
         for zmq_s in all_happies {
@@ -264,7 +257,7 @@ mod tests {
             ),
             ("DELETETASK|1", ClientResponseMessage::Success, 0),
             (
-                "AGENTRUN|localhost-8999|PROCESS|echo|hello",
+                "RUNTASK|PROCESS|echo|hello",
                 ClientResponseMessage::Success,
                 0,
             ),
@@ -274,7 +267,8 @@ mod tests {
                 0,
             ),
         ];
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
+        let mut server =
+            PrincipalServer::new(get_db(), "fake_ins".to_string(), None, AsyncQueue::new());
         for (zmq_s, response, exp_exit_code) in test_params {
             let zmq_msg = ZmqMessage::from(zmq_s);
             let ar = PrincipalAPI::try_from(zmq_msg)
@@ -289,7 +283,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_new() {
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
+        let mut server =
+            PrincipalServer::new(get_db(), "fake_ins".to_string(), None, AsyncQueue::new());
         let agent_id = String::from("localhost-4567");
         let (resp, exit_code) = server.register_agent(&agent_id, 3).await;
         {
@@ -301,7 +296,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_already_exists() {
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string(), None);
+        let mut server =
+            PrincipalServer::new(get_db(), "fake_ins".to_string(), None, AsyncQueue::new());
         let agent_id = String::from("localhost-4567");
         let max_tasks = 3;
         server.register_agent(&agent_id, max_tasks).await;
@@ -312,5 +308,19 @@ mod tests {
         assert!(new_timestamp > old_timestamp);
         assert!(resp == ClientResponseMessage::Success);
         assert!(exit_code == 0)
+    }
+
+    #[tokio::test]
+    async fn test_run_task() {
+        let mut task_queue = AsyncQueue::new();
+        let mut server =
+            PrincipalServer::new(get_db(), "fake_ins".to_string(), None, task_queue.clone());
+        let zmq_message = ZmqMessage::from("RUNTASK|PROCESS|echo|hello world");
+        let run_task_msg = PrincipalAPI::try_from(zmq_message).expect("Should be a valuid messge");
+        let (resp, code) = server.handle_client_message(run_task_msg).await;
+        assert_eq!(resp, ClientResponseMessage::Success);
+        assert_eq!(code, 0);
+        assert!(!&task_queue.is_empty().await);
+        assert!(task_queue.get().await.is_some());
     }
 }
