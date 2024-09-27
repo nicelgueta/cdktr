@@ -10,12 +10,12 @@ use crate::{
         agent::AgentServer,
         models::ClientResponseMessage,
         principal::{PrincipalAPI, PrincipalServer},
-        Server,
+        traits::{Server, API}
     },
     task_router::TaskRouter,
     taskmanager,
     utils::{get_instance_id, AsyncQueue},
-    zmq_helpers::{get_server_tcp_uri, send_recv_with_timeout, DEFAULT_TIMEOUT},
+    zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT},
 };
 
 pub enum InstanceType {
@@ -78,18 +78,10 @@ async fn spawn_principal_heartbeat(
         loop {
             loop {
                 sleep(Duration::from_millis(1000)).await;
-                let msg = PrincipalAPI::Ping;
-                trace!(
-                    "Pinging principal @ {} with msg: {}",
-                    &principal_uri,
-                    msg.to_string()
-                );
-                let resp_res =
-                    send_recv_with_timeout(principal_uri.clone(), msg.into(), DEFAULT_TIMEOUT)
-                        .await;
-                match resp_res {
-                    Ok(zmq_msg) => {
-                        let msg: String = ClientResponseMessage::from(zmq_msg).into();
+                let request = PrincipalAPI::Ping;
+                match request.send(&principal_uri, DEFAULT_TIMEOUT).await {
+                    Ok(cli_resp) => {
+                        let msg: String = cli_resp.into();
                         trace!("Principal response: {}", msg)
                     }
                     Err(e) => match e {
@@ -103,12 +95,9 @@ async fn spawn_principal_heartbeat(
             }
             // broken out of loop owing to timeout so we need to re-register with the principal
             warn!("Attempting to reconnect to principal @ {}", &principal_uri);
-            let msg = PrincipalAPI::RegisterAgent(instance_id.clone(), max_tm_tasks);
-            let resp_res =
-                send_recv_with_timeout(principal_uri.clone(), msg.into(), DEFAULT_TIMEOUT).await;
-            match resp_res {
-                Ok(zmq_message) => {
-                    let cli_msg = ClientResponseMessage::from(zmq_message);
+            let request = PrincipalAPI::RegisterAgent(instance_id.clone(), max_tm_tasks);
+            match request.send(&principal_uri, DEFAULT_TIMEOUT).await {
+                Ok(cli_msg) => {
                     match cli_msg {
                         ClientResponseMessage::Success => {
                             info!("Successfully reconnected to principal")

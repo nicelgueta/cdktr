@@ -32,7 +32,6 @@ async fn main() {
     let principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
     let instance_port: usize = args[2].parse().expect("PORT must be a valid number");
     let database_url: Option<String> = None;
-    let poll_interval_seconds = 2;
     let max_tm_tasks = 8;
 
     let principal_port = match typ {

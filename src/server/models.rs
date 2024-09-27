@@ -19,9 +19,9 @@ impl RepReqError {
     }
     pub fn to_string(&self) -> String {
         match self {
-            Self::ParseError(pl) => pl.clone(),
-            Self::Unprocessable(pl) => pl.clone(),
-            Self::ServerError(pl) => pl.clone(),
+            Self::ParseError(pl) => format!("PARSE ERROR: {}", pl),
+            Self::Unprocessable(pl) => format!("UNPROCESSABLE: {}", pl),
+            Self::ServerError(pl) => format!("SERVER ERROR: {}", pl),
         }
     }
 }
@@ -35,7 +35,6 @@ pub enum ClientResponseMessage {
     Pong,
     Success,
     SuccessWithPayload(String),
-    Heartbeat(String),
 }
 
 macro_rules! get_payload {
@@ -65,7 +64,6 @@ impl From<ZmqMessage> for ClientResponseMessage {
             "PONG" => Self::Pong,
             "OK" => Self::Success,
             "SUCCESS" => get_payload!(&mut args, SuccessWithPayload),
-            "HEARTBEAT" => get_payload!(&mut args, Heartbeat),
             mt => Self::ClientError(format!("Unrecognised message type: {}", mt)),
         }
     }
@@ -78,7 +76,6 @@ impl Into<String> for ClientResponseMessage {
             Self::Pong => "PONG".to_string(),
             Self::Success => "OK".to_string(),
             Self::SuccessWithPayload(payload) => format!("SUCCESS|{payload}"),
-            Self::Heartbeat(pub_id) => format!("HEARTBEAT|{pub_id}"),
             Self::ServerError(payload) => format!("SERVERERROR|{payload}"),
             Self::Unprocessable(payload) => format!("UNPROC|{payload}"),
         }

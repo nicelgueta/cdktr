@@ -31,21 +31,6 @@ pub async fn get_zmq_req(endpoint_uri: &str) -> ReqSocket {
     req
 }
 
-pub async fn get_req_timeout(
-    host: &str,
-    port: usize,
-    duration: Duration,
-) -> Result<ReqSocket, GenericError> {
-    let uri = get_server_tcp_uri(host, port);
-    let res = tokio::spawn(timeout(duration, async move { get_zmq_req(&uri).await }))
-        .await
-        .expect("Encountered join error");
-    match res {
-        Ok(req) => Ok(req),
-        Err(_e) => Err(GenericError::TimeoutError),
-    }
-}
-
 pub async fn get_zmq_rep(endpoint_uri: &str) -> RepSocket {
     let mut rep = RepSocket::new();
     rep.bind(endpoint_uri)
@@ -110,6 +95,21 @@ mod tests {
     use tokio::time::sleep;
     use zeromq::{SocketRecv, SocketSend};
 
+    async fn get_req_timeout(
+        host: &str,
+        port: usize,
+        duration: Duration,
+    ) -> Result<ReqSocket, GenericError> {
+        let uri = get_server_tcp_uri(host, port);
+        let res = tokio::spawn(timeout(duration, async move { get_zmq_req(&uri).await }))
+            .await
+            .expect("Encountered join error");
+        match res {
+            Ok(req) => Ok(req),
+            Err(_e) => Err(GenericError::TimeoutError),
+        }
+    }
+    
     async fn get_req(host: &str, port: usize) -> Result<ReqSocket, GenericError> {
         get_req_timeout(host, port, Duration::from_millis(500)).await
     }

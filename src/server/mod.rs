@@ -1,9 +1,8 @@
 pub mod agent;
 pub mod models;
 pub mod principal;
-mod traits;
+pub mod traits;
 
-pub use traits::Server;
 
 #[cfg(test)]
 mod tests {

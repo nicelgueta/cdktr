@@ -20,6 +20,7 @@ pub enum GenericError {
     TimeoutError,
     ZMQParseError(ZMQParseError),
     RuntimeError(String),
+    APIError(String)
 }
 impl GenericError {
     pub fn to_string(&self) -> String {
@@ -28,6 +29,7 @@ impl GenericError {
             Self::TimeoutError => String::from("Call timed out"),
             Self::ZMQParseError(zmq_e) => zmq_e.to_string(),
             Self::RuntimeError(s) => s.clone(),
+            Self::APIError(s) => s.clone()
         }
     }
 }

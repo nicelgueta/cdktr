@@ -24,7 +24,7 @@ use api::{
 
 use super::{
     models::{ClientResponseMessage, RepReqError},
-    traits::Server,
+    traits::{Server, API},
 };
 
 // TODO: make an extension of AgentAPI
@@ -54,8 +54,8 @@ pub enum PrincipalAPI {
     RegisterAgent(String, usize),
 }
 
-impl PrincipalAPI {
-    pub fn to_string(&self) -> String {
+impl API for PrincipalAPI {
+    fn to_string(&self) -> String {
         match self {
             Self::Ping => "PING".to_string(),
             Self::CreateTask(task) => {

@@ -1,9 +1,9 @@
 use crate::{
     exceptions::GenericError,
     models::{AgentMeta, AgentPriorityQueue, Task},
-    server::{agent::AgentAPI, models::ClientResponseMessage},
+    server::{agent::AgentAPI, models::ClientResponseMessage, traits::API},
     utils::AsyncQueue,
-    zmq_helpers::{get_server_tcp_uri, send_recv_with_timeout, DEFAULT_TIMEOUT},
+    zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT},
 };
 use log::error;
 
@@ -31,16 +31,9 @@ impl TaskRouter {
             let agent_res = self.find_agent().await;
             match agent_res {
                 Ok(mut agent_meta) => {
-                    let resp = send_recv_with_timeout(
-                        get_server_tcp_uri(&agent_meta.host, agent_meta.port),
-                        AgentAPI::Run(task).into(),
-                        DEFAULT_TIMEOUT,
-                    )
-                    .await;
-                    match resp {
+                    match AgentAPI::Run(task).send(&get_server_tcp_uri(&agent_meta.host, agent_meta.port), DEFAULT_TIMEOUT).await {
                         Ok(msg) => {
-                            let parsed_resp = ClientResponseMessage::from(msg);
-                            match parsed_resp {
+                            match msg {
                                 ClientResponseMessage::Success => {
                                     // record the task as running in the agent meta
                                     agent_meta.inc_running_task();
