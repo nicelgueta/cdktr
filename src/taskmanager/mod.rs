@@ -147,24 +147,6 @@ impl TaskManager {
     }
 }
 
-async fn get_socket(host: &str, port: usize, instance_id: &str) -> zeromq::SubSocket {
-    let options = SocketOptions::default();
-    let mut socket = zeromq::SubSocket::with_options(options);
-    socket
-        .connect(&format!("tcp://{}:{}", host, port))
-        .await
-        .expect("TASKMANAGER-{instance_id}: Failed to connect");
-    println!(
-        "TASKMANAGER-{instance_id}: connected to tcp://{}:{}",
-        host, port
-    );
-    socket
-        .subscribe("")
-        .await
-        .expect("TASKMANAGER-{instance_id}: Failed to subscribe to subscription");
-
-    socket
-}
 
 // TODO: fix the broken pipe error
 #[cfg(test)]

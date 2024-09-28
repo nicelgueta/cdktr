@@ -68,7 +68,7 @@ mod tests {
     async fn test_run_flow() {
         let exec = ProcessExecutor::new("echo", Some(vec!["Running test_run_flow".to_string()]));
         let (tx, _rx) = mpsc::channel(32);
-        let exec_result = exec.run(tx).await.to_string();
+        let exec_result = exec.run(tx).await._to_string();
         assert_eq!(exec_result, "".to_string())
     }
 

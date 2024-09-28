@@ -5,7 +5,7 @@ use crate::{
     utils::AsyncQueue,
     zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT},
 };
-use log::error;
+use log::{debug, error};
 
 /// The Task Router is responsible for distributing tasks to agent workers.
 /// It is implemented using a max-heap (priority queue) of AgentMeta,
@@ -30,13 +30,18 @@ impl TaskRouter {
             let task = self.queue.get_wait().await;
             let agent_res = self.find_agent().await;
             match agent_res {
-                Ok(mut agent_meta) => {
-                    match AgentAPI::Run(task).send(&get_server_tcp_uri(&agent_meta.host, agent_meta.port), DEFAULT_TIMEOUT).await {
+                Ok(agent_meta) => {
+                    match AgentAPI::Run(task)
+                        .send(
+                            &get_server_tcp_uri(&agent_meta.host, agent_meta.port),
+                            DEFAULT_TIMEOUT,
+                        )
+                        .await
+                    {
                         Ok(msg) => {
                             match msg {
                                 ClientResponseMessage::Success => {
-                                    // record the task as running in the agent meta
-                                    agent_meta.inc_running_task();
+                                    debug!("Successfully submitted task to agent")
                                 }
                                 cli_msg => {
                                     let str_msg: String = cli_msg.into();

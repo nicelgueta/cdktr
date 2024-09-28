@@ -10,7 +10,7 @@ use crate::{
         agent::AgentServer,
         models::ClientResponseMessage,
         principal::{PrincipalAPI, PrincipalServer},
-        traits::{Server, API}
+        traits::{Server, API},
     },
     task_router::TaskRouter,
     taskmanager,

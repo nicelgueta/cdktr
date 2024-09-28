@@ -9,14 +9,6 @@ pub enum RepReqError {
     ServerError(String),
 }
 impl RepReqError {
-    pub fn new(typ: usize, msg: String) -> Self {
-        match typ {
-            1 => Self::ParseError(msg),
-            2 => Self::Unprocessable(msg),
-            3 => Self::ServerError(msg),
-            _ => Self::ServerError(format!("Unhandled exception. Code {typ}")),
-        }
-    }
     pub fn to_string(&self) -> String {
         match self {
             Self::ParseError(pl) => format!("PARSE ERROR: {}", pl),

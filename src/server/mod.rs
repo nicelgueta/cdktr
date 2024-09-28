@@ -3,7 +3,6 @@ pub mod models;
 pub mod principal;
 pub mod traits;
 
-
 #[cfg(test)]
 mod tests {
     use zeromq::ZmqMessage;

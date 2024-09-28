@@ -1,6 +1,6 @@
 use crate::db::update_next_timestamp;
 use crate::db::{
-    get_connection, get_queueable_schedules,
+    get_queueable_schedules,
     models::{ScheduledTask, ToTask},
 };
 use crate::models::traits::EventListener;
@@ -57,7 +57,7 @@ impl EventListener<Task> for Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>>, poll_interval_seconds: i32) -> Self {
+    pub fn _new(db_cnxn: Arc<Mutex<SqliteConnection>>, poll_interval_seconds: i32) -> Self {
         Self {
             db_cnxn,
             poll_interval_seconds,

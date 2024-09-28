@@ -71,7 +71,11 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> {
     fn to_string(&self) -> String;
 
     /// Default implementation for sending the message to a destination REP socket within CDKTR
-    async fn send(self, tcp_uri: &str, timeout: Duration) -> Result<ClientResponseMessage, GenericError> {
+    async fn send(
+        self,
+        tcp_uri: &str,
+        timeout: Duration,
+    ) -> Result<ClientResponseMessage, GenericError> {
         trace!(
             "Pinging principal @ {} with msg: {}",
             tcp_uri,

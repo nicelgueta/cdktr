@@ -4,7 +4,7 @@
 use crate::{
     db::models::{NewScheduledTask, ScheduledTask},
     macros::args_to_model,
-    models::{Task, ZMQArgs},
+    models::{AgentPriorityQueue, Task, TaskStatus, ZMQArgs},
     server::models::{ClientResponseMessage, RepReqError},
 };
 use diesel::prelude::*;
@@ -30,8 +30,7 @@ pub fn delete_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
     if let Some(v) = args.next() {
         match v.parse() {
             Ok(v) => Ok(v),
-            Err(e) => Err(RepReqError::new(
-                1,
+            Err(e) => Err(RepReqError::ParseError(
                 format!(
                     "Unable to create integer from value '{}'. Error: {}",
                     &v,
@@ -40,8 +39,7 @@ pub fn delete_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
             )),
         }
     } else {
-        Err(RepReqError::new(
-            1,
+        Err(RepReqError::ParseError(
             "No payload found for DELETETASK command. Requires TASK_ID".to_string(),
         ))
     }
@@ -111,6 +109,21 @@ pub fn handle_delete_task(
                 e.to_string()
             );
             (ClientResponseMessage::ServerError(msg), 0)
+        }
+    }
+}
+
+pub async fn handle_agent_task_status_update(
+    live_agents: AgentPriorityQueue,
+    task_id: &str, 
+    status: &TaskStatus
+) -> (ClientResponseMessage, usize) {
+    // TODO: do something with the task id. For now, we're just updating
+    // the priority queue when a task starts running and when completed
+    // or failed
+    match status {
+        TaskStatus::RUNNING => {    
+            // update the priority queue
         }
     }
 }

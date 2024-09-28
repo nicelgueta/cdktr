@@ -21,6 +21,12 @@ pub enum AgentAPI {
     /// principal to send tasks for execution to the agents
     Run(Task),
 }
+impl From<AgentAPI> for String {
+    fn from(value: AgentAPI) -> Self {
+        value.to_string()
+    }
+}
+
 impl API for AgentAPI {
     fn to_string(&self) -> String {
         match self {
@@ -45,8 +51,7 @@ impl TryFrom<ZmqMessage> for AgentAPI {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
             "RUN" => Ok(Self::Run(api::create_task_run_payload(args)?)),
-            _ => Err(RepReqError::new(
-                1,
+            _ => Err(RepReqError::ParseError(
                 format!("Unrecognised message type: {}", msg_type),
             )),
         }
@@ -78,13 +83,19 @@ impl AgentServer {
         debug!("Registering agent with principal @ {}", &principal_uri);
         let request = PrincipalAPI::RegisterAgent(self.instance_id.clone(), max_tasks);
         match request.send(principal_uri, DEFAULT_TIMEOUT).await {
-            Ok(cli_msg) => {
-                match cli_msg {
-                    ClientResponseMessage::Success => debug!("Successfully registered agent with principal"),
-                    other => panic!("{}", format!("Failed to register with principal. Error: {}", {let m: String = other.into();m}))
+            Ok(cli_msg) => match cli_msg {
+                ClientResponseMessage::Success => {
+                    debug!("Successfully registered agent with principal")
                 }
+                other => panic!(
+                    "{}",
+                    format!("Failed to register with principal. Error: {}", {
+                        let m: String = other.into();
+                        m
+                    })
+                ),
             },
-            Err(e) => panic!("{}", e.to_string())
+            Err(e) => panic!("{}", e.to_string()),
         };
     }
 }
@@ -108,10 +119,7 @@ mod tests {
 
     #[test]
     fn test_agent_request_from_zmq_str_all_happy() {
-        const ALL_HAPPIES: [&str; 2] = [
-            "PING",
-            "RUN|PROCESS|echo|hello"
-        ];
+        const ALL_HAPPIES: [&str; 2] = ["PING", "RUN|PROCESS|echo|hello"];
         for zmq_s in ALL_HAPPIES {
             let res = AgentAPI::try_from(ZmqMessage::from(zmq_s));
             assert!(res.is_ok())

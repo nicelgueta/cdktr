@@ -109,7 +109,7 @@ mod tests {
             Err(_e) => Err(GenericError::TimeoutError),
         }
     }
-    
+
     async fn get_req(host: &str, port: usize) -> Result<ReqSocket, GenericError> {
         get_req_timeout(host, port, Duration::from_millis(500)).await
     }
