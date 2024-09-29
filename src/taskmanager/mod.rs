@@ -223,16 +223,16 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_too_many_threads() {
         let mut zk = TaskManager::new("tm1".to_string(), 2, AsyncQueue::new());
-        let task1 = get_task(vec!["PROCESS", "python", "s.py", "2"]);
-        let task2 = get_task(vec!["PROCESS", "python", "s.py", "3"]);
+        let task1 = get_task(vec!["PROCESS", "sleep", "2"]);
+        let task2 = get_task(vec!["PROCESS", "sleep", "3"]);
         let result1 = zk.run_in_executor(task1).await;
         let result2 = zk.run_in_executor(task2).await;
         assert!(result1.is_ok());
         assert!(result2.is_ok());
 
-        let second = Duration::from_millis(10);
+        let second = Duration::from_millis(1000);
         sleep(second).await;
-        let task3 = get_task(vec!["PROCESS", "python", "s.py", "1"]);
+        let task3 = get_task(vec!["PROCESS", "sleep", "1"]);
         let result3 = zk.run_in_executor(task3).await;
 
         match result3 {
