@@ -121,11 +121,12 @@ pub async fn handle_agent_task_status_update(
     // TODO: do something with the task id. For now, we're just updating
     // the priority queue when a task starts running and when completed
     // or failed
-    match status {
-        TaskStatus::RUNNING => {    
-            // update the priority queue
-        }
-    }
+    // match status {
+    //     TaskStatus::RUNNING => {    
+    //         // update the priority queue
+    //     }
+    // }
+    (ClientResponseMessage::SuccessWithPayload("TBD".to_string()), 0)
 }
 
 #[cfg(test)]

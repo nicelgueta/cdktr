@@ -13,13 +13,7 @@ mod api;
 
 use api::{
     // zmq msgs
-    create_new_task_payload,
-    create_run_task_payload,
-    delete_task_payload,
-    // client handling
-    handle_create_task,
-    handle_delete_task,
-    handle_list_tasks,
+    create_new_task_payload, create_run_task_payload, delete_task_payload, handle_agent_task_status_update, handle_create_task, handle_delete_task, handle_list_tasks
 };
 
 use super::{
@@ -218,6 +212,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
             }
             PrincipalAPI::RegisterAgent(agent_id, max_tasks) => {
                 self.register_agent(&agent_id, max_tasks).await
+            },
+            PrincipalAPI::AgentTaskStatusUpdate(agent_id, task_id, status) => {
+                handle_agent_task_status_update(self.live_agents.clone(), &task_id, &status).await
             }
         }
     }
@@ -292,15 +289,16 @@ mod tests {
                 0,
             ),
         ];
+    
         let mut server =
             PrincipalServer::new(get_db(), "fake_ins".to_string(), None, AsyncQueue::new());
         for (zmq_s, response, exp_exit_code) in test_params {
+            println!("Testing {zmq_s}");
             let zmq_msg = ZmqMessage::from(zmq_s);
             let ar = PrincipalAPI::try_from(zmq_msg)
                 .expect("Should be able to unwrap the agent from ZMQ command");
             let (resp, exit_code) = server.handle_client_message(ar).await;
             dbg!(&resp);
-            println!("Testing {zmq_s}");
             assert_eq!(response, resp);
             assert_eq!(exit_code, exp_exit_code);
         }

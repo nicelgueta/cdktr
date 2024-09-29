@@ -161,7 +161,7 @@ impl AgentMeta {
 /// hashmap, so staleness can be determined in O(1) at time of pop. Trade-off here is that we potentially 
 /// increases the space complexity of our data structure but benefit from O(log n) inserts instead
 /// of O(n) recreations of the entire tree every time something is updated and amortised
-/// O(1) pops.
+/// O(1) pops. Since we prioritise speed over space for our principal, this is the chosen approach
 #[derive(Clone, Debug)]
 pub struct AgentPriorityQueue {
     // item(capacity, unique_id)
@@ -262,7 +262,10 @@ impl AgentPriorityQueue {
     ) -> Result<(), GenericError> {
         let unique_id = {
             let u_map = self.u_map.lock().await;
-            u_map.get(agent_id).expect("Unable to find agent_id in priority queue u_map").clone()
+            match u_map.get(agent_id) {
+                Some(unique_id) => unique_id.clone(),
+                None => return Err(GenericError::MissingAgents)
+            }
         };
         let mut node_map = self.node_map.lock().await;
         let agent_meta_res = node_map.get_mut(&unique_id);
@@ -304,7 +307,7 @@ impl AgentPriorityQueue {
             true => agent_meta.dec_running_tasks(),
             false => agent_meta.inc_running_task(),
         };
-        self.push(agent_meta);
+        self.push(agent_meta).await;
         Ok(())
     }
 }
@@ -404,6 +407,19 @@ mod tests {
         let id3 = pq.pop().await.unwrap();
         assert_eq!(id3.agent_id(), "localhost-9997".to_string());
         assert_eq!(id3.last_ping_timestamp, 2)
+    }
+
+    #[tokio::test]
+    async fn test_update_timestamp_not_exist() {
+        let mut pq = AgentPriorityQueue::new();
+        let agents = vec![
+            AgentMeta::new("somedude".to_string(), 9999, 3, 0),
+        ];
+        for ag_meta in agents {
+            pq.push(ag_meta).await
+        }
+        let agent_id = "someotherdude-8999".to_string();
+        assert!(pq.update_timestamp(&agent_id, 2).await.is_err());
     }
 
     #[tokio::test]

@@ -118,7 +118,7 @@ impl TaskManager {
                 || *self.thread_counter.lock().await > self.max_threads
             {
                 // if the queue is empty (no tasks to do) or the manager is currently running the
-                // maxium allowes concurrent threads then just hang tight
+                // maxium allowed concurrent threads then just hang tight
                 trace!("Waiting");
                 sleep(Duration::from_micros(500)).await
             }
@@ -223,8 +223,8 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_too_many_threads() {
         let mut zk = TaskManager::new("tm1".to_string(), 2, AsyncQueue::new());
-        let task1 = get_task(vec!["PROCESS", "python", "s.py", "1"]);
-        let task2 = get_task(vec!["PROCESS", "python", "s.py", "2"]);
+        let task1 = get_task(vec!["PROCESS", "python", "s.py", "2"]);
+        let task2 = get_task(vec!["PROCESS", "python", "s.py", "3"]);
         let result1 = zk.run_in_executor(task1).await;
         let result2 = zk.run_in_executor(task2).await;
         assert!(result1.is_ok());
