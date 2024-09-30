@@ -5,7 +5,7 @@ use tokio::{sync::Mutex, time::sleep};
 use crate::{
     db::get_connection,
     exceptions::GenericError,
-    models::{AgentPriorityQueue, Task},
+    models::Task,
     server::{
         agent::AgentServer,
         models::ClientResponseMessage,
@@ -14,7 +14,7 @@ use crate::{
     },
     task_router::TaskRouter,
     taskmanager,
-    utils::{get_instance_id, AsyncQueue},
+    utils::{get_instance_id, data_structures::{AgentPriorityQueue, AsyncQueue}},
     zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT},
 };
 

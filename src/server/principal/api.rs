@@ -4,8 +4,9 @@
 use crate::{
     db::models::{NewScheduledTask, ScheduledTask},
     macros::args_to_model,
-    models::{AgentPriorityQueue, Task, TaskStatus, ZMQArgs},
+    models::{Task, TaskStatus, ZMQArgs},
     server::models::{ClientResponseMessage, RepReqError},
+    utils::data_structures::AgentPriorityQueue
 };
 use diesel::prelude::*;
 
@@ -120,11 +121,14 @@ pub async fn handle_agent_task_status_update(
     // the priority queue when a task starts running and when completed
     // or failed
     // match status {
-    //     TaskStatus::RUNNING => {    
+    //     TaskStatus::RUNNING => {
     //         // update the priority queue
     //     }
     // }
-    (ClientResponseMessage::SuccessWithPayload("TBD".to_string()), 0)
+    (
+        ClientResponseMessage::SuccessWithPayload("TBD".to_string()),
+        0,
+    )
 }
 
 #[cfg(test)]

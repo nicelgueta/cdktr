@@ -1,4 +1,4 @@
-use crate::utils::AsyncQueue;
+use crate::utils::data_structures::AsyncQueue;
 use async_trait::async_trait;
 use tokio::sync::mpsc::Sender;
 

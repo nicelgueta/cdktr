@@ -1,11 +1,14 @@
 use crate::{
     db::models::NewScheduledTask,
-    models::{AgentMeta, AgentPriorityQueue, Task, TaskStatus, ZMQArgs},
-    utils::{split_instance_id, AsyncQueue},
+    models::{AgentMeta, Task, TaskStatus, ZMQArgs},
+    utils::{
+        split_instance_id,
+        data_structures::{AgentPriorityQueue, AsyncQueue}
+    }
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use diesel::{expression::is_aggregate::No, SqliteConnection};
+use diesel::SqliteConnection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use zeromq::ZmqMessage;
@@ -13,7 +16,13 @@ mod api;
 
 use api::{
     // zmq msgs
-    create_new_task_payload, create_run_task_payload, delete_task_payload, handle_agent_task_status_update, handle_create_task, handle_delete_task, handle_list_tasks
+    create_new_task_payload,
+    create_run_task_payload,
+    delete_task_payload,
+    handle_agent_task_status_update,
+    handle_create_task,
+    handle_delete_task,
+    handle_list_tasks,
 };
 
 use super::{
@@ -213,7 +222,7 @@ impl Server<PrincipalAPI> for PrincipalServer {
             }
             PrincipalAPI::RegisterAgent(agent_id, max_tasks) => {
                 self.register_agent(&agent_id, max_tasks).await
-            },
+            }
             PrincipalAPI::AgentTaskStatusUpdate(agent_id, task_id, status) => {
                 handle_agent_task_status_update(self.live_agents.clone(), &task_id, &status).await
             }
@@ -290,7 +299,7 @@ mod tests {
                 0,
             ),
         ];
-    
+
         let mut server =
             PrincipalServer::new(get_db(), "fake_ins".to_string(), None, AsyncQueue::new());
         for (zmq_s, response, exp_exit_code) in test_params {

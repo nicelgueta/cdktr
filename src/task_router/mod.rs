@@ -1,8 +1,8 @@
 use crate::{
     exceptions::GenericError,
-    models::{AgentMeta, AgentPriorityQueue, Task},
+    models::{AgentMeta, Task},
     server::{agent::AgentAPI, models::ClientResponseMessage, traits::API},
-    utils::AsyncQueue,
+    utils::data_structures::{AgentPriorityQueue, AsyncQueue},
     zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT},
 };
 use log::{debug, error};

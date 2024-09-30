@@ -1,6 +1,6 @@
 use crate::{
     models::{Task, ZMQArgs},
-    utils::AsyncQueue,
+    utils::data_structures::AsyncQueue,
     zmq_helpers::{get_zmq_req, DEFAULT_TIMEOUT},
 };
 use async_trait::async_trait;

@@ -1,7 +1,7 @@
 use crate::{
     executors::get_executor,
     models::{traits::Executor, Task},
-    utils::AsyncQueue,
+    utils::data_structures::AsyncQueue,
 };
 use log::{info, trace};
 use std::sync::Arc;
@@ -10,7 +10,6 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
-use zeromq::{Socket, SocketOptions};
 
 #[derive(Debug)]
 pub struct TaskExecutionHandle {
@@ -152,7 +151,7 @@ impl TaskManager {
 mod tests {
     use crate::models::{Task, ZMQArgs};
     use crate::taskmanager::TaskManagerError;
-    use crate::utils::AsyncQueue;
+    use crate::utils::data_structures::AsyncQueue;
     use tokio::time::{sleep, Duration};
 
     use super::TaskManager;
@@ -188,9 +187,9 @@ mod tests {
     #[tokio::test]
     async fn test_run_multiple_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 3, AsyncQueue::new());
-        let task1 = get_task(vec!["PROCESS", "python", "s.py", "2"]);
-        let task2 = get_task(vec!["PROCESS", "python", "s.py", "2"]);
-        let task3 = get_task(vec!["PROCESS", "python", "s.py", "1"]);
+        let task1 = get_task(vec!["PROCESS", "sleep", "2"]);
+        let task2 = get_task(vec!["PROCESS", "sleep", "2"]);
+        let task3 = get_task(vec!["PROCESS", "sleep", "1"]);
         let mut result1 = zk.run_in_executor(task1).await;
         let mut result2 = zk.run_in_executor(task2).await;
         let mut result3 = zk.run_in_executor(task3).await;

@@ -1,6 +1,6 @@
 use crate::{
     models::{traits::EventListener, Task},
-    utils::AsyncQueue,
+    utils::data_structures::AsyncQueue,
 };
 use log::debug;
 use std::sync::Arc;
