@@ -1,14 +1,14 @@
+use crate::{exceptions::GenericError, models::AgentMeta};
 use std::{
     collections::{BinaryHeap, HashMap, VecDeque},
-    sync::{Arc, atomic::{AtomicUsize, Ordering}}
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 use tokio::{
-    time::{sleep, Duration},
     sync::Mutex,
-};
-use crate::{
-    exceptions::GenericError,
-    models::AgentMeta
+    time::{sleep, Duration},
 };
 
 /// A simple queue that can be accessed across threads. The queue
@@ -61,7 +61,6 @@ impl<T> AsyncQueue<T> {
         }
     }
 }
-
 
 /// Priority queue used by the Task Router to keep track of agent task counts.
 /// This needs to be slightly more complex than the standard max-heap priority queue
@@ -169,7 +168,7 @@ impl AgentPriorityQueue {
     /// so is done directly using the hashmap without having to update the uniqueness id
     pub async fn update_timestamp(
         &self,
-        agent_id: &String,
+        agent_id: &str,
         timestamp: i64,
     ) -> Result<(), GenericError> {
         let unique_id = {
@@ -193,7 +192,7 @@ impl AgentPriorityQueue {
     /// effectively marks it as stale on the heap. We also remove from the u_map because this could introduce a memory
     /// leak if the agent_ids changed regularly and thus the same ids were not re-used in this queue once the agentmeta
     /// is pushed back
-    pub async fn remove(&mut self, agent_id: &String) -> Result<AgentMeta, GenericError> {
+    pub async fn remove(&mut self, agent_id: &str) -> Result<AgentMeta, GenericError> {
         let unique_id = {
             let mut u_map = self.u_map.lock().await;
             if let Some(id) = u_map.remove(agent_id) {
@@ -212,15 +211,15 @@ impl AgentPriorityQueue {
     /// O(log n) ID lookup to update agent capacity which directly affects its position in the queue. This is
     /// time complexity can be acheived because we use the hashmap to mutably access the AgentMeta, make the update
     /// and then push back using .push() which is a O(log n) insert.
-    pub async fn update_capacity(
+    pub async fn update_running_tasks(
         &mut self,
-        agent_id: &String,
-        decrease: bool,
+        agent_id: &str,
+        up: bool,
     ) -> Result<(), GenericError> {
         let mut agent_meta = self.remove(agent_id).await?;
-        match decrease {
-            true => agent_meta.dec_running_tasks(),
-            false => agent_meta.inc_running_task(),
+        match up {
+            true => agent_meta.inc_running_tasks(),
+            false => agent_meta.dec_running_tasks(),
         };
         self.push(agent_meta).await;
         Ok(())
@@ -232,7 +231,6 @@ mod tests {
     use super::*;
     use crate::models::AgentMeta;
     use tokio::time::{sleep, timeout, Duration};
-
 
     #[tokio::test]
     async fn test_async_queue_new() {
@@ -368,5 +366,104 @@ mod tests {
         for ag_meta in agents {
             pq.push(ag_meta).await
         }
+        let agent_id = "to-edit-9998";
+        let agent_meta = pq.remove(agent_id).await.expect(
+            "Should find the agent in the priority queue"
+        );
+        assert_eq!(agent_meta.agent_id(), agent_id);
+        while ! pq.is_empty().await {
+            let am = pq.pop().await.expect(
+                "Should be able to pop if queue is not empty"
+            );
+            // pop should handle the stale entry in the heap so 
+            // this item id should not ever match the one we removed
+            // above
+            assert_ne!(am.agent_id(), agent_id.to_string())
+        }
+
+    }
+    #[tokio::test]
+    async fn test_update_running_tasks_inc () {
+        let mut pq = AgentPriorityQueue::new();
+        let agents = vec![
+            AgentMeta::new("localhost".to_string(), 9999, 1, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 2, 0),
+            AgentMeta::new("localhost".to_string(), 9997, 3, 0),
+            AgentMeta::new("localhost".to_string(), 9996, 4, 0),
+        ];
+        for ag_meta in agents {
+            pq.push(ag_meta).await
+        }
+        // check increase task
+        pq.update_running_tasks("localhost-9998", true).await;
+
+        let am = pq.remove("localhost-9998").await.unwrap();
+        assert_eq!(am.capacity(), 1); // 2 (max tasks) - 1 (increase) == 1
+
+    }
+    #[tokio::test]
+    async fn test_update_running_tasks_dec () {
+        let mut pq = AgentPriorityQueue::new();
+        let mut already_running = AgentMeta::new("localhost".to_string(), 9996, 4, 0);
+        already_running.inc_running_tasks();
+
+        assert_eq!(already_running.capacity(), 3);
+
+        let agents = vec![
+            AgentMeta::new("localhost".to_string(), 9999, 1, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 2, 0),
+            AgentMeta::new("localhost".to_string(), 9997, 3, 0),
+            already_running
+        ];
+        for ag_meta in agents {
+            pq.push(ag_meta).await
+        }
+        // check decrease task
+        pq.update_running_tasks("localhost-9996", false).await.unwrap();
+
+        let am = pq.remove("localhost-9996").await.unwrap();
+        assert_eq!(am.capacity(), 4); // back to full capacity
+
+    }
+
+    #[tokio::test]
+    async fn test_update_running_tasks_flow() {
+        // this test should show that we can update the capacity 
+        // of an item which then changes it's place in the queue
+        let mut pq = AgentPriorityQueue::new();
+        let agents = vec![
+            AgentMeta::new("localhost".to_string(), 9999, 1, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 2, 0),
+            AgentMeta::new("localhost".to_string(), 9997, 3, 0),
+            AgentMeta::new("localhost".to_string(), 9996, 4, 0),
+        ];
+        for ag_meta in agents {
+            pq.push(ag_meta).await
+        }
+
+        // assert 9996 with highest capacty is top of the queue
+        let am = pq.pop().await.expect("should be popping here");
+        assert_eq!(am.agent_id(), "localhost-9996".to_string());
+        pq.push(am).await;
+
+        // simulate two tasks running on 9996 which now makes 9997 top of the queue
+        pq.update_running_tasks("localhost-9996", true).await.expect("Should be able to increase");
+        pq.update_running_tasks("localhost-9996", true).await.expect("Should be able to increase");
+
+        // assert 9997 is now top of the queue
+        let am = pq.pop().await.expect("should pop");
+        assert_eq!(am.agent_id(), "localhost-9997".to_string());
+
+        // assert 9997 does not appear in any further pops
+        while ! pq.is_empty().await {
+            let am = pq.pop().await.expect(
+                "Should be able to pop if queue is not empty"
+            );
+            // pop should handle the stale entry in the heap so 
+            // this item id should not ever match the one we removed
+            // above
+            assert_ne!(am.agent_id(), "localhost-9997".to_string())
+        }
+
     }
 }

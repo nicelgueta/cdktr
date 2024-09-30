@@ -14,7 +14,10 @@ use crate::{
     },
     task_router::TaskRouter,
     taskmanager,
-    utils::{get_instance_id, data_structures::{AgentPriorityQueue, AsyncQueue}},
+    utils::{
+        data_structures::{AgentPriorityQueue, AsyncQueue},
+        get_instance_id,
+    },
     zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT},
 };
 

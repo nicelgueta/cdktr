@@ -2,9 +2,9 @@ use crate::{
     db::models::NewScheduledTask,
     models::{AgentMeta, Task, TaskStatus, ZMQArgs},
     utils::{
+        data_structures::{AgentPriorityQueue, AsyncQueue},
         split_instance_id,
-        data_structures::{AgentPriorityQueue, AsyncQueue}
-    }
+    },
 };
 use async_trait::async_trait;
 use chrono::Utc;

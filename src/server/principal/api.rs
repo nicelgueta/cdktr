@@ -6,7 +6,7 @@ use crate::{
     macros::args_to_model,
     models::{Task, TaskStatus, ZMQArgs},
     server::models::{ClientResponseMessage, RepReqError},
-    utils::data_structures::AgentPriorityQueue
+    utils::data_structures::AgentPriorityQueue,
 };
 use diesel::prelude::*;
 

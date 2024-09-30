@@ -1,10 +1,6 @@
 mod task;
 
-use crate::{
-    exceptions,
-    server::models::RepReqError,
-    utils::get_instance_id,
-};
+use crate::{exceptions, server::models::RepReqError, utils::get_instance_id};
 use std::collections::VecDeque;
 pub use task::Task;
 pub mod traits;
@@ -139,7 +135,7 @@ impl AgentMeta {
     pub fn capacity(&self) -> i32 {
         self.max_tasks as i32 - self.running_tasks as i32
     }
-    pub fn inc_running_task(&mut self) {
+    pub fn inc_running_tasks(&mut self) {
         self.running_tasks += 1
     }
     pub fn dec_running_tasks(&mut self) {
@@ -150,12 +146,9 @@ impl AgentMeta {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    
-    
 
     #[tokio::test]
     async fn test_agent_meta_methods() {
@@ -163,7 +156,7 @@ mod tests {
         assert_eq!(agent.agent_id(), "localhost-9999");
         assert_eq!(agent.capacity(), 2);
 
-        agent.inc_running_task();
+        agent.inc_running_tasks();
         assert_eq!(agent.capacity(), 1);
 
         agent.dec_running_tasks();
