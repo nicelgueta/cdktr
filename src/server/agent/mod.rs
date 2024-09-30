@@ -51,9 +51,10 @@ impl TryFrom<ZmqMessage> for AgentAPI {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
             "RUN" => Ok(Self::Run(api::create_task_run_payload(args)?)),
-            _ => Err(RepReqError::ParseError(
-                format!("Unrecognised message type: {}", msg_type),
-            )),
+            _ => Err(RepReqError::ParseError(format!(
+                "Unrecognised message type: {}",
+                msg_type
+            ))),
         }
     }
 }

@@ -147,7 +147,6 @@ impl TaskManager {
     }
 }
 
-
 // TODO: fix the broken pipe error
 #[cfg(test)]
 mod tests {

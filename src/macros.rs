@@ -1,4 +1,3 @@
-
 macro_rules! args_to_model {
     ($args:expr, $model:ident) => {
         if $args.len() == 0 {
@@ -10,13 +9,11 @@ macro_rules! args_to_model {
             let parse_res: Result<$model, serde_json::Error> = serde_json::from_str(&args_v[0]);
             match parse_res {
                 Ok(task) => Ok(task),
-                Err(e) => Err(RepReqError::ParseError(
-                    format!(
-                        "Invalid JSON for {}. Error: {}",
-                        stringify!($model),
-                        e.to_string()
-                    ),
-                )),
+                Err(e) => Err(RepReqError::ParseError(format!(
+                    "Invalid JSON for {}. Error: {}",
+                    stringify!($model),
+                    e.to_string()
+                ))),
             }
         }
     };

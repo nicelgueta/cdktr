@@ -46,7 +46,7 @@ pub enum PrincipalAPI {
     /// Args:
     ///     agent_id, max_tasks
     RegisterAgent(String, usize),
-    /// Allows an agent to update the principal with the status of a specific 
+    /// Allows an agent to update the principal with the status of a specific
     /// task
     /// Args:
     ///     agent_id, task_id, status
@@ -70,7 +70,7 @@ impl API for PrincipalAPI {
             Self::ListTasks => "LISTTASKS".to_string(),
             Self::RegisterAgent(agent_id, max_tasks) => {
                 format!("REGISTERAGENT|{agent_id}|{max_tasks}")
-            },
+            }
             Self::AgentTaskStatusUpdate(agent_id, task_id, status) => {
                 let status = status.to_string();
                 format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{status}")
@@ -115,22 +115,23 @@ impl TryFrom<ZmqMessage> for PrincipalAPI {
             },
             "AGENTTASKSTATUS" => match args.next() {
                 Some(agent_id) => match args.next() {
-                    Some(task_id) => {
-                        match args.next() {
-                            Some(status) => {
-                                let status = TaskStatus::try_from(status)?;
-                                Ok(Self::AgentTaskStatusUpdate(agent_id, task_id, status))
-                            },
-                            None => Err(RepReqError::ParseError("Missing arg TASK_STATUS".to_string()))
+                    Some(task_id) => match args.next() {
+                        Some(status) => {
+                            let status = TaskStatus::try_from(status)?;
+                            Ok(Self::AgentTaskStatusUpdate(agent_id, task_id, status))
                         }
+                        None => Err(RepReqError::ParseError(
+                            "Missing arg TASK_STATUS".to_string(),
+                        )),
                     },
-                    None => Err(RepReqError::ParseError("Missing arg TASK_ID".to_string()))
+                    None => Err(RepReqError::ParseError("Missing arg TASK_ID".to_string())),
                 },
-                None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string()))
+                None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
             },
-            _ => Err(RepReqError::ParseError(
-                format!("Unrecognised message type: {}", msg_type),
-            )),
+            _ => Err(RepReqError::ParseError(format!(
+                "Unrecognised message type: {}",
+                msg_type
+            ))),
         }
     }
 }

@@ -1,7 +1,9 @@
 mod task;
 
 use crate::{
-    exceptions::{self, GenericError}, server::models::RepReqError, utils::get_instance_id
+    exceptions::{self, GenericError},
+    server::models::RepReqError,
+    utils::get_instance_id,
 };
 use std::{
     collections::{BinaryHeap, HashMap, VecDeque},
@@ -36,7 +38,7 @@ pub enum TaskStatus {
     RUNNING,
     WAITING,
     COMPLETED,
-    FAILED
+    FAILED,
 }
 impl TryFrom<String> for TaskStatus {
     type Error = RepReqError;
@@ -47,7 +49,10 @@ impl TryFrom<String> for TaskStatus {
             "WAITING" => Ok(TaskStatus::WAITING),
             "COMPLETED" => Ok(TaskStatus::COMPLETED),
             "FAILED" => Ok(TaskStatus::FAILED),
-            _ => Err(RepReqError::ParseError(format!("Unrecognised task status: {}", value)))
+            _ => Err(RepReqError::ParseError(format!(
+                "Unrecognised task status: {}",
+                value
+            ))),
         }
     }
 }
@@ -150,15 +155,14 @@ impl AgentMeta {
     }
 }
 
-
-/// Priority queue used by the Task Router to keep track of agent task counts. 
+/// Priority queue used by the Task Router to keep track of agent task counts.
 /// This needs to be slightly more complex than the standard max-heap priority queue
 /// because the time when agents complete tasks cannot be known by the task router, so
 /// we need a hashmap to be able to access agentmeta in O(1) time to make the update.
-/// The issue with this is that we compromise the heap data structure by editing in-place 
+/// The issue with this is that we compromise the heap data structure by editing in-place
 /// so to avoid this we'll simulate a decrease-key operation by marking the item as stale
 /// and lazily removing it when/if it gets popped. We mark as stale by removing the item from the
-/// hashmap, so staleness can be determined in O(1) at time of pop. Trade-off here is that we potentially 
+/// hashmap, so staleness can be determined in O(1) at time of pop. Trade-off here is that we potentially
 /// increases the space complexity of our data structure but benefit from O(log n) inserts instead
 /// of O(n) recreations of the entire tree every time something is updated and amortised
 /// O(1) pops. Since we prioritise speed over space for our principal, this is the chosen approach
@@ -172,7 +176,7 @@ pub struct AgentPriorityQueue {
 
     // uniqueness_map to keep track of the latest
     // unique id thats being used for each agent
-    u_map: Arc<Mutex<HashMap<String, usize>>>
+    u_map: Arc<Mutex<HashMap<String, usize>>>,
 }
 
 static UNIQUENESS_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -191,14 +195,13 @@ impl AgentPriorityQueue {
     }
 
     /// push actually needs to handle 3 data structures.
-    /// This needs to generate a unique id that is used 
+    /// This needs to generate a unique id that is used
     /// as a key to the agentmeta hashmap. This key is pushed onto the max-heap along
     /// with the capacity generate from the agentmeta which serves as the key attribute
     /// determining its order in the queue. Then that unique id is inserted into a hasmap with
-    /// the agent_id as the key so that the unique id can be easily retrieved when only the 
+    /// the agent_id as the key so that the unique id can be easily retrieved when only the
     /// agent id is know like incoming requests from the agents to update their status
     pub async fn push(&mut self, agent_meta: AgentMeta) {
-
         let next_id = UNIQUENESS_COUNTER.fetch_add(1, Ordering::Relaxed);
         let agent_id = agent_meta.agent_id();
         // add capacity and agent_id tuple to the max heap
@@ -225,14 +228,15 @@ impl AgentPriorityQueue {
         let mut heap = self.heap.lock().await;
         loop {
             if let Some((_capacity, unique_id)) = (*heap).pop() {
-
                 // remove item from both the heap and agent_meta hashmap and return the agentmeta
                 let agent_meta = {
                     let mut node_map = self.node_map.lock().await;
-                    
+
                     // check if item is stale, if so, skip and pop again
-                    if ! node_map.contains_key(&unique_id) {continue};
-    
+                    if !node_map.contains_key(&unique_id) {
+                        continue;
+                    };
+
                     node_map
                         .remove(&unique_id)
                         .expect("Failed to find node in map when it appeared in max heap")
@@ -242,13 +246,13 @@ impl AgentPriorityQueue {
                 // remove from the uniqueness map
                 {
                     let mut u_map = self.u_map.lock().await;
-                    u_map
-                        .remove(&agent_id)
-                        .expect("Failed to remove agent_id entry from u_map when is reference in max-heap");
+                    u_map.remove(&agent_id).expect(
+                        "Failed to remove agent_id entry from u_map when is reference in max-heap",
+                    );
                 }
-                return Ok(agent_meta)
+                return Ok(agent_meta);
             } else {
-                return Err(exceptions::GenericError::MissingAgents)
+                return Err(exceptions::GenericError::MissingAgents);
             }
         }
     }
@@ -273,11 +277,11 @@ impl AgentPriorityQueue {
             Some(agent_meta) => {
                 agent_meta.update_timestamp(timestamp);
                 Ok(())
-            } 
+            }
             None => Err(GenericError::MissingAgents),
         }
     }
-    /// removes an agentmeta from the queue in O(1) by removing it from the internal node_map which 
+    /// removes an agentmeta from the queue in O(1) by removing it from the internal node_map which
     /// effectively marks it as stale on the heap. We also remove from the u_map because this could introduce a memory
     /// leak if the agent_ids changed regularly and thus the same ids were not re-used in this queue once the agentmeta
     /// is pushed back
@@ -287,7 +291,7 @@ impl AgentPriorityQueue {
             if let Some(id) = u_map.remove(agent_id) {
                 id
             } else {
-                return Err(GenericError::MissingAgents)
+                return Err(GenericError::MissingAgents);
             }
         };
         let mut node_map = self.node_map.lock().await;
@@ -296,12 +300,15 @@ impl AgentPriorityQueue {
             Some(agent_meta) => Ok(agent_meta),
             None => return Err(GenericError::MissingAgents),
         }
-
     }
     /// O(log n) ID lookup to update agent capacity which directly affects its position in the queue. This is
     /// time complexity can be acheived because we use the hashmap to mutably access the AgentMeta, make the update
     /// and then push back using .push() which is a O(log n) insert.
-    pub async fn update_capacity(&mut self, agent_id: &String, decrease: bool) -> Result<(), GenericError> {
+    pub async fn update_capacity(
+        &mut self,
+        agent_id: &String,
+        decrease: bool,
+    ) -> Result<(), GenericError> {
         let mut agent_meta = self.remove(agent_id).await?;
         match decrease {
             true => agent_meta.dec_running_tasks(),
@@ -434,7 +441,5 @@ mod tests {
         for ag_meta in agents {
             pq.push(ag_meta).await
         }
-
     }
-
 }

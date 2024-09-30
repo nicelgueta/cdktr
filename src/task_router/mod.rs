@@ -38,21 +38,19 @@ impl TaskRouter {
                         )
                         .await
                     {
-                        Ok(msg) => {
-                            match msg {
-                                ClientResponseMessage::Success => {
-                                    debug!("Successfully submitted task to agent")
-                                }
-                                cli_msg => {
-                                    let str_msg: String = cli_msg.into();
-                                    error!(
-                                        "Failed to execute task on agent {}. Got message {}",
-                                        agent_meta.agent_id(),
-                                        str_msg
-                                    )
-                                }
+                        Ok(msg) => match msg {
+                            ClientResponseMessage::Success => {
+                                debug!("Successfully submitted task to agent")
                             }
-                        }
+                            cli_msg => {
+                                let str_msg: String = cli_msg.into();
+                                error!(
+                                    "Failed to execute task on agent {}. Got message {}",
+                                    agent_meta.agent_id(),
+                                    str_msg
+                                )
+                            }
+                        },
                         Err(e) => match e {
                             GenericError::TimeoutError => {
                                 error!("Timed out wating on response from agent for task execution")

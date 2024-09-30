@@ -30,13 +30,11 @@ pub fn delete_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
     if let Some(v) = args.next() {
         match v.parse() {
             Ok(v) => Ok(v),
-            Err(e) => Err(RepReqError::ParseError(
-                format!(
-                    "Unable to create integer from value '{}'. Error: {}",
-                    &v,
-                    e.to_string()
-                ),
-            )),
+            Err(e) => Err(RepReqError::ParseError(format!(
+                "Unable to create integer from value '{}'. Error: {}",
+                &v,
+                e.to_string()
+            ))),
         }
     } else {
         Err(RepReqError::ParseError(
@@ -115,8 +113,8 @@ pub fn handle_delete_task(
 
 pub async fn handle_agent_task_status_update(
     live_agents: AgentPriorityQueue,
-    task_id: &str, 
-    status: &TaskStatus
+    task_id: &str,
+    status: &TaskStatus,
 ) -> (ClientResponseMessage, usize) {
     // TODO: do something with the task id. For now, we're just updating
     // the priority queue when a task starts running and when completed
