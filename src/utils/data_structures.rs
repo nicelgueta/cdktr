@@ -70,7 +70,7 @@ impl<T> AsyncQueue<T> {
 /// so to avoid this we'll simulate a decrease-key operation by marking the item as stale
 /// and lazily removing it when/if it gets popped. We mark as stale by removing the item from the
 /// hashmap, so staleness can be determined in O(1) at time of pop. Trade-off here is that we potentially
-/// increases the space complexity of our data structure but benefit from O(log n) inserts instead
+/// increase the space complexity of our data structure but benefit from O(log n) inserts instead
 /// of O(n) recreations of the entire tree every time something is updated and amortised
 /// O(1) pops. Since we prioritise speed over space for our principal, this is the chosen approach
 #[derive(Clone, Debug)]
@@ -171,21 +171,20 @@ impl AgentPriorityQueue {
         agent_id: &str,
         timestamp: i64,
     ) -> Result<(), GenericError> {
-        let unique_id = {
-            let u_map = self.u_map.lock().await;
-            match u_map.get(agent_id) {
-                Some(unique_id) => unique_id.clone(),
-                None => return Err(GenericError::MissingAgents),
+        let u_map = self.u_map.lock().await;
+        match u_map.get(agent_id) {
+            Some(unique_id) => {
+                let mut node_map = self.node_map.lock().await;
+                let agent_meta_res = node_map.get_mut(unique_id);
+                match agent_meta_res {
+                    Some(agent_meta) => {
+                        agent_meta.update_timestamp(timestamp);
+                        Ok(())
+                    }
+                    None => Err(GenericError::MissingAgents),
+                }
             }
-        };
-        let mut node_map = self.node_map.lock().await;
-        let agent_meta_res = node_map.get_mut(&unique_id);
-        match agent_meta_res {
-            Some(agent_meta) => {
-                agent_meta.update_timestamp(timestamp);
-                Ok(())
-            }
-            None => Err(GenericError::MissingAgents),
+            None => return Err(GenericError::MissingAgents),
         }
     }
     /// removes an agentmeta from the queue in O(1) by removing it from the internal node_map which
@@ -367,23 +366,24 @@ mod tests {
             pq.push(ag_meta).await
         }
         let agent_id = "to-edit-9998";
-        let agent_meta = pq.remove(agent_id).await.expect(
-            "Should find the agent in the priority queue"
-        );
+        let agent_meta = pq
+            .remove(agent_id)
+            .await
+            .expect("Should find the agent in the priority queue");
         assert_eq!(agent_meta.agent_id(), agent_id);
-        while ! pq.is_empty().await {
-            let am = pq.pop().await.expect(
-                "Should be able to pop if queue is not empty"
-            );
-            // pop should handle the stale entry in the heap so 
+        while !pq.is_empty().await {
+            let am = pq
+                .pop()
+                .await
+                .expect("Should be able to pop if queue is not empty");
+            // pop should handle the stale entry in the heap so
             // this item id should not ever match the one we removed
             // above
             assert_ne!(am.agent_id(), agent_id.to_string())
         }
-
     }
     #[tokio::test]
-    async fn test_update_running_tasks_inc () {
+    async fn test_update_running_tasks_inc() {
         let mut pq = AgentPriorityQueue::new();
         let agents = vec![
             AgentMeta::new("localhost".to_string(), 9999, 1, 0),
@@ -399,10 +399,9 @@ mod tests {
 
         let am = pq.remove("localhost-9998").await.unwrap();
         assert_eq!(am.capacity(), 1); // 2 (max tasks) - 1 (increase) == 1
-
     }
     #[tokio::test]
-    async fn test_update_running_tasks_dec () {
+    async fn test_update_running_tasks_dec() {
         let mut pq = AgentPriorityQueue::new();
         let mut already_running = AgentMeta::new("localhost".to_string(), 9996, 4, 0);
         already_running.inc_running_tasks();
@@ -413,22 +412,23 @@ mod tests {
             AgentMeta::new("localhost".to_string(), 9999, 1, 0),
             AgentMeta::new("localhost".to_string(), 9998, 2, 0),
             AgentMeta::new("localhost".to_string(), 9997, 3, 0),
-            already_running
+            already_running,
         ];
         for ag_meta in agents {
             pq.push(ag_meta).await
         }
         // check decrease task
-        pq.update_running_tasks("localhost-9996", false).await.unwrap();
+        pq.update_running_tasks("localhost-9996", false)
+            .await
+            .unwrap();
 
         let am = pq.remove("localhost-9996").await.unwrap();
         assert_eq!(am.capacity(), 4); // back to full capacity
-
     }
 
     #[tokio::test]
     async fn test_update_running_tasks_flow() {
-        // this test should show that we can update the capacity 
+        // this test should show that we can update the capacity
         // of an item which then changes it's place in the queue
         let mut pq = AgentPriorityQueue::new();
         let agents = vec![
@@ -447,23 +447,27 @@ mod tests {
         pq.push(am).await;
 
         // simulate two tasks running on 9996 which now makes 9997 top of the queue
-        pq.update_running_tasks("localhost-9996", true).await.expect("Should be able to increase");
-        pq.update_running_tasks("localhost-9996", true).await.expect("Should be able to increase");
+        pq.update_running_tasks("localhost-9996", true)
+            .await
+            .expect("Should be able to increase");
+        pq.update_running_tasks("localhost-9996", true)
+            .await
+            .expect("Should be able to increase");
 
         // assert 9997 is now top of the queue
         let am = pq.pop().await.expect("should pop");
         assert_eq!(am.agent_id(), "localhost-9997".to_string());
 
         // assert 9997 does not appear in any further pops
-        while ! pq.is_empty().await {
-            let am = pq.pop().await.expect(
-                "Should be able to pop if queue is not empty"
-            );
-            // pop should handle the stale entry in the heap so 
+        while !pq.is_empty().await {
+            let am = pq
+                .pop()
+                .await
+                .expect("Should be able to pop if queue is not empty");
+            // pop should handle the stale entry in the heap so
             // this item id should not ever match the one we removed
             // above
             assert_ne!(am.agent_id(), "localhost-9997".to_string())
         }
-
     }
 }
