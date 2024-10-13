@@ -1,20 +1,20 @@
-use std::io;
+use std::{io, vec};
 
+use config::AppConfig;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
-    layout::{Alignment, Constraint, Rect},
-    style::{Style, Stylize},
-    symbols::border,
-    text::{Line, Text},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Style, Stylize},
+    text::{Line, Span, Text},
     widgets::{
-        block::{Position, Title},
-        Block, Paragraph, Row, Table, Tabs, Widget,
+        block::{Position, Title}, Block, BorderType, Borders, Paragraph, Row, Table, Tabs, Widget
     },
     Frame,
 };
 
 mod tui;
+mod config;
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -24,10 +24,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(tabs: Vec<String>) -> Self {
+    pub fn new(ac: AppConfig) -> Self {
         Self {
             tab: 0,
-            tabs,
+            tabs: ac.tabs,
             exit: false,
         }
     }
@@ -87,29 +87,71 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let tabs = Tabs::new(self.tabs.iter().map(|tab_name| tab_name.as_str()))
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![
+                Constraint::Max(3),
+                Constraint::Min(1),
+                Constraint::Length(2),
+            ])
+            .split(area);
+
+        // tab headers
+        let header_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![
+                Constraint::Percentage(100),
+            ])
+            .split(vertical_chunks[0]);
+
+        // tabs
+        let _ = Tabs::new(self.tabs.iter().map(|tab_name| tab_name.as_str()))
             .block(Block::bordered().title(" CDKTR "))
             .style(Style::default().white())
             .highlight_style(Style::default().cyan())
             .select(self.tab)
             .divider("|")
-            .padding(" ", " ");
-        tabs.render(area, buf);
-        let text = "Mary had a\nlittle lamb.";
+            .padding(" ", " ")
+            .render(header_chunks[0], buf);
 
-        let table = text
-            .split("\n")
-            .map(|line: &str| -> Row { line.split_ascii_whitespace().collect() })
-            .collect::<Table>()
-            .widths([Constraint::Length(10); 3]);
-        table.render(area, buf)
-    }
+        // content
+        let _ = Paragraph::new("test space")
+                .block(Block::bordered())
+            .style(Style::default().white())
+            .render(vertical_chunks[1], buf);
+
+        // controls
+        let mut control_line = Line::from("");
+        let controls = vec![
+            (" <q>", "Quit"),
+            (" <l>", "Tab left"),
+            (" <r>", "Tab right"),
+        ];
+        for (ctrl, label) in controls {
+            control_line.push_span(
+                Span::raw(label)
+            );
+            control_line.push_span(
+                Span::styled(ctrl, Style::default().bold()),
+            );
+            control_line.push_span(
+                Span::raw(" ")
+            );
+        };
+        let controls_text = Text::from(control_line);
+        let _ = Paragraph::new(controls_text)
+            .style(Style::default().white())
+            .render(vertical_chunks[2], buf);
+
+        
+}
 }
 
 fn main() -> io::Result<()> {
     let mut terminal = tui::init()?;
+    let app_config = config::AppConfig::new();
     let app_result =
-        App::new(vec!["DASHBOARD".to_string(), "FLOW MANAGER".to_string()]).run(&mut terminal);
+        App::new(app_config).run(&mut terminal);
     tui::restore()?;
     app_result
 }
