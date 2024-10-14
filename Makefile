@@ -1,7 +1,10 @@
 book:
 	mdbook serve ./cdkr-book --open
-test:
+test-main:
 	cargo test
+test-tui:
+	cd tui && cargo test
+test: test-main test-tui
 fmt: 
 	cargo fmt
 build:
