@@ -8,4 +8,6 @@ build:
 	cargo build
 setup:
 	cargo install mdbook-mermaid
-push: fmt test
+commit:
+	cargo fmt --check
+push: test

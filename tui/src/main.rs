@@ -1,13 +1,18 @@
-use std::io;
 use ratatui::{
-    buffer::Buffer, crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind}, layout::{Constraint, Direction, Layout, Rect}, style::{Style,Stylize}, text::{Line, Span, Text}, widgets::{Block, Paragraph, Tabs, Widget}, Frame
+    buffer::Buffer,
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Style, Stylize},
+    text::{Line, Span, Text},
+    widgets::{Block, Paragraph, Tabs, Widget},
+    Frame,
 };
+use std::io;
 
-mod tui;
 mod config;
+mod tui;
 
 mod dashboard;
-
 
 #[derive(Debug, Default)]
 pub struct App {
