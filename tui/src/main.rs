@@ -1,20 +1,13 @@
-use std::{io, vec};
-
-use config::AppConfig;
+use std::io;
 use ratatui::{
-    buffer::Buffer,
-    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
-    text::{Line, Span, Text},
-    widgets::{
-        block::{Position, Title}, Block, BorderType, Borders, Paragraph, Row, Table, Tabs, Widget
-    },
-    Frame,
+    buffer::Buffer, crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind}, layout::{Constraint, Direction, Layout, Rect}, style::{Style,Stylize}, text::{Line, Span, Text}, widgets::{Block, Paragraph, Tabs, Widget}, Frame
 };
 
 mod tui;
 mod config;
+
+mod dashboard;
+
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -24,7 +17,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(ac: AppConfig) -> Self {
+    pub fn new(ac: config::AppConfig) -> Self {
         Self {
             tab: 0,
             tabs: ac.tabs,
@@ -99,9 +92,7 @@ impl Widget for &App {
         // tab headers
         let header_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(vec![
-                Constraint::Percentage(100),
-            ])
+            .constraints(vec![Constraint::Percentage(100)])
             .split(vertical_chunks[0]);
 
         // tabs
@@ -115,10 +106,10 @@ impl Widget for &App {
             .render(header_chunks[0], buf);
 
         // content
-        let _ = Paragraph::new("test space")
-                .block(Block::bordered())
-            .style(Style::default().white())
-            .render(vertical_chunks[1], buf);
+        match self.tab {
+            0 => dashboard::Dashboard::new().render(vertical_chunks[1], buf),
+            _ => Paragraph::new("Not implemented").render(vertical_chunks[1], buf),
+        };
 
         // controls
         let mut control_line = Line::from("");
@@ -128,30 +119,21 @@ impl Widget for &App {
             (" <r>", "Tab right"),
         ];
         for (ctrl, label) in controls {
-            control_line.push_span(
-                Span::raw(label)
-            );
-            control_line.push_span(
-                Span::styled(ctrl, Style::default().bold()),
-            );
-            control_line.push_span(
-                Span::raw(" ")
-            );
-        };
+            control_line.push_span(Span::raw(label));
+            control_line.push_span(Span::styled(ctrl, Style::default().bold()));
+            control_line.push_span(Span::raw(" "));
+        }
         let controls_text = Text::from(control_line);
         let _ = Paragraph::new(controls_text)
             .style(Style::default().white())
             .render(vertical_chunks[2], buf);
-
-        
-}
+    }
 }
 
 fn main() -> io::Result<()> {
     let mut terminal = tui::init()?;
     let app_config = config::AppConfig::new();
-    let app_result =
-        App::new(app_config).run(&mut terminal);
+    let app_result = App::new(app_config).run(&mut terminal);
     tui::restore()?;
     app_result
 }
