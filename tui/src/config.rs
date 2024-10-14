@@ -9,3 +9,7 @@ impl AppConfig {
         }
     }
 }
+
+pub trait Controls {
+    fn get() -> Vec<(&'static str, &'static str)>;
+}

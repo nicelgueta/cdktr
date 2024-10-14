@@ -10,9 +10,11 @@ use ratatui::{
 use std::io;
 
 mod config;
+mod dashboard;
+mod flow_manager;
 mod tui;
 
-mod dashboard;
+use config::Controls;
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -42,17 +44,12 @@ impl App {
         self.exit = true;
     }
 
-    fn change_tab(&mut self, up: bool) {
-        if up {
-            if self.tab == self.tabs.len() - 1 {
-            } else {
-                self.tab += 1
-            }
+    fn change_tab(&mut self) {
+        if self.tab == self.tabs.len() - 1 {
+            // back to first tab
+            self.tab = 0
         } else {
-            if self.tab == 0 {
-            } else {
-                self.tab -= 1
-            }
+            self.tab += 1
         }
     }
 
@@ -60,8 +57,7 @@ impl App {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
             KeyCode::Char('Q') => self.exit(),
-            KeyCode::Left => self.change_tab(false),
-            KeyCode::Right => self.change_tab(true),
+            KeyCode::Tab => self.change_tab(),
             _ => {}
         }
     }
@@ -113,16 +109,23 @@ impl Widget for &App {
         // content
         match self.tab {
             0 => dashboard::Dashboard::new().render(vertical_chunks[1], buf),
-            _ => Paragraph::new("Not implemented").render(vertical_chunks[1], buf),
+            1 => flow_manager::FlowManager::new().render(vertical_chunks[1], buf),
+            _ => Paragraph::new("Yet to be implemented").render(vertical_chunks[1], buf),
         };
 
         // controls
         let mut control_line = Line::from("");
-        let controls = vec![
-            (" <q>", "Quit"),
-            (" <l>", "Tab left"),
-            (" <r>", "Tab right"),
-        ];
+        let controls = {
+            let mut base_controls = vec![(" <q>", "Quit"), (" <TAB>", "Change screen")];
+            let screen_controls = match self.tab {
+                0 => dashboard::DashboardControls::get(),
+                1 => flow_manager::FlowManagerControls::get(),
+                _ => vec![("", "")],
+            };
+            base_controls.extend(screen_controls.iter());
+            base_controls
+        };
+
         for (ctrl, label) in controls {
             control_line.push_span(Span::raw(label));
             control_line.push_span(Span::styled(ctrl, Style::default().bold()));

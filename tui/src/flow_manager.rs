@@ -8,26 +8,26 @@ use ratatui::{
 
 use crate::config::Controls;
 
-pub struct DashboardControls;
+pub struct FlowManagerControls;
 
-impl Controls for DashboardControls {
+impl Controls for FlowManagerControls {
     fn get() -> Vec<(&'static str, &'static str)> {
         Vec::new()
     }
 }
-pub struct Dashboard;
+pub struct FlowManager;
 
-impl Dashboard {
+impl FlowManager {
     pub fn new() -> Self {
         Self
     }
 }
-impl Widget for Dashboard {
+impl Widget for FlowManager {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
-        Paragraph::new("This is the dashboard")
+        Paragraph::new("This is the FlowManager")
             .block(Block::bordered())
             .render(area, buf);
     }
