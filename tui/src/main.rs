@@ -1,6 +1,10 @@
+use core::panic;
 use ratatui::{
     buffer::Buffer,
-    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
+    crossterm::{
+        event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
+        style::Color,
+    },
     layout::{Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span, Text},
@@ -14,19 +18,18 @@ mod dashboard;
 mod flow_manager;
 mod tui;
 
-use config::Controls;
+use config::Page;
 
-#[derive(Debug, Default)]
 pub struct App {
     tab: usize,
-    tabs: Vec<String>,
+    tabs: Vec<Box<dyn Page>>,
     exit: bool,
 }
 
 impl App {
     pub fn new(ac: config::AppConfig) -> Self {
         Self {
-            tab: 0,
+            tab: 1,
             tabs: ac.tabs,
             exit: false,
         }
@@ -54,11 +57,18 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
+        // check
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
             KeyCode::Char('Q') => self.exit(),
             KeyCode::Tab => self.change_tab(),
-            _ => {}
+            _ => {
+                if self.tab >= self.tabs.len() {
+                    panic!("Somehow managed to get to an out of scope tab")
+                } else {
+                    self.tabs[self.tab].handle_key_event(key_event)
+                }
+            }
         }
     }
 
@@ -97,7 +107,7 @@ impl Widget for &App {
             .split(vertical_chunks[0]);
 
         // tabs
-        let _ = Tabs::new(self.tabs.iter().map(|tab_name| tab_name.as_str()))
+        Tabs::new(self.tabs.iter().map(|tab_page| tab_page.name()))
             .block(Block::bordered().title(" CDKTR "))
             .style(Style::default().white())
             .highlight_style(Style::default().cyan())
@@ -107,32 +117,35 @@ impl Widget for &App {
             .render(header_chunks[0], buf);
 
         // content
+        // TODO: find out qhy I can't just call.render like I have done for the Page trait methods
+        // self.tabs[self.tab].render(vertical_chunks[1], buf);
+        // ERROR: the `render` method cannot be invoked on a trait object
+        // widgets.rs(105, 15): this has a `Sized` requirement
+        // Current workaround is to create the page objects again explicitly which is
+        // less than ideal
         match self.tab {
             0 => dashboard::Dashboard::new().render(vertical_chunks[1], buf),
-            1 => flow_manager::FlowManager::new().render(vertical_chunks[1], buf),
+            1 => flow_manager::ControlPanel::new().render(vertical_chunks[1], buf),
             _ => Paragraph::new("Yet to be implemented").render(vertical_chunks[1], buf),
         };
 
         // controls
         let mut control_line = Line::from("");
         let controls = {
-            let mut base_controls = vec![(" <q>", "Quit"), (" <TAB>", "Change screen")];
-            let screen_controls = match self.tab {
-                0 => dashboard::DashboardControls::get(),
-                1 => flow_manager::FlowManagerControls::get(),
-                _ => vec![("", "")],
-            };
+            let mut base_controls = vec![("<Q>", "Quit"), ("<TAB>", "Change screen")];
+            let screen_controls = self.tabs[self.tab].get_control_labels();
             base_controls.extend(screen_controls.iter());
             base_controls
         };
 
         for (ctrl, label) in controls {
-            control_line.push_span(Span::raw(label));
-            control_line.push_span(Span::styled(ctrl, Style::default().bold()));
-            control_line.push_span(Span::raw(" "));
+            control_line.push_span(Span::raw(label).bg(Color::Black));
+            control_line.push_span(Span::raw(" ").bg(Color::Black));
+            control_line.push_span(Span::raw(ctrl).bg(Color::White).bold().underlined());
+            control_line.push_span(Span::raw(" ").bg(Color::Black));
         }
         let controls_text = Text::from(control_line);
-        let _ = Paragraph::new(controls_text)
+        Paragraph::new(controls_text)
             .style(Style::default().white())
             .render(vertical_chunks[2], buf);
     }

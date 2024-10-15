@@ -6,16 +6,20 @@ use ratatui::{
     widgets::{Block, Paragraph, Tabs, Widget},
 };
 
-use crate::config::Controls;
+use crate::config::Page;
 
-pub struct DashboardControls;
+#[derive(Debug, Default)]
+pub struct Dashboard;
 
-impl Controls for DashboardControls {
-    fn get() -> Vec<(&'static str, &'static str)> {
+impl Page for Dashboard {
+    fn name(&self) -> &'static str {
+        "Dashboard"
+    }
+    fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
         Vec::new()
     }
+    fn handle_key_event(&mut self, ke: ratatui::crossterm::event::KeyEvent) {}
 }
-pub struct Dashboard;
 
 impl Dashboard {
     pub fn new() -> Self {
