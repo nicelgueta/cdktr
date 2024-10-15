@@ -15,14 +15,14 @@ use std::io;
 
 mod config;
 mod dashboard;
-mod flow_manager;
+mod control_panel;
 mod tui;
 
-use config::Page;
+use config::Component;
 
 pub struct App {
     tab: usize,
-    tabs: Vec<Box<dyn Page>>,
+    tabs: Vec<Box<dyn Component>>,
     exit: bool,
 }
 
@@ -117,18 +117,11 @@ impl Widget for &App {
             .render(header_chunks[0], buf);
 
         // content
-        // TODO: find out qhy I can't just call.render like I have done for the Page trait methods
-        // self.tabs[self.tab].render(vertical_chunks[1], buf);
+        // TODO: find out qhy I can't just call.render like I have done for the Component trait methods
         // ERROR: the `render` method cannot be invoked on a trait object
         // widgets.rs(105, 15): this has a `Sized` requirement
-        // Current workaround is to create the page objects again explicitly which is
-        // less than ideal
-        match self.tab {
-            0 => dashboard::Dashboard::new().render(vertical_chunks[1], buf),
-            1 => flow_manager::ControlPanel::new().render(vertical_chunks[1], buf),
-            _ => Paragraph::new("Yet to be implemented").render(vertical_chunks[1], buf),
-        };
-
+        let component = &self.tabs[self.tab];
+        // component.render(area, buf);
         // controls
         let mut control_line = Line::from("");
         let controls = {

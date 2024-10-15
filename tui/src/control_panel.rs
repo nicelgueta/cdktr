@@ -7,24 +7,28 @@ use ratatui::{
     widgets::{Block, List, ListState, Paragraph, StatefulWidget, Tabs, Widget},
 };
 
-use crate::config::Page;
+use crate::config::Component;
 
 #[derive(Debug, Default)]
 pub struct ControlPanel {
     action_state: ListState,
+    action_focussed: bool,
 }
 
-impl Page for ControlPanel {
+impl Component for ControlPanel {
     fn name(&self) -> &'static str {
         "Control Panel"
     }
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
-        vec![("↓↑", "Select action")]
+        vec![("<↓↑>", "Select"), ("<A>", "Actions")]
     }
     fn handle_key_event(&mut self, ke: KeyEvent) {
         match ke.code {
             KeyCode::Up => self.select_action(false),
             KeyCode::Down => self.select_action(true),
+            KeyCode::Char('a') => {
+                self.toggle_action_focus()
+            },
             _ => (),
         }
     }
@@ -32,9 +36,10 @@ impl Page for ControlPanel {
 
 impl ControlPanel {
     pub fn new() -> Self {
-        let mut action_state = ListState::default();
-        action_state.select_first();
-        Self { action_state }
+        Self { 
+            action_state: ListState::default(), 
+            action_focussed: false 
+        }
     }
 
     fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> {
@@ -49,6 +54,14 @@ impl ControlPanel {
             self.action_state.select_next();
         } else {
             self.action_state.select_previous();
+        }
+    }
+    fn toggle_action_focus(&mut self) {
+        self.action_focussed = !self.action_focussed;
+        if self.action_focussed {
+            self.action_state.select_first();
+        } else {
+            self.action_state.select(None);
         }
     }
     fn get_agents_section(&self) -> impl Widget {

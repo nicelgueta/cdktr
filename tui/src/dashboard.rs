@@ -6,12 +6,12 @@ use ratatui::{
     widgets::{Block, Paragraph, Tabs, Widget},
 };
 
-use crate::config::Page;
+use crate::config::Component;
 
 #[derive(Debug, Default)]
 pub struct Dashboard;
 
-impl Page for Dashboard {
+impl Component for Dashboard {
     fn name(&self) -> &'static str {
         "Dashboard"
     }
