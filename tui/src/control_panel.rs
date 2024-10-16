@@ -9,7 +9,7 @@ use ratatui::{
 
 use crate::config::Component;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ControlPanel {
     action_state: ListState,
     action_focussed: bool,
@@ -33,27 +33,36 @@ impl Component for ControlPanel {
         }
     }
 }
+const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
 
 impl ControlPanel {
     pub fn new() -> Self {
-        Self { 
+        Self {
             action_state: ListState::default(), 
             action_focussed: false 
         }
     }
 
     fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> {
-        let actions = vec!["Ping", "List Tasks"];
-        List::new(actions)
+        List::new(ACTIONS)
             .highlight_style(Style::default().bg(Color::Cyan))
             .highlight_symbol(">")
             .block(Block::bordered().title(" Actions "))
     }
     fn select_action(&mut self, next: bool) {
-        if next {
-            self.action_state.select_next();
-        } else {
-            self.action_state.select_previous();
+        if self.action_focussed {                
+            let selected = self.action_state.selected().expect(
+                "Should automatically have a selected item if action box is focussed"
+            );
+            if next {
+                if selected < ACTIONS.len() - 1 {
+                    self.action_state.select_next();
+                }
+            } else {
+                if selected > 0 {
+                    self.action_state.select_previous();
+                }
+            }
         }
     }
     fn toggle_action_focus(&mut self) {

@@ -18,11 +18,11 @@ mod dashboard;
 mod control_panel;
 mod tui;
 
-use config::Component;
+use config::{PageComponent, Component};
 
 pub struct App {
     tab: usize,
-    tabs: Vec<Box<dyn Component>>,
+    tabs: Vec<PageComponent>,
     exit: bool,
 }
 
@@ -117,11 +117,11 @@ impl Widget for &App {
             .render(header_chunks[0], buf);
 
         // content
-        // TODO: find out qhy I can't just call.render like I have done for the Component trait methods
-        // ERROR: the `render` method cannot be invoked on a trait object
-        // widgets.rs(105, 15): this has a `Sized` requirement
-        let component = &self.tabs[self.tab];
-        // component.render(area, buf);
+        // Ideally not have to clone the component here but otherwise
+        // it'd have to move out of shared reference for render. Maybe a 
+        // higher-order component that doesn't require ownership?
+        let component = self.tabs[self.tab].clone();
+        component.render(vertical_chunks[1], buf);
         // controls
         let mut control_line = Line::from("");
         let controls = {

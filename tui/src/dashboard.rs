@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::config::Component;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Dashboard;
 
 impl Component for Dashboard {
