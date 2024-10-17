@@ -37,18 +37,14 @@ impl Component for ControlPanel {
 
 impl ControlPanel {
     pub fn new() -> Self {
-        Self {
+        let mut instance = Self {
             action_state: ListState::default(),
             panel_focussed: 0,
-        }
+        };
+        instance.focus_panel();
+        instance
     }
 
-    fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> {
-        List::new(ACTIONS)
-            .highlight_style(Style::default().bg(Color::Cyan))
-            .highlight_symbol(">")
-            .block(Block::bordered().title(" Actions "))
-    }
     fn select_action(&mut self, next: bool) {
         if self.panel_focussed == 0 {
             let selected = self
@@ -66,18 +62,60 @@ impl ControlPanel {
             }
         }
     }
+    fn focus_panel(&mut self) {
+        match PANELS[self.panel_focussed] {
+            "Actions" => self.action_state.select_first(),
+            _ => (),
+        }
+    }
+    fn unfocus_panel(&mut self) {
+        match PANELS[self.panel_focussed] {
+            "Actions" => self.action_state.select(None),
+            _ => (),
+        }
+    }
     fn change_panel(&mut self) {
+        // unfocus current panel
+        self.unfocus_panel();
+
         if self.panel_focussed == PANELS.len() - 1 {
             self.panel_focussed = 0
         } else {
             self.panel_focussed += 1
         }
+
+        // focus new one
+        self.focus_panel();
+    }
+    fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> {
+        List::new(ACTIONS)
+            .highlight_style(Style::default().bg(Color::Cyan))
+            .highlight_symbol(">")
+            .block(Block::bordered().title(" Actions ").fg(
+                if PANELS[self.panel_focussed] == "Actions" {
+                    Color::Cyan
+                } else {
+                    Color::White
+                },
+            ))
     }
     fn get_agents_section(&self) -> impl Widget {
-        Paragraph::new("space").block(Block::bordered().title(" Agents "))
+        Paragraph::new("space").block(Block::bordered().title(" Agents ").fg(
+            if PANELS[self.panel_focussed] == "Agents" {
+                Color::Cyan
+            } else {
+                Color::White
+            },
+        ))
     }
     fn get_flows_section(&self) -> impl Widget {
-        Paragraph::new("space").block(Block::bordered().title(" Flows "))
+        Paragraph::new("space").block(Block::bordered().title(" Flows ").fg(
+            if PANELS[self.panel_focussed] == "Flows" {
+                Color::Cyan
+            } else {
+                Color::White
+            },
+        ))
     }
 }
 impl Widget for ControlPanel {

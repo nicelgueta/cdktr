@@ -10,8 +10,8 @@ impl AppConfig {
     pub fn new() -> Self {
         Self {
             tabs: vec![
-                PageComponent::Dashboard(Dashboard::default()),
-                PageComponent::ControlPanel(ControlPanel::default()),
+                PageComponent::Dashboard(Dashboard::new()),
+                PageComponent::ControlPanel(ControlPanel::new()),
             ],
         }
     }

@@ -47,12 +47,11 @@ impl App {
         self.exit = true;
     }
 
-    fn change_tab(&mut self) {
-        if self.tab == self.tabs.len() - 1 {
-            // back to first tab
-            self.tab = 0
+    fn change_tab(&mut self, i: usize) {
+        if i >= self.tabs.len() {
+            // do nothing for unindexed tabs
         } else {
-            self.tab += 1
+            self.tab = i
         }
     }
 
@@ -61,7 +60,9 @@ impl App {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
             KeyCode::Char('Q') => self.exit(),
-            KeyCode::Tab => self.change_tab(),
+            KeyCode::Char('1') => self.change_tab(0),
+            KeyCode::Char('2') => self.change_tab(1),
+            KeyCode::Char('3') => self.change_tab(2),
             _ => {
                 if self.tab >= self.tabs.len() {
                     panic!("Somehow managed to get to an out of scope tab")
@@ -126,16 +127,16 @@ impl Widget for &App {
         let mut control_line = Line::from("");
         let controls = {
             let mut base_controls = vec![("<Q>", "Quit"), ("<TAB>", "Change screen")];
+            base_controls.push(("", " |"));
             let screen_controls = self.tabs[self.tab].get_control_labels();
             base_controls.extend(screen_controls.iter());
             base_controls
         };
-
         for (ctrl, label) in controls {
-            control_line.push_span(Span::raw(label).bg(Color::Black));
-            control_line.push_span(Span::raw(" ").bg(Color::Black));
+            control_line.push_span(Span::raw(label));
+            control_line.push_span(Span::raw(" "));
             control_line.push_span(Span::raw(ctrl).bg(Color::White).bold().underlined());
-            control_line.push_span(Span::raw(" ").bg(Color::Black));
+            control_line.push_span(Span::raw(" "));
         }
         let controls_text = Text::from(control_line);
         Paragraph::new(controls_text)
