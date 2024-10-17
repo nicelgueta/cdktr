@@ -44,7 +44,13 @@ impl ControlPanel {
         instance.focus_panel();
         instance
     }
-
+    fn panel_highlighted_color(&self, tab_name: &str) -> Color {
+        if PANELS[self.panel_focussed] == tab_name {
+            Color::Rgb(123, 201, 227)
+        } else {
+            Color::White
+        }
+    }
     fn select_action(&mut self, next: bool) {
         if self.panel_focussed == 0 {
             let selected = self
@@ -91,31 +97,25 @@ impl ControlPanel {
         List::new(ACTIONS)
             .highlight_style(Style::default().bg(Color::Cyan))
             .highlight_symbol(">")
-            .block(Block::bordered().title(" Actions ").fg(
-                if PANELS[self.panel_focussed] == "Actions" {
-                    Color::Cyan
-                } else {
-                    Color::White
-                },
-            ))
+            .block(
+                Block::bordered()
+                    .title(" Actions ")
+                    .fg(self.panel_highlighted_color("Actions")),
+            )
     }
     fn get_agents_section(&self) -> impl Widget {
-        Paragraph::new("space").block(Block::bordered().title(" Agents ").fg(
-            if PANELS[self.panel_focussed] == "Agents" {
-                Color::Cyan
-            } else {
-                Color::White
-            },
-        ))
+        Paragraph::new("space").block(
+            Block::bordered()
+                .title(" Agents ")
+                .fg(self.panel_highlighted_color("Agents")),
+        )
     }
     fn get_flows_section(&self) -> impl Widget {
-        Paragraph::new("space").block(Block::bordered().title(" Flows ").fg(
-            if PANELS[self.panel_focussed] == "Flows" {
-                Color::Cyan
-            } else {
-                Color::White
-            },
-        ))
+        Paragraph::new("space").block(
+            Block::bordered()
+                .title(" Flows ")
+                .fg(self.panel_highlighted_color("Flows")),
+        )
     }
 }
 impl Widget for ControlPanel {
