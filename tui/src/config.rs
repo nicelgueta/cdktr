@@ -1,5 +1,5 @@
-use crate::dashboard::Dashboard;
 use crate::control_panel::ControlPanel;
+use crate::dashboard::Dashboard;
 use ratatui::{buffer::Buffer, crossterm::event::KeyEvent, layout::Rect, widgets::Widget};
 
 pub struct AppConfig {
@@ -16,7 +16,6 @@ impl AppConfig {
         }
     }
 }
-
 
 pub trait Component: Widget {
     fn name(&self) -> &'static str;

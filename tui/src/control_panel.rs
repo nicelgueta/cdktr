@@ -9,10 +9,13 @@ use ratatui::{
 
 use crate::config::Component;
 
+const PANELS: [&'static str; 3] = ["Actions", "Agents", "Flows"];
+const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
+
 #[derive(Debug, Default, Clone)]
 pub struct ControlPanel {
     action_state: ListState,
-    action_focussed: bool,
+    panel_focussed: usize,
 }
 
 impl Component for ControlPanel {
@@ -20,26 +23,23 @@ impl Component for ControlPanel {
         "Control Panel"
     }
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
-        vec![("<↓↑>", "Select"), ("<A>", "Actions")]
+        vec![("<↓↑>", "Select"), ("<TAB>", "Change focus")]
     }
     fn handle_key_event(&mut self, ke: KeyEvent) {
         match ke.code {
             KeyCode::Up => self.select_action(false),
             KeyCode::Down => self.select_action(true),
-            KeyCode::Char('a') => {
-                self.toggle_action_focus()
-            },
+            KeyCode::Tab => self.change_panel(),
             _ => (),
         }
     }
 }
-const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
 
 impl ControlPanel {
     pub fn new() -> Self {
         Self {
-            action_state: ListState::default(), 
-            action_focussed: false 
+            action_state: ListState::default(),
+            panel_focussed: 0,
         }
     }
 
@@ -50,10 +50,11 @@ impl ControlPanel {
             .block(Block::bordered().title(" Actions "))
     }
     fn select_action(&mut self, next: bool) {
-        if self.action_focussed {                
-            let selected = self.action_state.selected().expect(
-                "Should automatically have a selected item if action box is focussed"
-            );
+        if self.panel_focussed == 0 {
+            let selected = self
+                .action_state
+                .selected()
+                .expect("Should automatically have a selected item if action box is focussed");
             if next {
                 if selected < ACTIONS.len() - 1 {
                     self.action_state.select_next();
@@ -65,12 +66,11 @@ impl ControlPanel {
             }
         }
     }
-    fn toggle_action_focus(&mut self) {
-        self.action_focussed = !self.action_focussed;
-        if self.action_focussed {
-            self.action_state.select_first();
+    fn change_panel(&mut self) {
+        if self.panel_focussed == PANELS.len() - 1 {
+            self.panel_focussed = 0
         } else {
-            self.action_state.select(None);
+            self.panel_focussed += 1
         }
     }
     fn get_agents_section(&self) -> impl Widget {

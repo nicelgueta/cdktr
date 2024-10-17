@@ -14,11 +14,11 @@ use ratatui::{
 use std::io;
 
 mod config;
-mod dashboard;
 mod control_panel;
+mod dashboard;
 mod tui;
 
-use config::{PageComponent, Component};
+use config::{Component, PageComponent};
 
 pub struct App {
     tab: usize,
@@ -118,7 +118,7 @@ impl Widget for &App {
 
         // content
         // Ideally not have to clone the component here but otherwise
-        // it'd have to move out of shared reference for render. Maybe a 
+        // it'd have to move out of shared reference for render. Maybe a
         // higher-order component that doesn't require ownership?
         let component = self.tabs[self.tab].clone();
         component.render(vertical_chunks[1], buf);
