@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
@@ -6,7 +8,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListState, Paragraph, StatefulWidget, Widget},
 };
 
-use crate::{config::Component, utils::center};
+use crate::{config::Component, utils::vec_to_hashmap};
 
 const PANELS: [&'static str; 3] = ["Actions", "Agents", "Flows"];
 const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
@@ -16,6 +18,7 @@ pub struct ControlPanel {
     action_state: ListState,
     panel_focussed: usize,
     action_modal_open: bool,
+    action_panes: HashMap<&'static str, &'static str>
 }
 
 impl Component for ControlPanel {
@@ -47,6 +50,10 @@ impl ControlPanel {
             action_state: ListState::default(),
             panel_focussed: 0,
             action_modal_open: false,
+            action_panes: vec_to_hashmap(vec![
+                ("Ping", "summary"),
+                ("List Tasks", "summary"),
+            ]),
         };
         instance.focus_panel();
         instance
@@ -188,46 +195,96 @@ impl Widget for ControlPanel {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn render() {
-    //     let app = App::default();
-    //     let mut buf = Buffer::empty(Rect::new(0, 0, 50, 4));
+    // control panel tests
+    //
 
-    //     app.render(buf.area, &mut buf);
+    #[test]
+    fn test_panel_highlighted_color() {
+        let mut control_panel = ControlPanel::new();
+        control_panel.panel_focussed = 0;
+        assert_eq!(control_panel.panel_highlighted_color("Actions"), Color::Rgb(123, 201, 227));
+        assert_eq!(control_panel.panel_highlighted_color("Agents"), Color::White);
+        assert_eq!(control_panel.panel_highlighted_color("Flows"), Color::White);
+    }
 
-    //     let mut expected = Buffer::with_lines(vec![
-    //         "┏━━━━━━━━━━━━━ Counter App Tutorial ━━━━━━━━━━━━━┓",
-    //         "┃                    Value: 0                    ┃",
-    //         "┃                                                ┃",
-    //         "┗━ Decrement <Left> Increment <Right> Quit <Q> ━━┛",
-    //     ]);
-    //     let title_style = Style::new().bold();
-    //     let counter_style = Style::new().yellow();
-    //     let key_style = Style::new().blue().bold();
-    //     expected.set_style(Rect::new(14, 0, 22, 1), title_style);
-    //     expected.set_style(Rect::new(28, 1, 1, 1), counter_style);
-    //     expected.set_style(Rect::new(13, 3, 6, 1), key_style);
-    //     expected.set_style(Rect::new(30, 3, 7, 1), key_style);
-    //     expected.set_style(Rect::new(43, 3, 4, 1), key_style);
+    #[test]
+    fn test_select_action() {
+        let mut control_panel = ControlPanel::new();
+        assert_eq!(control_panel.action_state.selected(), Some(0));
+        control_panel.select_action(true);
+        assert_eq!(control_panel.action_state.selected(), Some(1));
+        control_panel.select_action(true);
+        assert_eq!(control_panel.action_state.selected(), Some(1));
+        control_panel.select_action(false);
+        assert_eq!(control_panel.action_state.selected(), Some(0));
+        control_panel.select_action(false);
+        assert_eq!(control_panel.action_state.selected(), Some(0));
+    }
 
-    //     // note ratatui also has an assert_buffer_eq! macro that can be used to
-    //     // compare buffers and display the differences in a more readable way
-    //     assert_eq!(buf, expected);
-    // }
+    #[test]
+    fn test_starts_with_focussed_panel() {
+        let control_panel = ControlPanel::new();
+        assert_eq!(control_panel.panel_focussed, 0);
+        assert_eq!(control_panel.action_state.selected(), Some(0));
+    }
 
-    // #[test]
-    // fn handle_key_event() -> io::Result<()> {
-    //     let mut app = App::default();
-    //     app.handle_key_event(KeyCode::Right.into());
-    //     assert_eq!(app.counter, 1);
+    #[test]
+    fn test_unfocus_panel() {
+        let mut control_panel = ControlPanel::new();
 
-    //     app.handle_key_event(KeyCode::Left.into());
-    //     assert_eq!(app.counter, 0);
+        control_panel.focus_panel();
 
-    //     let mut app = App::default();
-    //     app.handle_key_event(KeyCode::Char('q').into());
-    //     assert_eq!(app.exit, true);
+        assert_eq!(control_panel.action_state.selected(), Some(0));
+        control_panel.unfocus_panel();
+        assert_eq!(control_panel.action_state.selected(), None);
+    }
 
-    //     Ok(())
-    // }
+    #[test]
+    fn test_change_panel() {
+        let mut control_panel = ControlPanel::new();
+        assert_eq!(control_panel.panel_focussed, 0);
+
+        control_panel.change_panel();
+        assert_eq!(control_panel.panel_focussed, 1);
+
+        control_panel.change_panel();
+        assert_eq!(control_panel.panel_focussed, 2);
+
+        control_panel.change_panel();
+        assert_eq!(control_panel.panel_focussed, 0);
+    }
+
+    #[test]
+    fn test_get_actions_enter() {
+        let mut control_panel = ControlPanel::new();
+        control_panel.action_enter();
+        assert_eq!(control_panel.action_modal_open, true);
+        control_panel.action_enter();
+        assert_eq!(control_panel.action_modal_open, true);
+    }
+
+    #[test]
+    fn test_handle_key_event() {
+        let mut control_panel = ControlPanel::new();
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Up));
+        assert_eq!(control_panel.action_state.selected(), Some(0));
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Down));
+        assert_eq!(control_panel.action_state.selected(), Some(1));
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Down));
+        assert_eq!(control_panel.action_state.selected(), Some(1));
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Up));
+        assert_eq!(control_panel.action_state.selected(), Some(0));
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Tab));
+        assert_eq!(control_panel.panel_focussed, 1);
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Tab));
+        assert_eq!(control_panel.panel_focussed, 2);
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Tab));
+        assert_eq!(control_panel.panel_focussed, 0);
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(control_panel.action_modal_open, true);
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(control_panel.action_modal_open, true);
+        control_panel.handle_key_event(KeyEvent::from(KeyCode::Char('c')));
+        assert_eq!(control_panel.action_modal_open, false);
+    }
 }
