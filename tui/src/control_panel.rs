@@ -3,11 +3,10 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
-    text::{Line, Span, Text},
-    widgets::{Block, List, ListState, Paragraph, StatefulWidget, Tabs, Widget},
+    widgets::{Block, Borders, List, ListState, Paragraph, StatefulWidget, Widget},
 };
 
-use crate::config::Component;
+use crate::{config::Component, utils::center};
 
 const PANELS: [&'static str; 3] = ["Actions", "Agents", "Flows"];
 const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
@@ -16,6 +15,7 @@ const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
 pub struct ControlPanel {
     action_state: ListState,
     panel_focussed: usize,
+    action_modal_open: bool,
 }
 
 impl Component for ControlPanel {
@@ -30,6 +30,8 @@ impl Component for ControlPanel {
             KeyCode::Up => self.select_action(false),
             KeyCode::Down => self.select_action(true),
             KeyCode::Tab => self.change_panel(),
+            KeyCode::Enter => self.action_enter(),
+            KeyCode::Char('c') => self.action_modal_open = false,
             _ => (),
         }
     }
@@ -40,6 +42,7 @@ impl ControlPanel {
         let mut instance = Self {
             action_state: ListState::default(),
             panel_focussed: 0,
+            action_modal_open: false,
         };
         instance.focus_panel();
         instance
@@ -49,6 +52,18 @@ impl ControlPanel {
             Color::Rgb(123, 201, 227)
         } else {
             Color::White
+        }
+    }
+    fn action_enter(&mut self) {
+        match PANELS[self.panel_focussed] {
+            "Actions" => {
+                if self.action_modal_open {
+                    // TODO: do something with the action
+                } else {
+                    self.action_modal_open = true
+                }
+            }
+            _ => (),
         }
     }
     fn select_action(&mut self, next: bool) {
@@ -76,7 +91,10 @@ impl ControlPanel {
     }
     fn unfocus_panel(&mut self) {
         match PANELS[self.panel_focussed] {
-            "Actions" => self.action_state.select(None),
+            "Actions" => {
+                self.action_state.select(None);
+                self.action_modal_open = false
+            }
             _ => (),
         }
     }
@@ -99,7 +117,7 @@ impl ControlPanel {
             .highlight_symbol(">")
             .block(
                 Block::bordered()
-                    .title(" Actions ")
+                    .title(" Principal Actions ")
                     .fg(self.panel_highlighted_color("Actions")),
             )
     }
@@ -115,6 +133,21 @@ impl ControlPanel {
             Block::bordered()
                 .title(" Flows ")
                 .fg(self.panel_highlighted_color("Flows")),
+        )
+    }
+    fn get_action_modal(&self) -> impl Widget {
+        let text = format!(
+            "TODO: do something with {}",
+            ACTIONS[self
+                .action_state
+                .selected()
+                .expect("Failed to access selected item from action state")]
+        );
+        Paragraph::new(text).block(
+            Block::bordered()
+                .title(" Use action ")
+                // .border_type(ratatui::widgets::BorderType::)
+                .border_style(Style::default().bold().fg(Color::Green)),
         )
     }
 }
@@ -143,6 +176,12 @@ impl Widget for ControlPanel {
         );
         self.get_agents_section().render(left_sections[1], buf);
         self.get_flows_section().render(main_layout[1], buf);
+
+        if self.action_modal_open {
+            // use the flows section for the action modal to avoid an uneat popup
+            // self.get_action_modal().render(center(area, Constraint::Percentage(70), Constraint::Percentage(70)), buf)
+            self.get_action_modal().render(main_layout[1], buf)
+        };
     }
 }
 

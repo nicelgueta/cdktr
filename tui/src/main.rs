@@ -17,6 +17,7 @@ mod config;
 mod control_panel;
 mod dashboard;
 mod tui;
+mod utils;
 
 use config::{Component, PageComponent};
 
