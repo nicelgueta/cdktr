@@ -127,7 +127,7 @@ impl Widget for &App {
         // controls
         let mut control_line = Line::from("");
         let controls = {
-            let mut base_controls = vec![("<Q>", "Quit"), ("<TAB>", "Change screen")];
+            let mut base_controls = vec![("<Q>", "Quit"), ("<1..9>", "Change screen")];
             base_controls.push(("", " |"));
             let screen_controls = self.tabs[self.tab].get_control_labels();
             base_controls.extend(screen_controls.iter());

@@ -23,7 +23,11 @@ impl Component for ControlPanel {
         "Control Panel"
     }
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
-        vec![("<↓↑>", "Select"), ("<TAB>", "Change focus")]
+        let mut base_controls = vec![("<↓↑>", "Select"), ("<TAB>", "Change focus")];
+        if self.action_modal_open {
+            base_controls.push(("<C>", "Close"))
+        };
+        base_controls
     }
     fn handle_key_event(&mut self, ke: KeyEvent) {
         match ke.code {
@@ -136,16 +140,11 @@ impl ControlPanel {
         )
     }
     fn get_action_modal(&self) -> impl Widget {
-        let text = format!(
-            "TODO: do something with {}",
-            ACTIONS[self
-                .action_state
-                .selected()
-                .expect("Failed to access selected item from action state")]
-        );
+        let selected_action = ACTIONS[self.action_state.selected().expect("Failed to access selected item from action state")];
+        let text = "summarty";
         Paragraph::new(text).block(
             Block::bordered()
-                .title(" Use action ")
+                .title(format!(" ACTION: {selected_action} "))
                 // .border_type(ratatui::widgets::BorderType::)
                 .border_style(Style::default().bold().fg(Color::Green)),
         )
