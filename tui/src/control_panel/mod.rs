@@ -10,15 +10,15 @@ use ratatui::{
 
 use crate::{config::Component, utils::vec_to_hashmap};
 
+mod action_factory;
+
 const PANELS: [&'static str; 3] = ["Actions", "Agents", "Flows"];
-const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
 
 #[derive(Debug, Default, Clone)]
 pub struct ControlPanel {
     action_state: ListState,
     panel_focussed: usize,
     action_modal_open: bool,
-    action_panes: HashMap<&'static str, &'static str>
 }
 
 impl Component for ControlPanel {
@@ -49,11 +49,7 @@ impl ControlPanel {
         let mut instance = Self {
             action_state: ListState::default(),
             panel_focussed: 0,
-            action_modal_open: false,
-            action_panes: vec_to_hashmap(vec![
-                ("Ping", "summary"),
-                ("List Tasks", "summary"),
-            ]),
+            action_modal_open: false
         };
         instance.focus_panel();
         instance
@@ -69,7 +65,7 @@ impl ControlPanel {
         match PANELS[self.panel_focussed] {
             "Actions" => {
                 if self.action_modal_open {
-                    // TODO: do something with the action
+                    // leave for the content to handle if they use enter
                 } else {
                     self.action_modal_open = true
                 }
@@ -84,7 +80,7 @@ impl ControlPanel {
                 .selected()
                 .expect("Should automatically have a selected item if action box is focussed");
             if next {
-                if selected < ACTIONS.len() - 1 {
+                if selected < action_factory::ACTIONS.len() - 1 {
                     self.action_state.select_next();
                 }
             } else {
@@ -123,7 +119,7 @@ impl ControlPanel {
         self.focus_panel();
     }
     fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> {
-        List::new(ACTIONS)
+        List::new(action_factory::ACTIONS)
             .highlight_style(Style::default().bg(Color::Cyan))
             .highlight_symbol(">")
             .block(
@@ -147,7 +143,7 @@ impl ControlPanel {
         )
     }
     fn get_action_modal(&self) -> impl Widget {
-        let selected_action = ACTIONS[self.action_state.selected().expect("Failed to access selected item from action state")];
+        let selected_action = action_factory::ACTIONS[self.action_state.selected().expect("Failed to access selected item from action state")];
         let text = "summarty";
         Paragraph::new(text).block(
             Block::bordered()
