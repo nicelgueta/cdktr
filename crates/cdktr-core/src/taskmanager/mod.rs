@@ -173,7 +173,7 @@ mod tests {
     #[tokio::test]
     async fn test_run_single_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 1, AsyncQueue::new());
-        let task = get_task(vec!["PROCESS", "python", "s.py", "1"]);
+        let task = get_task(vec!["PROCESS", "sleep", "1"]);
         let mut result = zk.run_in_executor(task).await;
         assert!(result.is_ok());
         let mut i = 0;

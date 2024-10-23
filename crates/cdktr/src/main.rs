@@ -1,4 +1,4 @@
-use cdktr::hub::{Hub, InstanceType};
+use cdktr_core::hub::{Hub, InstanceType};
 use dotenv::dotenv;
 use std::env;
 

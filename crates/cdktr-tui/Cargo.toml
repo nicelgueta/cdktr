@@ -1,0 +1,8 @@
+[package]
+name = "cdktr-tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = { workspace = true }
+cdktr-core = { workspace = true }

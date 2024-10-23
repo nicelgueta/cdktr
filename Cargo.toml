@@ -1,11 +1,12 @@
-[package]
-name = "cdktr"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["crates/*"]
+resolver = "2"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace.dependencies]
+cdktr-core = { path = "crates/cdktr-core" }
+cdktr-tui = { path = "crates/cdktr-tui" }
+cdktr-cli = { path = "crates/cdktr-cli" }
 
-[dependencies]
 async-trait = "0.1.80"
 chrono = "0.4.38"
 cron = "0.12.1"
@@ -18,9 +19,4 @@ serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread", "io-std", "process", "io-util", "sync", "time"] }
 zeromq = "0.4.0"
-
-[workspace]
-
-members = [
-    "tui",
-]
+ratatui = { version = "0.27.0", features = ["all-widgets"] }

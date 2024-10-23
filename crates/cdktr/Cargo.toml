@@ -1,0 +1,13 @@
+[package]
+name = "cdktr-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cdktr-core = { workspace = true}
+cdktr-tui = { workspace = true}
+
+env_logger = { workspace = true}
+tokio = { workspace = true}
+log = { workspace = true}
+dotenv = { workspace = true}
