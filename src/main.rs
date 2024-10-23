@@ -1,18 +1,5 @@
-mod db;
-mod events;
-mod exceptions;
-mod executors;
-mod hub;
-mod macros;
-mod models;
-mod server;
-mod task_router;
-mod taskmanager;
-mod utils;
-mod zmq_helpers;
-
+use cdktr::hub::{Hub, InstanceType};
 use dotenv::dotenv;
-use hub::{Hub, InstanceType};
 use std::env;
 
 use log::{error, info};
@@ -21,7 +8,10 @@ use log::{error, info};
 async fn main() {
     dotenv().ok();
     env_logger::init();
+    _main().await;
+}
 
+async fn _main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         error!("Needs at least arg (1) of either AGENT or PRINCIPAL and (2) PORT");
@@ -59,4 +49,33 @@ async fn main() {
         max_tm_tasks,
     )
     .await
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn test_main_with_invalid_port() {
+        env::set_var("CDKT_INSTANCE_HOST", "127.0.0.1");
+        env::set_var("CDKTR_PRINCIPAL_HOST", "127.0.0.1");
+
+        let args = vec![
+            "program_name".to_string(),
+            "AGENT".to_string(),
+            "invalid_port".to_string(),
+        ];
+        env::set_var("RUST_TEST_ARGS", args.join(" "));
+
+        _main().await;
+    }
+
+    #[tokio::test]
+    async fn test_main_with_missing_args() {
+        env::set_var("CDKT_INSTANCE_HOST", "127.0.0.1");
+        env::set_var("CDKTR_PRINCIPAL_HOST", "127.0.0.1");
+
+        let args = vec!["program_name".to_string()];
+        env::set_var("RUST_TEST_ARGS", args.join(" "));
+
+        _main().await;
+    }
 }
