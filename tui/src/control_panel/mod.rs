@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use action_factory::ActionPane;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
@@ -49,7 +50,7 @@ impl ControlPanel {
         let mut instance = Self {
             action_state: ListState::default(),
             panel_focussed: 0,
-            action_modal_open: false
+            action_modal_open: false,
         };
         instance.focus_panel();
         instance
@@ -74,6 +75,9 @@ impl ControlPanel {
         }
     }
     fn select_action(&mut self, next: bool) {
+        // close any open action
+        // self.action_modal_open = false;
+
         if self.panel_focussed == 0 {
             let selected = self
                 .action_state
@@ -143,14 +147,11 @@ impl ControlPanel {
         )
     }
     fn get_action_modal(&self) -> impl Widget {
-        let selected_action = action_factory::ACTIONS[self.action_state.selected().expect("Failed to access selected item from action state")];
-        let text = "summarty";
-        Paragraph::new(text).block(
-            Block::bordered()
-                .title(format!(" ACTION: {selected_action} "))
-                // .border_type(ratatui::widgets::BorderType::)
-                .border_style(Style::default().bold().fg(Color::Green)),
-        )
+        let selected_action = action_factory::ACTIONS[self
+            .action_state
+            .selected()
+            .expect("Failed to access selected item from action state")];
+        ActionPane::from_str(selected_action)
     }
 }
 impl Widget for ControlPanel {
@@ -177,12 +178,12 @@ impl Widget for ControlPanel {
             &mut self.action_state,
         );
         self.get_agents_section().render(left_sections[1], buf);
-        self.get_flows_section().render(main_layout[1], buf);
 
+        // use the flows section for the action modal to avoid an uneat popup and mount either or
         if self.action_modal_open {
-            // use the flows section for the action modal to avoid an uneat popup
-            // self.get_action_modal().render(center(area, Constraint::Percentage(70), Constraint::Percentage(70)), buf)
             self.get_action_modal().render(main_layout[1], buf)
+        } else {
+            self.get_flows_section().render(main_layout[1], buf);
         };
     }
 }
@@ -198,8 +199,14 @@ mod tests {
     fn test_panel_highlighted_color() {
         let mut control_panel = ControlPanel::new();
         control_panel.panel_focussed = 0;
-        assert_eq!(control_panel.panel_highlighted_color("Actions"), Color::Rgb(123, 201, 227));
-        assert_eq!(control_panel.panel_highlighted_color("Agents"), Color::White);
+        assert_eq!(
+            control_panel.panel_highlighted_color("Actions"),
+            Color::Rgb(123, 201, 227)
+        );
+        assert_eq!(
+            control_panel.panel_highlighted_color("Agents"),
+            Color::White
+        );
         assert_eq!(control_panel.panel_highlighted_color("Flows"), Color::White);
     }
 

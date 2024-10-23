@@ -11,12 +11,15 @@ pub fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect 
     area
 }
 
-pub fn vec_to_hashmap<T, V>(v: Vec<(T,V)>) -> HashMap<T, V> 
-    where T: Hash + Eq, V: Eq {
+pub fn vec_to_hashmap<T, V>(v: Vec<(T, V)>) -> HashMap<T, V>
+where
+    T: Hash + Eq,
+    V: Eq,
+{
     let mut hashmap = HashMap::new();
     for (k, v) in v {
         hashmap.insert(k, v);
-    };
+    }
     hashmap
 }
 
