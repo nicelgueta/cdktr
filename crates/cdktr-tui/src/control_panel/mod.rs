@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use action_factory::{ActionPane, ActionPaneFactory, ACTIONS};
+use action_factory::{APIAction, ActionHandler, ACTIONS};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
@@ -20,7 +20,7 @@ pub struct ControlPanel {
     action_state: ListState,
     panel_focussed: usize,
     action_modal_open: bool,
-    apf: ActionPaneFactory,
+    action_handler: ActionHandler,
 }
 
 impl Component for ControlPanel {
@@ -55,7 +55,7 @@ impl ControlPanel {
             action_state: ListState::default(),
             panel_focussed: 0,
             action_modal_open: false,
-            apf: ActionPaneFactory::from_str("Ping"),
+            action_handler: ActionHandler::default(),
         };
         instance.focus_panel();
         instance
@@ -68,8 +68,8 @@ impl ControlPanel {
         }
     }
     async fn execute_action(&mut self) {
-        let msg = self.apf.act().await;
-        self.apf.update_resp(msg.into());
+        let msg = self.action_handler.act().await;
+        self.action_handler.update_resp(msg);
     }
     fn action_enter(&mut self) {
         match PANELS[self.panel_focussed] {
@@ -102,7 +102,7 @@ impl ControlPanel {
                 }
             }
             let selected_action = ACTIONS[self.action_state.selected().unwrap()];
-            self.apf = ActionPaneFactory::from_str(selected_action);
+            self.action_handler = ActionHandler::from_str(selected_action);
         }
     }
     fn focus_panel(&mut self) {
@@ -139,7 +139,7 @@ impl ControlPanel {
             .highlight_symbol(">")
             .block(
                 Block::bordered()
-                    .title(" Principal Actions ")
+                    .title(" Principal ZMQ Actions ")
                     .fg(self.panel_highlighted_color("Actions")),
             )
     }
@@ -185,7 +185,7 @@ impl Widget for ControlPanel {
 
         // use the flows section for the action modal to avoid an uneat popup and mount either or
         if self.action_modal_open {
-            self.apf.render(main_layout[1], buf)
+            self.action_handler.render(main_layout[1], buf)
         } else {
             self.get_flows_section().render(main_layout[1], buf);
         };

@@ -1,3 +1,7 @@
+use crate::utils::center;
+use cdktr_core::{
+    get_server_tcp_uri, ClientResponseMessage, PrincipalAPI, API, CDKTR_DEFAULT_TIMEOUT,
+};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -6,32 +10,28 @@ use ratatui::{
 };
 use std::env;
 
-use crate::utils::center;
-use cdktr_core::{
-    get_server_tcp_uri, ClientResponseMessage, PrincipalAPI, API, CDKTR_DEFAULT_TIMEOUT,
-};
-
-pub const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
-
-struct RenderConfig {
-    action_upper: &'static str,
+pub struct RenderConfig {
     title: &'static str,
-    content: &'static str,
+    param_str: String,
     resp: String,
 }
 
-pub trait ActionPane {
+pub trait APIAction {
     /// Format the message to be sent to the server using the struct implementing this trait
     /// and return the PrincipalAPI enum variant to be used to send the message.
-    fn format_msg(&self) -> PrincipalAPI;
+    fn format_msg(&self) -> Result<PrincipalAPI, String>;
 
     /// Get the factory configuration for the action pane.
     /// This is used to render the action pane.
     fn get_render_config(&self) -> RenderConfig;
 
-    /// Send the message to the server and return the response.
-    async fn send_msg(&mut self) -> ClientResponseMessage {
-        let msg = self.format_msg();
+    /// Send the message to the server and return the response as
+    /// a raw string
+    async fn send_msg(&mut self) -> String {
+        let msg = match self.format_msg() {
+            Ok(msg) => msg,
+            Err(e) => return e,
+        };
         let cdkr_principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
         let cdkr_principal_port = env::var("CDKTR_PRINCIPAL_PORT");
         let cdkr_principal_port = match cdkr_principal_port {
@@ -40,6 +40,7 @@ pub trait ActionPane {
                 return ClientResponseMessage::ServerError(
                     "Environment variable CDKTR_PRINCIPAL_PORT not set".to_string(),
                 )
+                .into()
             }
         };
         let cdkr_principal_port = cdkr_principal_port.parse::<usize>();
@@ -49,162 +50,156 @@ pub trait ActionPane {
                 return ClientResponseMessage::ServerError(
                     "CDKTR_PRINCIPAL_PORT is not a valid port number".to_string(),
                 )
+                .into()
             }
         };
         let uri = get_server_tcp_uri(&cdkr_principal_host, cdkr_principal_port);
         let result = msg.send(&uri, CDKTR_DEFAULT_TIMEOUT).await;
         match result {
-            Ok(response) => response,
-            Err(e) => ClientResponseMessage::NetworkError(e.to_string()),
+            Ok(response) => response.into(),
+            Err(e) => ClientResponseMessage::NetworkError(e.to_string()).into(),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-struct Ping {
-    resp: String,
-}
-
-impl Ping {
-    fn new() -> Self {
-        Self {
-            resp: "".to_string(),
+/// macro to create the action panes.
+/// This is required to create each struct that will be used to render the action panes.
+macro_rules! create_action {
+    ($title:expr, $api_variant:ident) => {
+        #[derive(Debug, Clone)]
+        pub struct $api_variant {
+            resp: String,
+            param_str: String,
         }
-    }
-}
 
-impl ActionPane for Ping {
-    fn format_msg(&self) -> PrincipalAPI {
-        PrincipalAPI::Ping
-    }
-    fn get_render_config(&self) -> RenderConfig {
-        RenderConfig {
-            action_upper: "PING",
-            title: "Ping",
-            content: "<no parameters>",
-            resp: self.resp.clone(),
+        impl $api_variant {
+            fn new() -> Self {
+                Self {
+                    resp: "".to_string(),
+                    param_str: "".to_string(),
+                }
+            }
         }
-    }
-}
 
-impl Widget for Ping {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        let config = self.get_render_config();
-        pane_factory_render(area, buf, config)
-    }
-}
+        impl APIAction for $api_variant {
+            fn format_msg(&self) -> Result<PrincipalAPI, String> {
+                let parse_result = PrincipalAPI::try_from($title.to_string());
+                match parse_result {
+                    Ok(api) => Ok(api),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
 
-#[derive(Debug, Clone)]
-struct ListTasks {
-    resp: String,
-}
-
-impl ListTasks {
-    fn new() -> Self {
-        Self {
-            resp: "".to_string(),
+            fn get_render_config(&self) -> RenderConfig {
+                RenderConfig {
+                    title: $title,
+                    param_str: self.param_str.clone(),
+                    resp: self.resp.clone(),
+                }
+            }
         }
-    }
-}
 
-impl ActionPane for ListTasks {
-    fn format_msg(&self) -> PrincipalAPI {
-        PrincipalAPI::ListTasks
-    }
-
-    fn get_render_config(&self) -> RenderConfig {
-        RenderConfig {
-            action_upper: "LISTTASKS",
-            title: "List scheduled tasks",
-            content: "<no parameters>",
-            resp: self.resp.clone(),
+        impl Widget for $api_variant {
+            fn render(self, area: Rect, buf: &mut Buffer)
+            where
+                Self: Sized,
+            {
+                let config = self.get_render_config();
+                pane_factory_render(area, buf, config)
+            }
         }
-    }
+    };
 }
 
-impl Widget for ListTasks {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        let config = self.get_render_config();
-        pane_factory_render(area, buf, config)
-    }
+/// macro to create the action panes.
+/// This is required to create the action panes and the action handler enum
+/// that will be used to render each pane. This is needed because the Widget trait
+/// requires a Sized type to be passed to it. This means that simply using Box<dyn Widget>
+/// will not work as the Widget trait is not object safe. So instead, we need to create
+/// each action pane as a separate struct and then create an enum that will be used to
+/// render its variant by also implmenting the Widget trait. As this is a lot of boilerplate
+/// code and potentially error prone in ensuring that the enum and the struct are in sync,
+/// this macro is used to automate the process.
+macro_rules! create_actions {
+    ($($title:expr, $api_variant:ident);+ $(;)?) => {
+        // note to self: the "$(;)?" is used to allow the macro to accept a trailing semicolon
+        $(
+            create_action!($title, $api_variant);
+        )+
+
+        #[derive(Debug, Clone)]
+        pub enum ActionHandler {
+            $($api_variant($api_variant),)+
+        }
+
+        impl Default for ActionHandler {
+            fn default() -> Self {
+                Self::from_str("PING")
+            }
+        }
+
+        impl ActionHandler {
+            pub fn from_str(s: &str) -> Self {
+                match s {
+                    $($title => Self::$api_variant($api_variant::new()),)+
+                    o => panic!("Tried to render unimplemented action pane: {}", o),
+                }
+            }
+            pub async fn act(&mut self) -> String {
+                match self {
+                    $(Self::$api_variant(action_widget) => action_widget.send_msg().await,)+
+                }
+            }
+            pub fn update_resp(&mut self, resp: String) {
+                match self {
+                    $(Self::$api_variant(action_widget) => action_widget.resp = resp,)+
+                }
+            }
+            // pub fn update_param_str(&mut self, param_str: String) {
+            //     match self {
+            //         $(Self::$api_variant(action_widget) => action_widget.param_str = param_str,)+
+            //     }
+            // }
+        }
+
+        impl Widget for ActionHandler {
+            fn render(self, area: Rect, buf: &mut Buffer)
+            where
+                Self: Sized {
+                match self {
+                    $(Self::$api_variant(pane) => pane.render(area, buf),)+
+                }
+            }
+        }
+
+    };
 }
 
-#[derive(Debug, Clone)]
-pub enum ActionPaneFactory {
-    Ping(Ping),
-    ListTasks(ListTasks),
-}
+pub const ACTIONS: [&'static str; 2] = ["PING", "LISTTASKS"];
 
-impl ActionPaneFactory {
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "Ping" => Self::Ping(Ping::new()),
-            "List Tasks" => Self::ListTasks(ListTasks::new()),
-            o => panic!("Tried to render unimplemented action pane: {}", o),
-        }
-    }
-    pub async fn act(&mut self) -> ClientResponseMessage {
-        match self {
-            Self::Ping(ping) => ping.send_msg().await,
-            Self::ListTasks(list_tasks) => list_tasks.send_msg().await,
-        }
-    }
-    pub fn update_resp(&mut self, resp: String) {
-        match self {
-            Self::Ping(ping) => ping.resp = resp,
-            Self::ListTasks(list_tasks) => list_tasks.resp = resp,
-        }
-    }
-}
-
-impl Widget for ActionPaneFactory {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        match self {
-            Self::Ping(action_widget) => action_widget.render(area, buf),
-            Self::ListTasks(action_widget) => action_widget.render(area, buf),
-        }
-    }
-}
+create_actions!(
+    "PING", Ping;
+    "LISTTASKS", ListTasks;
+);
 
 /// factory function used to create the action panes from configurations passed to them
 /// from each action widget.
 fn pane_factory_render(area: Rect, buf: &mut Buffer, config: RenderConfig) {
-    // render a border around the whole area
-    Paragraph::new("")
-        .block(
-            Block::bordered()
-                .title(format!(" {} ", config.title))
-                // .border_type(ratatui::widgets::BorderType::Double)
-                .border_style(Style::default().bold().fg(Color::Green)),
-        )
-        .render(area, buf);
+    // main layout
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Percentage(25), Constraint::Percentage(70)])
+        .constraints(vec![Constraint::Percentage(25), Constraint::Percentage(75)])
         .split(area);
 
     // command parameter box
-    Paragraph::new(config.content)
+    Paragraph::new(config.param_str)
         .block(
             Block::bordered()
-                .title(format!(" {} ", config.action_upper))
-                .border_style(Style::default().bold().fg(Color::Cyan)),
+                .title(format!(" {} ", config.title))
+                .border_style(Style::default().bold().fg(Color::LightGreen)),
         )
         .render(
-            center(
-                layout[0],
-                Constraint::Percentage(90),
-                Constraint::Percentage(70),
-            ),
+            center(layout[0], Constraint::Percentage(96), Constraint::Min(3)),
             buf,
         );
 
@@ -213,13 +208,13 @@ fn pane_factory_render(area: Rect, buf: &mut Buffer, config: RenderConfig) {
         .block(
             Block::bordered()
                 .title(format!(" Response "))
-                .border_style(Style::default().bold().fg(Color::White)),
+                .border_style(Style::default().bold().fg(Color::LightMagenta)),
         )
         .render(
             center(
                 layout[1],
-                Constraint::Percentage(90),
-                Constraint::Percentage(90),
+                Constraint::Percentage(96),
+                Constraint::Percentage(100),
             ),
             buf,
         );

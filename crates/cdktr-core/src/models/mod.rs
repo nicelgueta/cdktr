@@ -1,8 +1,13 @@
 mod task;
 
-use crate::{exceptions, server::models::RepReqError, utils::get_instance_id};
+use crate::{
+    exceptions,
+    server::models::RepReqError,
+    utils::{arg_str_to_vec, get_instance_id},
+};
 use std::collections::VecDeque;
 pub use task::Task;
+use zeromq::ZmqMessage;
 pub mod traits;
 
 #[derive(Debug, PartialEq)]
@@ -86,6 +91,14 @@ impl Into<Vec<String>> for ZMQArgs {
     }
 }
 
+impl From<String> for ZMQArgs {
+    fn from(value: String) -> Self {
+        Self {
+            inner: arg_str_to_vec(value),
+        }
+    }
+}
+
 impl From<VecDeque<String>> for ZMQArgs {
     fn from(value: VecDeque<String>) -> Self {
         Self { inner: value }
@@ -97,6 +110,17 @@ impl From<Vec<String>> for ZMQArgs {
         Self {
             inner: value.into(),
         }
+    }
+}
+
+impl Into<ZMQArgs> for ZmqMessage {
+    fn into(self) -> ZMQArgs {
+        let raw_msg = String::try_from(self);
+        let raw_string = match raw_msg {
+            Ok(s) => s,
+            Err(e_str) => e_str.to_string(),
+        };
+        ZMQArgs::from(raw_string)
     }
 }
 
@@ -150,8 +174,8 @@ impl AgentMeta {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_agent_meta_methods() {
+    #[test]
+    fn test_agent_meta_methods() {
         let mut agent = AgentMeta::new("localhost".to_string(), 9999, 2, 0);
         assert_eq!(agent.agent_id(), "localhost-9999");
         assert_eq!(agent.capacity(), 2);
@@ -166,8 +190,8 @@ mod tests {
         assert_eq!(agent.get_last_ping_ts(), 10);
     }
 
-    #[tokio::test]
-    async fn test_zmq_args() {
+    #[test]
+    fn test_zmq_args() {
         let mut zmq_args = ZMQArgs::from(vec!["arg1".to_string(), "arg2".to_string()]);
         assert_eq!(zmq_args.len(), 2);
 
@@ -179,5 +203,11 @@ mod tests {
 
         let vec: Vec<String> = zmq_args.into();
         assert_eq!(vec, vec!["arg2".to_string(), "arg3".to_string()]);
+    }
+
+    #[test]
+    fn test_zmqargs_from_string() {
+        let zmq_args = ZMQArgs::from("arg1|arg2".to_string());
+        assert_eq!(zmq_args.len(), 2);
     }
 }

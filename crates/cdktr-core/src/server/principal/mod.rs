@@ -61,36 +61,9 @@ pub enum PrincipalAPI {
     ///     agent_id, task_id, status
     AgentTaskStatusUpdate(String, String, TaskStatus),
 }
-
-impl API for PrincipalAPI {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Ping => "PING".to_string(),
-            Self::CreateTask(task) => {
-                let task_json = serde_json::to_string(&task)
-                    .expect("Unable to convert NewScheduledTask to JSON");
-                format!("CREATETASK|{}", &task_json)
-            }
-            Self::RunTask(task) => {
-                let task_str: String = task.to_string();
-                format!("RUNTASK|{task_str}")
-            }
-            Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
-            Self::ListTasks => "LISTTASKS".to_string(),
-            Self::RegisterAgent(agent_id, max_tasks) => {
-                format!("REGISTERAGENT|{agent_id}|{max_tasks}")
-            }
-            Self::AgentTaskStatusUpdate(agent_id, task_id, status) => {
-                let status = status.to_string();
-                format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{status}")
-            }
-        }
-    }
-}
-impl TryFrom<ZmqMessage> for PrincipalAPI {
+impl TryFrom<ZMQArgs> for PrincipalAPI {
     type Error = RepReqError;
-    fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
-        let mut args: ZMQArgs = value.into();
+    fn try_from(mut args: ZMQArgs) -> Result<Self, Self::Error> {
         let msg_type = if let Some(token) = args.next() {
             token
         } else {
@@ -145,6 +118,46 @@ impl TryFrom<ZmqMessage> for PrincipalAPI {
     }
 }
 
+impl API for PrincipalAPI {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Ping => "PING".to_string(),
+            Self::CreateTask(task) => {
+                let task_json = serde_json::to_string(&task)
+                    .expect("Unable to convert NewScheduledTask to JSON");
+                format!("CREATETASK|{}", &task_json)
+            }
+            Self::RunTask(task) => {
+                let task_str: String = task.to_string();
+                format!("RUNTASK|{task_str}")
+            }
+            Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
+            Self::ListTasks => "LISTTASKS".to_string(),
+            Self::RegisterAgent(agent_id, max_tasks) => {
+                format!("REGISTERAGENT|{agent_id}|{max_tasks}")
+            }
+            Self::AgentTaskStatusUpdate(agent_id, task_id, status) => {
+                let status = status.to_string();
+                format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{status}")
+            }
+        }
+    }
+}
+
+impl TryFrom<ZmqMessage> for PrincipalAPI {
+    type Error = RepReqError;
+    fn try_from(zmq_msg: ZmqMessage) -> Result<Self, Self::Error> {
+        let zmq_args: ZMQArgs = zmq_msg.into();
+        Self::try_from(zmq_args)
+    }
+}
+impl TryFrom<String> for PrincipalAPI {
+    type Error = RepReqError;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        let zmq_args: ZMQArgs = s.into();
+        Self::try_from(zmq_args)
+    }
+}
 impl Into<ZmqMessage> for PrincipalAPI {
     fn into(self) -> ZmqMessage {
         ZmqMessage::from(self.to_string())

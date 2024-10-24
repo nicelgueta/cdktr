@@ -1,26 +1,10 @@
 use std::time::Duration;
 
-use crate::{
-    exceptions::{GenericError, ZMQParseError},
-    models::ZMQArgs,
-    utils::arg_str_to_vec,
-};
+use crate::exceptions::{GenericError, ZMQParseError};
 use tokio::time::timeout;
 use zeromq::{RepSocket, ReqSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
 
 pub static DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
-
-impl Into<ZMQArgs> for ZmqMessage {
-    fn into(self) -> ZMQArgs {
-        let raw_msg = String::try_from(self);
-        let raw_string = match raw_msg {
-            Ok(s) => s,
-            Err(e_str) => e_str.to_string(),
-        };
-        let arg_vec = arg_str_to_vec(raw_string);
-        ZMQArgs::from(arg_vec)
-    }
-}
 
 ///
 pub async fn get_zmq_req(endpoint_uri: &str) -> ReqSocket {
