@@ -7,4 +7,5 @@ edition = "2021"
 ratatui = { workspace = true }
 cdktr-core = { workspace = true }
 zeromq = { workspace = true }
+tokio = { workspace = true}
 

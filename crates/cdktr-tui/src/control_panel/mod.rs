@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use action_factory::{ActionPaneFactory, ACTIONS};
+use action_factory::{ActionPane, ActionPaneFactory, ACTIONS};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
@@ -15,11 +15,12 @@ mod action_factory;
 
 const PANELS: [&'static str; 3] = ["Actions", "Agents", "Flows"];
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct ControlPanel {
     action_state: ListState,
     panel_focussed: usize,
     action_modal_open: bool,
+    apf: ActionPaneFactory,
 }
 
 impl Component for ControlPanel {
@@ -29,17 +30,20 @@ impl Component for ControlPanel {
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
         let mut base_controls = vec![("<↓↑>", "Select"), ("<TAB>", "Change focus")];
         if self.action_modal_open {
-            base_controls.push(("<C>", "Close"))
+            for action in vec![("<C>", "Close"), ("<S>", "Send msg")] {
+                base_controls.push(action)
+            }
         };
         base_controls
     }
-    fn handle_key_event(&mut self, ke: KeyEvent) {
+    async fn handle_key_event(&mut self, ke: KeyEvent) {
         match ke.code {
             KeyCode::Up => self.select_action(false),
             KeyCode::Down => self.select_action(true),
             KeyCode::Tab => self.change_panel(),
             KeyCode::Enter => self.action_enter(),
             KeyCode::Char('c') => self.action_modal_open = false,
+            KeyCode::Char('s') => self.execute_action().await,
             _ => (),
         }
     }
@@ -51,6 +55,7 @@ impl ControlPanel {
             action_state: ListState::default(),
             panel_focussed: 0,
             action_modal_open: false,
+            apf: ActionPaneFactory::from_str("Ping"),
         };
         instance.focus_panel();
         instance
@@ -61,6 +66,10 @@ impl ControlPanel {
         } else {
             Color::White
         }
+    }
+    async fn execute_action(&mut self) {
+        let msg = self.apf.act().await;
+        self.apf.update_resp(msg.into());
     }
     fn action_enter(&mut self) {
         match PANELS[self.panel_focussed] {
@@ -92,6 +101,8 @@ impl ControlPanel {
                     self.action_state.select_previous();
                 }
             }
+            let selected_action = ACTIONS[self.action_state.selected().unwrap()];
+            self.apf = ActionPaneFactory::from_str(selected_action);
         }
     }
     fn focus_panel(&mut self) {
@@ -146,13 +157,6 @@ impl ControlPanel {
                 .fg(self.panel_highlighted_color("Flows")),
         )
     }
-    fn get_action_modal(&self) -> impl Widget {
-        let selected_action = ACTIONS[self
-            .action_state
-            .selected()
-            .expect("Failed to access selected item from action state")];
-        ActionPaneFactory::from_str(selected_action)
-    }
 }
 impl Widget for ControlPanel {
     fn render(mut self, area: Rect, buf: &mut Buffer)
@@ -181,7 +185,7 @@ impl Widget for ControlPanel {
 
         // use the flows section for the action modal to avoid an uneat popup and mount either or
         if self.action_modal_open {
-            self.get_action_modal().render(main_layout[1], buf)
+            self.apf.render(main_layout[1], buf)
         } else {
             self.get_flows_section().render(main_layout[1], buf);
         };
@@ -266,28 +270,48 @@ mod tests {
         assert_eq!(control_panel.action_modal_open, true);
     }
 
-    #[test]
-    fn test_handle_key_event() {
+    #[tokio::test]
+    async fn test_handle_key_event() {
         let mut control_panel = ControlPanel::new();
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Up));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Up))
+            .await;
         assert_eq!(control_panel.action_state.selected(), Some(0));
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Down));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Down))
+            .await;
         assert_eq!(control_panel.action_state.selected(), Some(1));
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Down));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Down))
+            .await;
         assert_eq!(control_panel.action_state.selected(), Some(1));
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Up));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Up))
+            .await;
         assert_eq!(control_panel.action_state.selected(), Some(0));
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Tab));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Tab))
+            .await;
         assert_eq!(control_panel.panel_focussed, 1);
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Tab));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Tab))
+            .await;
         assert_eq!(control_panel.panel_focussed, 2);
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Tab));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Tab))
+            .await;
         assert_eq!(control_panel.panel_focussed, 0);
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Enter));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Enter))
+            .await;
         assert_eq!(control_panel.action_modal_open, true);
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Enter));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Enter))
+            .await;
         assert_eq!(control_panel.action_modal_open, true);
-        control_panel.handle_key_event(KeyEvent::from(KeyCode::Char('c')));
+        control_panel
+            .handle_key_event(KeyEvent::from(KeyCode::Char('c')))
+            .await;
         assert_eq!(control_panel.action_modal_open, false);
     }
 }

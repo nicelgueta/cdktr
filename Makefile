@@ -13,3 +13,6 @@ run-principal:
 
 run-agent:
 	cargo run --bin cdktr-cli AGENT 5562
+
+run-tui:
+	cargo run --bin cdktr-tui

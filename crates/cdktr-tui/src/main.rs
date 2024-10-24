@@ -36,10 +36,10 @@ impl App {
         }
     }
     /// runs the application's main loop until the user quits
-    pub fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
+    pub async fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
         while !self.exit {
             terminal.draw(|frame| self.render_frame(frame))?;
-            self.handle_events()?;
+            self.handle_events().await;
         }
         Ok(())
     }
@@ -56,7 +56,7 @@ impl App {
         }
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    async fn handle_key_event(&mut self, key_event: KeyEvent) {
         // check
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
@@ -68,18 +68,18 @@ impl App {
                 if self.tab >= self.tabs.len() {
                     panic!("Somehow managed to get to an out of scope tab")
                 } else {
-                    self.tabs[self.tab].handle_key_event(key_event)
+                    self.tabs[self.tab].handle_key_event(key_event).await
                 }
             }
         }
     }
 
-    fn handle_events(&mut self) -> io::Result<()> {
+    async fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
             // it's important to check that the event is a key press event as
             // crossterm also emits key release and repeat events on Windows.
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
+                self.handle_key_event(key_event).await
             }
             _ => {}
         };
@@ -146,10 +146,11 @@ impl Widget for &App {
     }
 }
 
-fn main() -> io::Result<()> {
+#[tokio::main]
+async fn main() -> io::Result<()> {
     let mut terminal = tui::init()?;
     let app_config = config::AppConfig::new();
-    let app_result = App::new(app_config).run(&mut terminal);
+    let app_result = App::new(app_config).run(&mut terminal).await;
     tui::restore()?;
     app_result
 }

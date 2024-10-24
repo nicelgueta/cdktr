@@ -13,21 +13,32 @@ use cdktr_core::{
 
 pub const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
 
+struct RenderConfig {
+    action_upper: &'static str,
+    title: &'static str,
+    content: &'static str,
+    resp: String,
+}
+
 pub trait ActionPane {
     /// Format the message to be sent to the server using the struct implementing this trait
     /// and return the PrincipalAPI enum variant to be used to send the message.
     fn format_msg(&self) -> PrincipalAPI;
 
+    /// Get the factory configuration for the action pane.
+    /// This is used to render the action pane.
+    fn get_render_config(&self) -> RenderConfig;
+
     /// Send the message to the server and return the response.
     async fn send_msg(&mut self) -> ClientResponseMessage {
         let msg = self.format_msg();
-        let cdkr_principal_host = env::var("CDKR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
-        let cdkr_principal_port = env::var("CDKR_PRINCIPAL_PORT");
+        let cdkr_principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
+        let cdkr_principal_port = env::var("CDKTR_PRINCIPAL_PORT");
         let cdkr_principal_port = match cdkr_principal_port {
             Ok(port) => port,
             Err(_) => {
                 return ClientResponseMessage::ServerError(
-                    "Environment variable CDKR_PRINCIPAL_PORT not set".to_string(),
+                    "Environment variable CDKTR_PRINCIPAL_PORT not set".to_string(),
                 )
             }
         };
@@ -36,7 +47,7 @@ pub trait ActionPane {
             Ok(port) => port,
             Err(_) => {
                 return ClientResponseMessage::ServerError(
-                    "CDKR_PRINCIPAL_PORT is not a valid port number".to_string(),
+                    "CDKTR_PRINCIPAL_PORT is not a valid port number".to_string(),
                 )
             }
         };
@@ -49,25 +60,30 @@ pub trait ActionPane {
     }
 }
 
-struct FactoryConfig {
-    action_upper: &'static str,
-    title: &'static str,
-    content: &'static str,
-    // action: PrincipalAPI
-}
-
 #[derive(Debug, Clone)]
-pub struct Ping;
+struct Ping {
+    resp: String,
+}
 
 impl Ping {
     fn new() -> Self {
-        Self {}
+        Self {
+            resp: "".to_string(),
+        }
     }
 }
 
 impl ActionPane for Ping {
     fn format_msg(&self) -> PrincipalAPI {
         PrincipalAPI::Ping
+    }
+    fn get_render_config(&self) -> RenderConfig {
+        RenderConfig {
+            action_upper: "PING",
+            title: "Ping",
+            content: "<no parameters>",
+            resp: self.resp.clone(),
+        }
     }
 }
 
@@ -76,21 +92,36 @@ impl Widget for Ping {
     where
         Self: Sized,
     {
-        let config = FactoryConfig {
-            action_upper: "PING",
-            title: "Ping",
-            content: "ping content",
-        };
+        let config = self.get_render_config();
         pane_factory_render(area, buf, config)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ListTasks;
+struct ListTasks {
+    resp: String,
+}
 
 impl ListTasks {
     fn new() -> Self {
-        Self {}
+        Self {
+            resp: "".to_string(),
+        }
+    }
+}
+
+impl ActionPane for ListTasks {
+    fn format_msg(&self) -> PrincipalAPI {
+        PrincipalAPI::ListTasks
+    }
+
+    fn get_render_config(&self) -> RenderConfig {
+        RenderConfig {
+            action_upper: "LISTTASKS",
+            title: "List scheduled tasks",
+            content: "<no parameters>",
+            resp: self.resp.clone(),
+        }
     }
 }
 
@@ -99,11 +130,7 @@ impl Widget for ListTasks {
     where
         Self: Sized,
     {
-        let config = FactoryConfig {
-            action_upper: "LISTTASKS",
-            title: "List scheduled tasks",
-            content: "list tasks content",
-        };
+        let config = self.get_render_config();
         pane_factory_render(area, buf, config)
     }
 }
@@ -122,10 +149,22 @@ impl ActionPaneFactory {
             o => panic!("Tried to render unimplemented action pane: {}", o),
         }
     }
+    pub async fn act(&mut self) -> ClientResponseMessage {
+        match self {
+            Self::Ping(ping) => ping.send_msg().await,
+            Self::ListTasks(list_tasks) => list_tasks.send_msg().await,
+        }
+    }
+    pub fn update_resp(&mut self, resp: String) {
+        match self {
+            Self::Ping(ping) => ping.resp = resp,
+            Self::ListTasks(list_tasks) => list_tasks.resp = resp,
+        }
+    }
 }
 
 impl Widget for ActionPaneFactory {
-    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
+    fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
@@ -138,7 +177,7 @@ impl Widget for ActionPaneFactory {
 
 /// factory function used to create the action panes from configurations passed to them
 /// from each action widget.
-fn pane_factory_render(area: Rect, buf: &mut Buffer, config: FactoryConfig) {
+fn pane_factory_render(area: Rect, buf: &mut Buffer, config: RenderConfig) {
     // render a border around the whole area
     Paragraph::new("")
         .block(
@@ -150,8 +189,10 @@ fn pane_factory_render(area: Rect, buf: &mut Buffer, config: FactoryConfig) {
         .render(area, buf);
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Percentage(30), Constraint::Percentage(70)])
+        .constraints(vec![Constraint::Percentage(25), Constraint::Percentage(70)])
         .split(area);
+
+    // command parameter box
     Paragraph::new(config.content)
         .block(
             Block::bordered()
@@ -167,7 +208,8 @@ fn pane_factory_render(area: Rect, buf: &mut Buffer, config: FactoryConfig) {
             buf,
         );
 
-    Paragraph::new(config.content)
+    // response box
+    Paragraph::new(config.resp)
         .block(
             Block::bordered()
                 .title(format!(" Response "))

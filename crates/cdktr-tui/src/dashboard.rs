@@ -18,7 +18,7 @@ impl Component for Dashboard {
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
         Vec::new()
     }
-    fn handle_key_event(&mut self, ke: ratatui::crossterm::event::KeyEvent) {}
+    async fn handle_key_event(&mut self, ke: ratatui::crossterm::event::KeyEvent) {}
 }
 
 impl Dashboard {

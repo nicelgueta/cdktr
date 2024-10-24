@@ -20,7 +20,7 @@ impl AppConfig {
 pub trait Component: Widget {
     fn name(&self) -> &'static str;
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)>;
-    fn handle_key_event(&mut self, ke: KeyEvent);
+    async fn handle_key_event(&mut self, ke: KeyEvent);
 }
 
 /// Enum to house the main components that will comprise each page
@@ -57,10 +57,10 @@ impl Component for PageComponent {
         }
     }
 
-    fn handle_key_event(&mut self, ke: KeyEvent) {
+    async fn handle_key_event(&mut self, ke: KeyEvent) {
         match self {
-            Self::Dashboard(dashboard) => dashboard.handle_key_event(ke),
-            Self::ControlPanel(control_panel) => control_panel.handle_key_event(ke),
+            Self::Dashboard(dashboard) => dashboard.handle_key_event(ke).await,
+            Self::ControlPanel(control_panel) => control_panel.handle_key_event(ke).await,
         }
     }
 }
