@@ -25,10 +25,10 @@ pub enum GenericError {
 impl GenericError {
     pub fn to_string(&self) -> String {
         match self {
-            Self::MissingAgents => String::from("No running agents found"),
+            Self::MissingAgents => String::from("Missing agents: No running agents found"),
             Self::TimeoutError => String::from("Call timed out"),
-            Self::ZMQParseError(zmq_e) => zmq_e.to_string(),
-            Self::RuntimeError(s) => s.clone(),
+            Self::ZMQParseError(zmq_e) => format!("ZMQ Error: {}", zmq_e.to_string()),
+            Self::RuntimeError(s) => format!("Runtime Error: {}", s.clone()),
             // Self::APIError(s) => s.clone(),
         }
     }

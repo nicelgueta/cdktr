@@ -13,23 +13,38 @@ async fn main() {
 
 async fn _main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 3 {
-        error!("Needs at least arg (1) of either AGENT or PRINCIPAL and (2) PORT");
+    if args.len() < 2 {
+        error!("Needs at least arg (1) of either AGENT or PRINCIPAL");
         return;
     };
     let typ = InstanceType::from_str(&args[1]);
     let instance_host = env::var("CDKT_INSTANCE_HOST").unwrap_or("0.0.0.0".to_string());
     let principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
-    let instance_port: usize = args[2].parse().expect("PORT must be a valid number");
     let database_url: Option<String> = None;
     let max_tm_tasks = 8;
 
-    let principal_port = match typ {
-        InstanceType::AGENT => env::var("CDKTR_PRINCIPAL_PORT")
-            .expect("env var CDKTR_PRINCIPAL_PORT must be set when spawning an agent instance")
+    let principal_port = match env::var("CDKTR_PRINCIPAL_PORT") {
+        Ok(port) => port
             .parse()
-            .expect("Principal port must be a valid port number"),
-        InstanceType::PRINCIPAL => instance_port,
+            .expect("CDKTR_PRINCIPAL_PORT must be a valid number"),
+        Err(_) => {
+            error!("Environment variable CDKTR_PRINCIPAL_PORT not set");
+            return;
+        }
+    };
+
+    let instance_port: usize = match typ {
+        InstanceType::AGENT => {
+            if args.len() < 3 {
+                error!("Needs a port number as arg (2) if spawning an agent instance");
+                return;
+            } else {
+                args[2]
+                    .parse()
+                    .expect("Instance port number must be a valid number")
+            }
+        }
+        InstanceType::PRINCIPAL => principal_port,
     };
     info!(
         "Starting {} instance on {}:{}",

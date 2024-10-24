@@ -183,10 +183,13 @@ impl Hub {
                 let mut agent_server =
                     AgentServer::new(instance_id.clone(), main_task_queue.clone());
                 let principal_uri = get_server_tcp_uri(&principal_host, principal_port);
-                agent_server
+                let register_res = agent_server
                     .register_with_principal(&principal_uri, max_tm_tasks)
                     .await;
-
+                if let Err(e) = register_res {
+                    error!("Failed to register with principal: {}", e.to_string());
+                    return;
+                }
                 // start heartbeat coroutine loop to check if reconnecting is required
                 spawn_principal_heartbeat(instance_id.clone(), principal_uri.clone(), max_tm_tasks)
                     .await;

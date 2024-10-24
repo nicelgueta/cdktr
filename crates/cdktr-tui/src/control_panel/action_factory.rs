@@ -4,15 +4,56 @@ use ratatui::{
     style::{Color, Style, Stylize},
     widgets::{Block, Paragraph, Widget},
 };
+use std::env;
 
-use crate::{config, utils::center};
+use crate::utils::center;
+use cdktr_core::{
+    get_server_tcp_uri, ClientResponseMessage, PrincipalAPI, API, CDKTR_DEFAULT_TIMEOUT,
+};
 
 pub const ACTIONS: [&'static str; 2] = ["Ping", "List Tasks"];
+
+pub trait ActionPane {
+    /// Format the message to be sent to the server using the struct implementing this trait
+    /// and return the PrincipalAPI enum variant to be used to send the message.
+    fn format_msg(&self) -> PrincipalAPI;
+
+    /// Send the message to the server and return the response.
+    async fn send_msg(&mut self) -> ClientResponseMessage {
+        let msg = self.format_msg();
+        let cdkr_principal_host = env::var("CDKR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
+        let cdkr_principal_port = env::var("CDKR_PRINCIPAL_PORT");
+        let cdkr_principal_port = match cdkr_principal_port {
+            Ok(port) => port,
+            Err(_) => {
+                return ClientResponseMessage::ServerError(
+                    "Environment variable CDKR_PRINCIPAL_PORT not set".to_string(),
+                )
+            }
+        };
+        let cdkr_principal_port = cdkr_principal_port.parse::<usize>();
+        let cdkr_principal_port = match cdkr_principal_port {
+            Ok(port) => port,
+            Err(_) => {
+                return ClientResponseMessage::ServerError(
+                    "CDKR_PRINCIPAL_PORT is not a valid port number".to_string(),
+                )
+            }
+        };
+        let uri = get_server_tcp_uri(&cdkr_principal_host, cdkr_principal_port);
+        let result = msg.send(&uri, CDKTR_DEFAULT_TIMEOUT).await;
+        match result {
+            Ok(response) => response,
+            Err(e) => ClientResponseMessage::ServerError(e.to_string()),
+        }
+    }
+}
 
 struct FactoryConfig {
     action_upper: &'static str,
     title: &'static str,
     content: &'static str,
+    // action: PrincipalAPI
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +62,12 @@ pub struct Ping;
 impl Ping {
     fn new() -> Self {
         Self {}
+    }
+}
+
+impl ActionPane for Ping {
+    fn format_msg(&self) -> PrincipalAPI {
+        PrincipalAPI::Ping
     }
 }
 
@@ -62,12 +109,12 @@ impl Widget for ListTasks {
 }
 
 #[derive(Debug, Clone)]
-pub enum ActionPane {
+pub enum ActionPaneFactory {
     Ping(Ping),
     ListTasks(ListTasks),
 }
 
-impl ActionPane {
+impl ActionPaneFactory {
     pub fn from_str(s: &str) -> Self {
         match s {
             "Ping" => Self::Ping(Ping::new()),
@@ -77,7 +124,7 @@ impl ActionPane {
     }
 }
 
-impl Widget for ActionPane {
+impl Widget for ActionPaneFactory {
     fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
     where
         Self: Sized,

@@ -12,5 +12,7 @@ mod zmq_helpers;
 
 // public api
 pub mod hub;
-pub use server::agent::AgentAPI;
-pub use server::principal::PrincipalAPI;
+pub use server::{
+    agent::AgentAPI, models::ClientResponseMessage, principal::PrincipalAPI, traits::API,
+};
+pub use zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT as CDKTR_DEFAULT_TIMEOUT};

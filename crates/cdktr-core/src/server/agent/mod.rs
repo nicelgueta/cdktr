@@ -1,4 +1,5 @@
 use crate::{
+    exceptions::GenericError,
     models::{Task, ZMQArgs},
     utils::data_structures::AsyncQueue,
     zmq_helpers::{get_zmq_req, DEFAULT_TIMEOUT},
@@ -80,24 +81,29 @@ impl AgentServer {
             task_queue,
         }
     }
-    pub async fn register_with_principal(&self, principal_uri: &str, max_tasks: usize) {
+    pub async fn register_with_principal(
+        &self,
+        principal_uri: &str,
+        max_tasks: usize,
+    ) -> Result<(), GenericError> {
         debug!("Registering agent with principal @ {}", &principal_uri);
         let request = PrincipalAPI::RegisterAgent(self.instance_id.clone(), max_tasks);
         match request.send(principal_uri, DEFAULT_TIMEOUT).await {
             Ok(cli_msg) => match cli_msg {
                 ClientResponseMessage::Success => {
-                    debug!("Successfully registered agent with principal")
+                    debug!("Successfully registered agent with principal");
+                    Ok(())
                 }
-                other => panic!(
-                    "{}",
-                    format!("Failed to register with principal. Error: {}", {
+                other => Err(GenericError::RuntimeError(format!(
+                    "Failed to register with principal. Error: {}",
+                    {
                         let m: String = other.into();
                         m
-                    })
-                ),
+                    }
+                ))),
             },
-            Err(e) => panic!("{}", e.to_string()),
-        };
+            Err(e) => Err(e),
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use action_factory::ActionPane;
+use action_factory::{ActionPaneFactory, ACTIONS};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
@@ -84,7 +84,7 @@ impl ControlPanel {
                 .selected()
                 .expect("Should automatically have a selected item if action box is focussed");
             if next {
-                if selected < action_factory::ACTIONS.len() - 1 {
+                if selected < ACTIONS.len() - 1 {
                     self.action_state.select_next();
                 }
             } else {
@@ -123,7 +123,7 @@ impl ControlPanel {
         self.focus_panel();
     }
     fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> {
-        List::new(action_factory::ACTIONS)
+        List::new(ACTIONS)
             .highlight_style(Style::default().bg(Color::Cyan))
             .highlight_symbol(">")
             .block(
@@ -147,11 +147,11 @@ impl ControlPanel {
         )
     }
     fn get_action_modal(&self) -> impl Widget {
-        let selected_action = action_factory::ACTIONS[self
+        let selected_action = ACTIONS[self
             .action_state
             .selected()
             .expect("Failed to access selected item from action state")];
-        ActionPane::from_str(selected_action)
+        ActionPaneFactory::from_str(selected_action)
     }
 }
 impl Widget for ControlPanel {

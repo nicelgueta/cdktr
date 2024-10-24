@@ -7,3 +7,9 @@ setup:
 commit:
 	cargo fmt --check
 push: test
+
+run-principal:
+	cargo run --bin cdktr-cli PRINCIPAL
+
+run-agent:
+	cargo run --bin cdktr-cli AGENT 5562

@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 ratatui = { workspace = true }
 cdktr-core = { workspace = true }
+zeromq = { workspace = true }
+
