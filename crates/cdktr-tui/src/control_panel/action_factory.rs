@@ -55,7 +55,7 @@ pub trait ActionPane {
         let result = msg.send(&uri, CDKTR_DEFAULT_TIMEOUT).await;
         match result {
             Ok(response) => response,
-            Err(e) => ClientResponseMessage::ClientError(e.to_string()),
+            Err(e) => ClientResponseMessage::NetworkError(e.to_string()),
         }
     }
 }

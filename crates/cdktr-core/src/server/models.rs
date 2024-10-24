@@ -27,6 +27,7 @@ pub enum ClientResponseMessage {
     Pong,
     Success,
     SuccessWithPayload(String),
+    NetworkError(String),
 }
 
 macro_rules! get_payload {
@@ -70,6 +71,7 @@ impl Into<String> for ClientResponseMessage {
             Self::SuccessWithPayload(payload) => format!("SUCCESS|{payload}"),
             Self::ServerError(payload) => format!("SERVERERROR|{payload}"),
             Self::Unprocessable(payload) => format!("UNPROC|{payload}"),
+            Self::NetworkError(payload) => format!("NETWORKERROR|{payload}"),
         }
     }
 }
