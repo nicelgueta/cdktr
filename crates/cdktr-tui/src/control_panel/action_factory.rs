@@ -191,16 +191,16 @@ fn pane_factory_render(area: Rect, buf: &mut Buffer, config: RenderConfig) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
-            Constraint::Percentage(20), 
-            Constraint::Percentage(20),
-            Constraint::Percentage(60)])
+            Constraint::Min(3), 
+            Constraint::Min(3),
+            Constraint::Percentage(100)])
         .split(area);
 
     // command description box
     Paragraph::new(config.description)
         .block(
             Block::bordered()
-                .title(format!(" {} ", config.title))
+                .title(format!(" Description "))
                 .border_style(Style::default().bold().fg(Color::LightGreen)),
         )
         .render(
