@@ -12,7 +12,8 @@ use std::env;
 
 pub struct RenderConfig {
     title: &'static str,
-    param_str: String,
+    description: &'static str,
+    msg: String,
     resp: String,
 }
 
@@ -65,18 +66,18 @@ pub trait APIAction {
 /// macro to create the action panes.
 /// This is required to create each struct that will be used to render the action panes.
 macro_rules! create_action {
-    ($title:expr, $api_variant:ident) => {
+    ($title:expr, $api_variant:ident, $desc:expr) => {
         #[derive(Debug, Clone)]
         pub struct $api_variant {
             resp: String,
-            param_str: String,
+            msg: String,
         }
 
         impl $api_variant {
             fn new() -> Self {
                 Self {
                     resp: "".to_string(),
-                    param_str: "".to_string(),
+                    msg: $title.to_string(),
                 }
             }
         }
@@ -93,7 +94,8 @@ macro_rules! create_action {
             fn get_render_config(&self) -> RenderConfig {
                 RenderConfig {
                     title: $title,
-                    param_str: self.param_str.clone(),
+                    description: $desc,
+                    msg: self.msg.clone(),
                     resp: self.resp.clone(),
                 }
             }
@@ -121,10 +123,10 @@ macro_rules! create_action {
 /// code and potentially error prone in ensuring that the enum and the struct are in sync,
 /// this macro is used to automate the process.
 macro_rules! create_actions {
-    ($($title:expr, $api_variant:ident);+ $(;)?) => {
+    ($($title:expr, $api_variant:ident, $desc:expr);+ $(;)?) => {
         // note to self: the "$(;)?" is used to allow the macro to accept a trailing semicolon
         $(
-            create_action!($title, $api_variant);
+            create_action!($title, $api_variant, $desc);
         )+
 
         #[derive(Debug, Clone)]
@@ -155,9 +157,9 @@ macro_rules! create_actions {
                     $(Self::$api_variant(action_widget) => action_widget.resp = resp,)+
                 }
             }
-            // pub fn update_param_str(&mut self, param_str: String) {
+            // pub fn update_msg(&mut self, msg: String) {
             //     match self {
-            //         $(Self::$api_variant(action_widget) => action_widget.param_str = param_str,)+
+            //         $(Self::$api_variant(action_widget) => action_widget.msg = msg,)+
             //     }
             // }
         }
@@ -178,8 +180,8 @@ macro_rules! create_actions {
 pub const ACTIONS: [&'static str; 2] = ["PING", "LISTTASKS"];
 
 create_actions!(
-    "PING", Ping;
-    "LISTTASKS", ListTasks;
+    "PING", Ping, "Ping the server to check if it is up";
+    "LISTTASKS", ListTasks, "List all registered tasks on the server";
 );
 
 /// factory function used to create the action panes from configurations passed to them
@@ -188,18 +190,33 @@ fn pane_factory_render(area: Rect, buf: &mut Buffer, config: RenderConfig) {
     // main layout
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Percentage(25), Constraint::Percentage(75)])
+        .constraints(vec![
+            Constraint::Percentage(20), 
+            Constraint::Percentage(20),
+            Constraint::Percentage(60)])
         .split(area);
 
-    // command parameter box
-    Paragraph::new(config.param_str)
+    // command description box
+    Paragraph::new(config.description)
         .block(
             Block::bordered()
                 .title(format!(" {} ", config.title))
                 .border_style(Style::default().bold().fg(Color::LightGreen)),
         )
         .render(
-            center(layout[0], Constraint::Percentage(96), Constraint::Min(3)),
+            layout[0],
+            buf,
+        );
+
+    // command parameter box
+    Paragraph::new(config.msg)
+        .block(
+            Block::bordered()
+                .title(format!(" ZMQ Message "))
+                .border_style(Style::default().bold().fg(Color::LightYellow)),
+        )
+        .render(
+            layout[1],
             buf,
         );
 
@@ -211,11 +228,7 @@ fn pane_factory_render(area: Rect, buf: &mut Buffer, config: RenderConfig) {
                 .border_style(Style::default().bold().fg(Color::LightMagenta)),
         )
         .render(
-            center(
-                layout[1],
-                Constraint::Percentage(96),
-                Constraint::Percentage(100),
-            ),
+            layout[2],
             buf,
         );
 }
