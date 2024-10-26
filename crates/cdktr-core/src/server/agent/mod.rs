@@ -11,7 +11,7 @@ mod api;
 use super::{
     models::{ClientResponseMessage, RepReqError},
     principal::PrincipalAPI,
-    traits::{Server, API},
+    traits::{APIMeta, Server, API},
 };
 
 pub enum AgentAPI {
@@ -29,6 +29,18 @@ impl From<AgentAPI> for String {
 }
 
 impl API for AgentAPI {
+    fn get_meta(&self) -> Vec<APIMeta> {
+        const META: [(&'static str, &'static str); 2] = [
+            ("PING", "Check the server is online"),
+            (
+                "RUN",
+                "Action to run a specific task. This is the main hook used by the principal to send tasks for execution to the agents",
+            ),
+        ];
+        META.iter()
+            .map(|(action, desc)| APIMeta::new(action.to_string(), desc.to_string()))
+            .collect()
+    }
     fn to_string(&self) -> String {
         match self {
             Self::Ping => "PING".to_string(),
@@ -42,7 +54,14 @@ impl API for AgentAPI {
 impl TryFrom<ZmqMessage> for AgentAPI {
     type Error = RepReqError;
     fn try_from(value: ZmqMessage) -> Result<Self, Self::Error> {
-        let mut args: ZMQArgs = value.into();
+        let zmq_args: ZMQArgs = value.into();
+        Self::try_from(zmq_args)
+    }
+}
+
+impl TryFrom<ZMQArgs> for AgentAPI {
+    type Error = RepReqError;
+    fn try_from(mut args: ZMQArgs) -> Result<Self, Self::Error> {
         let msg_type = if let Some(token) = args.next() {
             token
         } else {
@@ -59,7 +78,13 @@ impl TryFrom<ZmqMessage> for AgentAPI {
         }
     }
 }
-
+impl TryFrom<String> for AgentAPI {
+    type Error = RepReqError;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        let zmq_args: ZMQArgs = s.into();
+        Self::try_from(zmq_args)
+    }
+}
 impl Into<ZmqMessage> for AgentAPI {
     fn into(self) -> ZmqMessage {
         ZmqMessage::from(self.to_string())
