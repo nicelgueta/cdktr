@@ -76,7 +76,7 @@ macro_rules! create_action {
             fn new() -> Self {
                 Self {
                     resp: "".to_string(),
-                    param_str: "".to_string(),
+                    param_str: $title.to_string(),
                 }
             }
         }

@@ -1,3 +1,5 @@
+/// Takes first first argument of a ZMQArgs object whih should
+/// be a json string and attempts to parse it into a model.
 macro_rules! args_to_model {
     ($args:expr, $model:ident) => {
         if $args.len() == 0 {

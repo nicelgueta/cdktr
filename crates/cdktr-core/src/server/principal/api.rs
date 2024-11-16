@@ -3,18 +3,49 @@
 ///
 use crate::{
     db::models::{NewScheduledTask, ScheduledTask},
-    macros::args_to_model,
     models::{Task, TaskStatus, ZMQArgs},
     server::models::{ClientResponseMessage, RepReqError},
     utils::data_structures::AgentPriorityQueue,
 };
 use diesel::prelude::*;
-
 use diesel::RunQueryDsl;
 
-pub fn create_new_task_payload(args: ZMQArgs) -> Result<NewScheduledTask, RepReqError> {
-    // TODO: make obvious that we only care about the first arg and that it's JSON
-    args_to_model!(args, NewScheduledTask)
+/// Creates a new task from the provided ZMQArgs
+/// Order for the ZMQArgs is:
+/// task_name: String - name of the task,
+/// task_type: String - type of task. eg. PROCESS,
+/// command: String - command to run,
+/// args: String - comma separated list of arguments,
+/// cron: String - cron expression for the task,
+/// next_run_timestamp: i32 - timestamp for the next run of the task - i.e. the start time.
+pub fn create_new_task_payload(mut args: ZMQArgs) -> Result<NewScheduledTask, RepReqError> {
+    let task = NewScheduledTask {
+        task_name: args
+            .next()
+            .ok_or(RepReqError::ParseError("task_name is missing".to_string()))?,
+        task_type: args
+            .next()
+            .ok_or(RepReqError::ParseError("task_type is missing".to_string()))?,
+        command: args
+            .next()
+            .ok_or(RepReqError::ParseError("command is missing".to_string()))?,
+        args: args
+            .next()
+            .ok_or(RepReqError::ParseError("args is missing".to_string()))?,
+        cron: args
+            .next()
+            .ok_or(RepReqError::ParseError("cron is missing".to_string()))?,
+        next_run_timestamp: args
+            .next()
+            .ok_or(RepReqError::ParseError(
+                "next_run_timestamp is missing".to_string(),
+            ))?
+            .parse()
+            .or(Err(RepReqError::ParseError(
+                "next_run_timestamp is not a valid integer".to_string(),
+            )))?,
+    };
+    Ok(task)
 }
 
 pub fn create_run_task_payload(args: ZMQArgs) -> Result<Task, RepReqError> {
@@ -146,11 +177,26 @@ mod tests {
     }
 
     #[test]
-    fn test_create_task_payload_happy() {
-        let args = vec![
-            r#"{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#.to_string()
-        ];
-        assert!(create_new_task_payload(ZMQArgs::from(args)).is_ok())
+    fn test_create_task_payload_happy_from_string() {
+        // not inlcude original CREATETASK since that should be handled already
+        let arg_s = "echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744".to_string();
+        assert!(create_new_task_payload(ZMQArgs::from(arg_s)).is_ok())
+    }
+
+    #[test]
+    fn test_create_task_payload_happy_from_vec() {
+        let arg_v: Vec<String> = vec![
+            "echo hello",
+            "PROCESS",
+            "echo",
+            "hello",
+            "0 3 * * * *",
+            "1720313744",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert!(create_new_task_payload(ZMQArgs::from(arg_v)).is_ok())
     }
 
     #[test]

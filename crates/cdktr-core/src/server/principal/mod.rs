@@ -262,7 +262,7 @@ mod tests {
         let all_happies = vec![
             "PING",
             "LISTTASKS",
-            r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#,
+            "CREATETASK|echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744",
             "DELETETASK|1",
             "RUNTASK|PROCESS|echo|hello",
             "REGISTERAGENT|8999|2",
@@ -277,7 +277,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_cli_message_all_happy() {
-        // simulate receipt of a message from a client
+        // simulate receipt of a success message from a server
         tokio::spawn(async {
             let uri = "tcp://0.0.0.0:8999";
             let mut rep_socket = zeromq::RepSocket::new();
@@ -296,7 +296,7 @@ mod tests {
                 0,
             ),
             (
-                r#"CREATETASK|{"task_name": "echo hello","task_type": "PROCESS","command": "echo","args": "hello","cron": "0 3 * * * *","next_run_timestamp": 1720313744}"#,
+                "CREATETASK|echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744",
                 ClientResponseMessage::Success,
                 0,
             ),
@@ -362,7 +362,7 @@ mod tests {
         let mut server =
             PrincipalServer::new(get_db(), "fake_ins".to_string(), None, task_queue.clone());
         let zmq_message = ZmqMessage::from("RUNTASK|PROCESS|echo|hello world");
-        let run_task_msg = PrincipalAPI::try_from(zmq_message).expect("Should be a valuid messge");
+        let run_task_msg = PrincipalAPI::try_from(zmq_message).expect("Should be a valid messge");
         let (resp, code) = server.handle_client_message(run_task_msg).await;
         assert_eq!(resp, ClientResponseMessage::Success);
         assert_eq!(code, 0);
