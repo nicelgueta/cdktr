@@ -146,7 +146,7 @@ impl ControlPanel {
     fn get_agents_section(&self) -> impl Widget {
         Paragraph::new("space").block(
             Block::bordered()
-                .title(" Agents ")
+                .title(" Agent ZMQ Actions ")
                 .fg(self.panel_highlighted_color("Agents")),
         )
     }

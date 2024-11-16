@@ -1,12 +1,9 @@
 use core::panic;
 use ratatui::{
     buffer::Buffer,
-    crossterm::{
-        event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
-        style::Color,
-    },
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Style, Stylize},
+    style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, Paragraph, Tabs, Widget},
     Frame,
@@ -39,7 +36,10 @@ impl App {
     pub async fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
         while !self.exit {
             terminal.draw(|frame| self.render_frame(frame))?;
-            self.handle_events().await;
+            match self.handle_events().await {
+                Ok(_) => {}
+                Err(e) => return Err(e),
+            }
         }
         Ok(())
     }
@@ -141,7 +141,7 @@ impl Widget for &App {
         }
         let controls_text = Text::from(control_line);
         Paragraph::new(controls_text)
-            .style(Style::default().white())
+            .style(Style::default().white().fg(Color::DarkGray))
             .render(vertical_chunks[2], buf);
     }
 }
@@ -152,7 +152,12 @@ async fn main() -> io::Result<()> {
     let app_config = config::AppConfig::new();
     let app_result = App::new(app_config).run(&mut terminal).await;
     tui::restore()?;
-    app_result
+    if let (Err(e)) = app_result {
+        println!("Error: {:?}", e);
+        return Err(e);
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

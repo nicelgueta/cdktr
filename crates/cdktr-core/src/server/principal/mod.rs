@@ -27,7 +27,7 @@ use api::{
 
 use super::{
     models::{ClientResponseMessage, RepReqError},
-    traits::{Server, API},
+    traits::{APIMeta, Server, API},
 };
 
 // TODO: make an extension of AgentAPI
@@ -61,6 +61,7 @@ pub enum PrincipalAPI {
     ///     agent_id, task_id, status
     AgentTaskStatusUpdate(String, String, TaskStatus),
 }
+
 impl TryFrom<ZMQArgs> for PrincipalAPI {
     type Error = RepReqError;
     fn try_from(mut args: ZMQArgs) -> Result<Self, Self::Error> {
@@ -119,6 +120,38 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
 }
 
 impl API for PrincipalAPI {
+    fn get_meta(&self) -> Vec<APIMeta> {
+        const META: [(&'static str, &'static str); 7] = [
+            ("PING", "Check server is online"),
+            (
+                "CREATETASK",
+                "Creates a new scheudled task in the principal database",
+            ),
+            (
+                "LISTTASKS",
+                "Lists all scheduled tasks currently stored in the database",
+            ),
+            (
+                "DELETETASK",
+                "Deletes a specific scheduled task in the database by its id",
+            ),
+            (
+                "RUNTASK",
+                "Sends a task definition to the principal for execution on an agent",
+            ),
+            (
+                "REGISTERAGENT",
+                "Allows an agent to register itself with the principal",
+            ),
+            (
+                "AGENTTASKSTATUS",
+                "Allows an agent to update the principal with the status of a specific task",
+            ),
+        ];
+        META.iter()
+            .map(|(action, desc)| APIMeta::new(action.to_string(), desc.to_string()))
+            .collect()
+    }
     fn to_string(&self) -> String {
         match self {
             Self::Ping => "PING".to_string(),
