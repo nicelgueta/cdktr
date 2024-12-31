@@ -223,9 +223,9 @@ mod tests {
         control_panel.select_action(true);
         assert_eq!(control_panel.action_state.selected(), Some(1));
         control_panel.select_action(true);
-        assert_eq!(control_panel.action_state.selected(), Some(1));
+        assert_eq!(control_panel.action_state.selected(), Some(2));
         control_panel.select_action(false);
-        assert_eq!(control_panel.action_state.selected(), Some(0));
+        assert_eq!(control_panel.action_state.selected(), Some(1));
         control_panel.select_action(false);
         assert_eq!(control_panel.action_state.selected(), Some(0));
     }
