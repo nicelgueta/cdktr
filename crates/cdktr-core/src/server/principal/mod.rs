@@ -156,9 +156,13 @@ impl API for PrincipalAPI {
         match self {
             Self::Ping => "PING".to_string(),
             Self::CreateTask(task) => {
-                let task_json = serde_json::to_string(&task)
-                    .expect("Unable to convert NewScheduledTask to JSON");
-                format!("CREATETASK|{}", &task_json)
+                let task_name = &task.task_name;
+                let task_type = &task.task_type;
+                let command = &task.command;
+                let args = &task.args;
+                let cron = &task.cron;
+                let next_run_timestamp = task.next_run_timestamp;
+                format!("CREATETASK|{task_name}|{task_type}|{command}|{args}|{cron}|{next_run_timestamp}")
             }
             Self::RunTask(task) => {
                 let task_str: String = task.to_string();

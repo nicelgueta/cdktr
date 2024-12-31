@@ -8,13 +8,16 @@ use ratatui::{
     style::{Color, Style, Stylize},
     widgets::{Block, Paragraph, Widget},
 };
-use std::env;
+use std::{collections::HashMap, env};
 
-pub struct RenderConfig {
+pub struct RenderConfig<'a> {
     title: &'static str,
     description: &'static str,
-    msg: String,
-    resp: String,
+    action: &'a String,
+    params: &'a Vec<String>,
+    param_titles: &'a HashMap<usize, String>,
+    resp: &'a String,
+    param_focussed: usize,
 }
 
 pub trait APIAction {
@@ -70,14 +73,27 @@ macro_rules! create_action {
         #[derive(Debug, Clone)]
         pub struct $api_variant {
             resp: String,
-            msg: String,
+            action: String,
+            params: Vec<String>,
+            param_titles: HashMap<usize, String>,
+            param_focussed: usize,
         }
 
         impl $api_variant {
-            fn new() -> Self {
+            fn new(params: Option<Vec<String>>) -> Self {
+                let params = params.unwrap_or(Vec::new());
+                let mut param_titles: HashMap<usize, String> = HashMap::new();
+                let mut param_v = Vec::with_capacity(params.len());
+                for (i, param) in params.iter().enumerate() {
+                    param_titles.insert(i, param.clone());
+                    param_v.push(String::new())
+                }
                 Self {
                     resp: "".to_string(),
-                    msg: $title.to_string(),
+                    action: $title.to_string(),
+                    params: param_v,
+                    param_titles,
+                    param_focussed: 0,
                 }
             }
         }
@@ -95,8 +111,11 @@ macro_rules! create_action {
                 RenderConfig {
                     title: $title,
                     description: $desc,
-                    msg: self.msg.clone(),
-                    resp: self.resp.clone(),
+                    action: &self.action,
+                    resp: &self.resp,
+                    params: &self.params,
+                    param_titles: &self.param_titles,
+                    param_focussed: self.param_focussed,
                 }
             }
         }
@@ -123,7 +142,7 @@ macro_rules! create_action {
 /// code and potentially error prone in ensuring that the enum and the struct are in sync,
 /// this macro is used to automate the process.
 macro_rules! create_actions {
-    ($($title:expr, $api_variant:ident, $desc:expr);+ $(;)?) => {
+    ($($title:expr, $api_variant:ident, $desc:expr, $params:expr);+ $(;)?) => {
         // note to self: the "$(;)?" is used to allow the macro to accept a trailing semicolon
         $(
             create_action!($title, $api_variant, $desc);
@@ -143,7 +162,7 @@ macro_rules! create_actions {
         impl ActionHandler {
             pub fn from_str(s: &str) -> Self {
                 match s {
-                    $($title => Self::$api_variant($api_variant::new()),)+
+                    $($title => Self::$api_variant($api_variant::new($params)),)+
                     o => panic!("Tried to render unimplemented action pane: {}", o),
                 }
             }
@@ -157,11 +176,20 @@ macro_rules! create_actions {
                     $(Self::$api_variant(action_widget) => action_widget.resp = resp,)+
                 }
             }
-            // pub fn update_msg(&mut self, msg: String) {
-            //     match self {
-            //         $(Self::$api_variant(action_widget) => action_widget.msg = msg,)+
-            //     }
-            // }
+            pub fn toggle_param(&mut self) {
+                match self {
+                    $(Self::$api_variant(action_widget) => {
+                        if action_widget.params.len() == 0 {
+                            // pass
+                        } else if action_widget.param_focussed == action_widget.params.len() - 1 {
+                            action_widget.param_focussed = 0
+                        } else {
+                            action_widget.param_focussed += 1
+                        }
+                    },)+
+                }
+            }
+
         }
 
         impl Widget for ActionHandler {
@@ -177,11 +205,15 @@ macro_rules! create_actions {
     };
 }
 
-pub const ACTIONS: [&'static str; 2] = ["PING", "LISTTASKS"];
+pub const ACTIONS: [&'static str; 3] = ["PING", "LISTTASKS", "CREATETASK"];
 
+fn stv(v: Vec<&str>) -> Vec<String> {
+    v.iter().map(|x| x.to_string()).collect()
+}
 create_actions!(
-    "PING", Ping, "Ping the server to check if it is up";
-    "LISTTASKS", ListTasks, "List all registered tasks on the server";
+    "PING", Ping, "Ping the server to check if it is up", None;
+    "LISTTASKS", ListTasks, "List all registered tasks on the server", None;
+    "CREATETASK", CreateTasks, "Create a new scheduled task", Some(stv(vec!["task_name", "task_type", "command", "args", "cron"]));
 );
 
 /// factory function used to create the action panes from configurations passed to them
@@ -207,16 +239,45 @@ fn pane_factory_render(area: Rect, buf: &mut Buffer, config: RenderConfig) {
         .render(layout[0], buf);
 
     // command parameter box
-    Paragraph::new(config.msg)
+
+    let mut command_constraints = vec![Constraint::Min(1)];
+    let no_params = config.params.len();
+    for _i in 1..no_params {
+        command_constraints.push(Constraint::Min(1));
+    }
+    let command_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(command_constraints)
+        .split(layout[1]);
+
+    // render the action as the first item
+    Paragraph::new(config.action.as_str())
         .block(
             Block::bordered()
-                .title(format!(" ZMQ Message "))
+                .title(format!(" ZMQ Msg "))
                 .border_style(Style::default().bold().fg(Color::LightYellow)),
         )
-        .render(layout[1], buf);
+        .render(command_layout[0], buf);
 
+    // render the params
+    for i in 1..no_params {
+        let param = config
+            .param_titles
+            .get(&i)
+            .expect("mismatch between param count and title hashmap");
+        let mut block = Block::bordered().title(format!(" {param} "));
+
+        block = if config.param_focussed == i {
+            block.border_style(Style::default().bold().fg(Color::LightYellow))
+        } else {
+            block
+        };
+        Paragraph::new("")
+            .block(block)
+            .render(command_layout[i], buf);
+    }
     // response box
-    Paragraph::new(config.resp)
+    Paragraph::new(config.resp.clone())
         .block(
             Block::bordered()
                 .title(format!(" Response "))

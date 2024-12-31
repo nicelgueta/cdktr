@@ -193,7 +193,7 @@ mod tests {
                 task_name: String::from("Task 1"),
                 task_type: String::from("PROCESS"),
                 command: String::from("echo"),
-                args: Some(String::from("Hello, World!")),
+                args: Some(String::from("'Hello, World!'")),
                 cron: Some(String::from("0 5 * * * *")),
                 timestamp_created: curr_timestamp,
                 next_run_timestamp: curr_timestamp,

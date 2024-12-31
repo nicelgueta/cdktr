@@ -30,7 +30,7 @@ impl Component for ControlPanel {
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
         let mut base_controls = vec![("<↓↑>", "Select"), ("<TAB>", "Change focus")];
         if self.action_modal_open {
-            for action in vec![("<C>", "Close"), ("<S>", "Send msg")] {
+            for action in vec![("<C>", "Close"), ("<S>", "Send msg"), ("<E>", "Edit param")] {
                 base_controls.push(action)
             }
         };
@@ -44,6 +44,7 @@ impl Component for ControlPanel {
             KeyCode::Enter => self.action_enter(),
             KeyCode::Char('c') => self.action_modal_open = false,
             KeyCode::Char('s') => self.execute_action().await,
+            KeyCode::Char('e') => self.action_handler.toggle_param(),
             _ => (),
         }
     }
@@ -67,6 +68,7 @@ impl ControlPanel {
             Color::White
         }
     }
+    async fn toggle_param(&mut self) {}
     async fn execute_action(&mut self) {
         let msg = self.action_handler.act().await;
         self.action_handler.update_resp(msg);
