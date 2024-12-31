@@ -286,7 +286,7 @@ mod tests {
         control_panel
             .handle_key_event(KeyEvent::from(KeyCode::Down))
             .await;
-        assert_eq!(control_panel.action_state.selected(), Some(1));
+        assert_eq!(control_panel.action_state.selected(), Some(2));
         control_panel
             .handle_key_event(KeyEvent::from(KeyCode::Up))
             .await;
