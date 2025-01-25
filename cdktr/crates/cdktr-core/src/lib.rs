@@ -1,3 +1,4 @@
+mod api;
 mod db;
 mod events;
 mod exceptions;
@@ -11,8 +12,11 @@ mod utils;
 mod zmq_helpers;
 
 // public api
-pub mod hub;
-pub use server::{
-    agent::AgentAPI, models::ClientResponseMessage, principal::PrincipalAPI, traits::API,
-};
-pub use zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT as CDKTR_DEFAULT_TIMEOUT};
+pub mod instance;
+pub mod prelude {
+    pub use crate::{
+        api::{APIMeta, AgentAPI, PrincipalAPI, API},
+        server::models::ClientResponseMessage,
+        zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT as CDKTR_DEFAULT_TIMEOUT},
+    };
+}

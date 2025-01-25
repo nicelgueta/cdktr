@@ -3,14 +3,13 @@ use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 
 use crate::{
+    api::{PrincipalAPI, API},
     db::get_connection,
     exceptions::GenericError,
     models::Task,
     server::{
-        agent::AgentServer,
-        models::ClientResponseMessage,
-        principal::{PrincipalAPI, PrincipalServer},
-        traits::{Server, API},
+        agent::AgentServer, models::ClientResponseMessage, principal::PrincipalServer,
+        traits::Server,
     },
     task_router::TaskRouter,
     taskmanager,

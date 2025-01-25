@@ -1,205 +1,21 @@
-use crate::{
-    db::models::NewScheduledTask,
-    models::{AgentMeta, Task, TaskStatus, ZMQArgs},
-    utils::{
-        data_structures::{AgentPriorityQueue, AsyncQueue},
-        split_instance_id,
-    },
-};
 use async_trait::async_trait;
 use chrono::Utc;
 use diesel::SqliteConnection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use zeromq::ZmqMessage;
-mod api;
 
-use api::{
-    // zmq msgs
-    create_new_task_payload,
-    create_run_task_payload,
-    delete_task_payload,
-    handle_agent_task_status_update,
-    handle_create_task,
-    handle_delete_task,
-    handle_list_tasks,
+use crate::{
+    api::PrincipalAPI,
+    models::{AgentMeta, Task},
+    utils::{
+        data_structures::{AgentPriorityQueue, AsyncQueue},
+        split_instance_id,
+    },
 };
 
-use super::{
-    models::{ClientResponseMessage, RepReqError},
-    traits::{APIMeta, Server, API},
-};
+use super::{models::ClientResponseMessage, traits::Server};
 
-// TODO: make an extension of AgentAPI
-#[derive(Debug)]
-pub enum PrincipalAPI {
-    /// Check server is online
-    Ping,
-    /// Creates a new scheudled task in the principal database
-    CreateTask(NewScheduledTask),
-    /// Lists all scheduled tasks currently stored in the database
-    ListTasks,
-    /// Deletes a specific scheduled task in the database by its id
-    /// Args:
-    ///     task_id : i32
-    DeleteTask(i32),
-    /// Sends a task definition to the principal for execution on
-    /// an agent
-    /// Args:
-    ///     task: Task
-    RunTask(Task),
-    /// Allows an agent to register itself with the principal
-    /// so that the principal can set a heartbeat for it. If the agent
-    /// is already registered then this behaves in a similar way to
-    /// a PING/PONG
-    /// Args:
-    ///     agent_id, max_tasks
-    RegisterAgent(String, usize),
-    /// Allows an agent to update the principal with the status of a specific
-    /// task
-    /// Args:
-    ///     agent_id, task_id, status
-    AgentTaskStatusUpdate(String, String, TaskStatus),
-}
-
-impl TryFrom<ZMQArgs> for PrincipalAPI {
-    type Error = RepReqError;
-    fn try_from(mut args: ZMQArgs) -> Result<Self, Self::Error> {
-        let msg_type = if let Some(token) = args.next() {
-            token
-        } else {
-            return Err(RepReqError::ParseError(format!("Empty message")));
-        };
-        match msg_type.as_str() {
-            // "GET_TASKS" => Ok(Self::GetTasks),
-            "PING" => Ok(Self::Ping),
-            "CREATETASK" => Ok(Self::CreateTask(create_new_task_payload(args)?)),
-            "LISTTASKS" => Ok(Self::ListTasks),
-            "DELETETASK" => Ok(Self::DeleteTask(delete_task_payload(args)?)),
-            "RUNTASK" => {
-                let task = create_run_task_payload(args)?;
-                Ok(Self::RunTask(task))
-            }
-            "REGISTERAGENT" => match args.next() {
-                Some(agent_id) => match args.next() {
-                    Some(max_tasks) => {
-                        let max_tasks = if let Ok(v) = max_tasks.parse::<usize>() {
-                            v
-                        } else {
-                            return Err(RepReqError::ParseError(
-                                "Arg MAX_TASKS is not a valid integer".to_string(),
-                            ));
-                        };
-                        Ok(Self::RegisterAgent(agent_id, max_tasks))
-                    }
-                    None => Err(RepReqError::ParseError("Missing arg MAX_TASKS".to_string())),
-                },
-                None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
-            },
-            "AGENTTASKSTATUS" => match args.next() {
-                Some(agent_id) => match args.next() {
-                    Some(task_id) => match args.next() {
-                        Some(status) => {
-                            let status = TaskStatus::try_from(status)?;
-                            Ok(Self::AgentTaskStatusUpdate(agent_id, task_id, status))
-                        }
-                        None => Err(RepReqError::ParseError(
-                            "Missing arg TASK_STATUS".to_string(),
-                        )),
-                    },
-                    None => Err(RepReqError::ParseError("Missing arg TASK_ID".to_string())),
-                },
-                None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
-            },
-            _ => Err(RepReqError::ParseError(format!(
-                "Unrecognised message type: {}",
-                msg_type
-            ))),
-        }
-    }
-}
-
-impl API for PrincipalAPI {
-    fn get_meta(&self) -> Vec<APIMeta> {
-        const META: [(&'static str, &'static str); 7] = [
-            ("PING", "Check server is online"),
-            (
-                "CREATETASK",
-                "Creates a new scheudled task in the principal database",
-            ),
-            (
-                "LISTTASKS",
-                "Lists all scheduled tasks currently stored in the database",
-            ),
-            (
-                "DELETETASK",
-                "Deletes a specific scheduled task in the database by its id",
-            ),
-            (
-                "RUNTASK",
-                "Sends a task definition to the principal for execution on an agent",
-            ),
-            (
-                "REGISTERAGENT",
-                "Allows an agent to register itself with the principal",
-            ),
-            (
-                "AGENTTASKSTATUS",
-                "Allows an agent to update the principal with the status of a specific task",
-            ),
-        ];
-        META.iter()
-            .map(|(action, desc)| APIMeta::new(action.to_string(), desc.to_string()))
-            .collect()
-    }
-    fn to_string(&self) -> String {
-        match self {
-            Self::Ping => "PING".to_string(),
-            Self::CreateTask(task) => {
-                let task_name = &task.task_name;
-                let task_type = &task.task_type;
-                let command = &task.command;
-                let args = &task.args;
-                let cron = &task.cron;
-                let next_run_timestamp = task.next_run_timestamp;
-                format!("CREATETASK|{task_name}|{task_type}|{command}|{args}|{cron}|{next_run_timestamp}")
-            }
-            Self::RunTask(task) => {
-                let task_str: String = task.to_string();
-                format!("RUNTASK|{task_str}")
-            }
-            Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
-            Self::ListTasks => "LISTTASKS".to_string(),
-            Self::RegisterAgent(agent_id, max_tasks) => {
-                format!("REGISTERAGENT|{agent_id}|{max_tasks}")
-            }
-            Self::AgentTaskStatusUpdate(agent_id, task_id, status) => {
-                let status = status.to_string();
-                format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{status}")
-            }
-        }
-    }
-}
-
-impl TryFrom<ZmqMessage> for PrincipalAPI {
-    type Error = RepReqError;
-    fn try_from(zmq_msg: ZmqMessage) -> Result<Self, Self::Error> {
-        let zmq_args: ZMQArgs = zmq_msg.into();
-        Self::try_from(zmq_args)
-    }
-}
-impl TryFrom<String> for PrincipalAPI {
-    type Error = RepReqError;
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        let zmq_args: ZMQArgs = s.into();
-        Self::try_from(zmq_args)
-    }
-}
-impl Into<ZmqMessage> for PrincipalAPI {
-    fn into(self) -> ZmqMessage {
-        ZmqMessage::from(self.to_string())
-    }
-}
+mod helpers;
 
 pub struct PrincipalServer {
     instance_id: String,
@@ -256,15 +72,15 @@ impl Server<PrincipalAPI> for PrincipalServer {
             PrincipalAPI::Ping => (ClientResponseMessage::Pong, 0),
             PrincipalAPI::CreateTask(new_task) => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
-                handle_create_task(&mut db_cnxn, new_task)
+                helpers::handle_create_task(&mut db_cnxn, new_task)
             }
             PrincipalAPI::ListTasks => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
-                handle_list_tasks(&mut db_cnxn)
+                helpers::handle_list_tasks(&mut db_cnxn)
             }
             PrincipalAPI::DeleteTask(task_id) => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
-                handle_delete_task(&mut db_cnxn, task_id)
+                helpers::handle_delete_task(&mut db_cnxn, task_id)
             }
             PrincipalAPI::RunTask(task) => {
                 self.task_queue.put(task).await;
@@ -274,7 +90,12 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 self.register_agent(&agent_id, max_tasks).await
             }
             PrincipalAPI::AgentTaskStatusUpdate(agent_id, task_id, status) => {
-                handle_agent_task_status_update(self.live_agents.clone(), &task_id, &status).await
+                helpers::handle_agent_task_status_update(
+                    self.live_agents.clone(),
+                    &task_id,
+                    &status,
+                )
+                .await
             }
         }
     }
