@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 cdktr-core = { workspace = true}
-cdktr-tui = { workspace = true}
 
 env_logger = { workspace = true}
 tokio = { workspace = true}
