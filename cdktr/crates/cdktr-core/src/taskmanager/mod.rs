@@ -36,7 +36,7 @@ pub enum TaskManagerError {
 
 /// `TaskManager` is a struct for managing and executing tasks concurrently within a specified limit of threads.
 ///
-/// It is designed to queue tasks and manage their execution based on the availabilitsy of threads, ensuring that the number of concurrently running tasks does not exceed the specified maximum.
+/// It is designed to queue tasks and manage their execution based on the availability of threads, ensuring that the number of concurrently running tasks does not exceed the specified maximum.
 ///
 /// # Fields
 /// - `instance_id`: A `String` identifier for the instance of `TaskManager`. This can be used to differentiate between multiple instances.

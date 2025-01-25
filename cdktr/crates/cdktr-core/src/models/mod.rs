@@ -131,17 +131,15 @@ impl Into<ZMQArgs> for ZmqMessage {
 pub struct AgentMeta {
     pub host: String,
     pub port: usize,
-    max_tasks: usize,
     running_tasks: usize,
     pub last_ping_timestamp: i64,
 }
 impl AgentMeta {
-    pub fn new(host: String, port: usize, max_tasks: usize, last_ping_timestamp: i64) -> Self {
+    pub fn new(host: String, port: usize, last_ping_timestamp: i64) -> Self {
         Self {
             host,
             port,
             last_ping_timestamp,
-            max_tasks,
             running_tasks: 0,
         }
     }
@@ -152,18 +150,20 @@ impl AgentMeta {
     pub fn update_timestamp(&mut self, new_ts: i64) {
         self.last_ping_timestamp = new_ts
     }
-    /// Shows the capacity of tasks that an agent can handle.
+    /// Shows the utilisation of tasks that an agent can handle.
     /// Agent tasks managers have internal queues for holding tasks
-    /// if they have reached capacity so we will allow negative values
+    /// if they have reached utilisation so we will allow negative values
     /// as the priority queue will naturally handle this
-    pub fn capacity(&self) -> i32 {
-        self.max_tasks as i32 - self.running_tasks as i32
+    pub fn utilisation(&self) -> usize {
+        self.running_tasks
     }
     pub fn inc_running_tasks(&mut self) {
         self.running_tasks += 1
     }
     pub fn dec_running_tasks(&mut self) {
-        self.running_tasks -= 1
+        if self.running_tasks > 0 {
+            self.running_tasks -= 1
+        }
     }
     pub fn get_last_ping_ts(&self) -> i64 {
         self.last_ping_timestamp
@@ -176,15 +176,21 @@ mod tests {
 
     #[test]
     fn test_agent_meta_methods() {
-        let mut agent = AgentMeta::new("localhost".to_string(), 9999, 2, 0);
+        let mut agent = AgentMeta::new("localhost".to_string(), 9999, 0);
         assert_eq!(agent.agent_id(), "localhost-9999");
-        assert_eq!(agent.capacity(), 2);
+        assert_eq!(agent.utilisation(), 0);
 
         agent.inc_running_tasks();
-        assert_eq!(agent.capacity(), 1);
+        assert_eq!(agent.utilisation(), 1);
+
+        agent.inc_running_tasks();
+        assert_eq!(agent.utilisation(), 2);
 
         agent.dec_running_tasks();
-        assert_eq!(agent.capacity(), 2);
+        assert_eq!(agent.utilisation(), 1);
+
+        agent.dec_running_tasks();
+        assert_eq!(agent.utilisation(), 0);
 
         agent.update_timestamp(10);
         assert_eq!(agent.get_last_ping_ts(), 10);

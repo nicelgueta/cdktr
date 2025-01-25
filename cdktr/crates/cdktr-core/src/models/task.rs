@@ -1,5 +1,5 @@
 use super::{exceptions::ZMQParseError, ZMQArgs};
-use crate::executors::ProcessTask;
+use crate::{exceptions::GenericError, executors::ProcessTask};
 use serde::Deserialize;
 use zeromq::ZmqMessage;
 
@@ -62,6 +62,13 @@ impl TryFrom<ZMQArgs> for Task {
     }
 }
 
+impl TryFrom<String> for Task {
+    type Error = ZMQParseError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Task::try_from(ZMQArgs::from(value))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,5 +116,11 @@ mod tests {
                 .collect::<Vec<String>>(),
         );
         assert!(Task::try_from(zmq_args).is_err());
+    }
+
+    #[test]
+    fn test_task_from_string() {
+        let st = String::from("PROCESS|ls");
+        assert!(Task::try_from(st).is_ok())
     }
 }

@@ -27,7 +27,7 @@ def create_task():
 
 def run_task():
     cmd = input("Enter bash command: ")
-    zmq_str = f"RUNTASK|PROCESS|{'|'.join(cmd.split(' '))}"
+    zmq_str = f"ADDTASK|PROCESS|{'|'.join(cmd.split(' '))}"
     return zmq_str
 
 def start_req_socket(principal_port):

@@ -3,12 +3,13 @@
 ///
 use crate::{
     db::models::{NewScheduledTask, ScheduledTask},
-    models::TaskStatus,
+    models::{Task, TaskStatus},
     server::models::ClientResponseMessage,
-    utils::data_structures::AgentPriorityQueue,
+    utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
+use log::debug;
 
 pub fn handle_create_task(
     db_cnxn: &mut SqliteConnection,
@@ -83,25 +84,33 @@ pub async fn handle_agent_task_status_update(
     task_id: &str,
     status: &TaskStatus,
 ) -> (ClientResponseMessage, usize) {
-    // TODO: do something with the task id. For now, we're just updating
-    // the priority queue when a task starts running and when completed
-    // or failed
-    // match status {
-    //     TaskStatus::RUNNING => {
-    //         // update the priority queue
-    //     }
-    // }
+    // TODO: do something with the task id.
+    //
+    // TODO
     (
         ClientResponseMessage::SuccessWithPayload("TBD".to_string()),
         0,
     )
 }
 
+pub async fn handle_add_task(
+    task: Task,
+    queue: &mut AsyncQueue<Task>,
+) -> (ClientResponseMessage, usize) {
+    debug!(
+        "Adding task to global task queue - task -> {}",
+        task.to_string()
+    );
+    queue.put(task).await;
+    (ClientResponseMessage::Success, 0)
+}
+
 #[cfg(test)]
 mod tests {
 
+    use crate::{models::Task, utils::data_structures::AsyncQueue};
+
     use super::*;
-    use crate::zmq_helpers::get_server_tcp_uri;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
     pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
@@ -203,10 +212,11 @@ mod tests {
         )
     }
 
-    #[test]
-    fn test_get_agent_tcp_uri() {
-        let host = "localhost";
-        let port = 1234 as usize;
-        assert_eq!(get_server_tcp_uri(host, port), "tcp://localhost:1234")
+    #[tokio::test]
+    async fn test_add_task_to_queue() {
+        let mut queue = AsyncQueue::new();
+        let task = Task::try_from("PROCESS|echo|hello world".to_string()).unwrap();
+        handle_add_task(task, &mut queue).await;
+        assert_eq!(queue.size().await, 1)
     }
 }

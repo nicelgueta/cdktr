@@ -61,7 +61,7 @@ async fn _main() {
         principal_host,
         principal_port,
         database_url,
-        max_tm_tasks,
+        Some(max_tm_tasks),
     )
     .await
 }

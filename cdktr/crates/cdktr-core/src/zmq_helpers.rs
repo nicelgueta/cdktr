@@ -154,4 +154,11 @@ mod tests {
         .await
         .is_err())
     }
+
+    #[test]
+    fn test_get_agent_tcp_uri() {
+        let host = "localhost";
+        let port = 1234 as usize;
+        assert_eq!(get_server_tcp_uri(host, port), "tcp://localhost:1234")
+    }
 }

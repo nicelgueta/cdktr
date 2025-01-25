@@ -20,18 +20,18 @@ pub enum PrincipalAPI {
     /// Args:
     ///     task_id : i32
     DeleteTask(i32),
-    /// Sends a task definition to the principal for execution on
-    /// an agent
+    /// Adds a task to the primary task queue held on the principal
+    /// that agents reuest work from
     /// Args:
     ///     task: Task
-    RunTask(Task),
+    AddTask(Task),
     /// Allows an agent to register itself with the principal
     /// so that the principal can set a heartbeat for it. If the agent
     /// is already registered then this behaves in a similar way to
     /// a PING/PONG
     /// Args:
-    ///     agent_id, max_tasks
-    RegisterAgent(String, usize),
+    ///     agent_id
+    RegisterAgent(String),
     /// Allows an agent to update the principal with the status of a specific
     /// task
     /// Args:
@@ -53,24 +53,12 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
             "CREATETASK" => Ok(Self::CreateTask(helpers::create_new_task_payload(args)?)),
             "LISTTASKS" => Ok(Self::ListTasks),
             "DELETETASK" => Ok(Self::DeleteTask(helpers::delete_task_payload(args)?)),
-            "RUNTASK" => {
+            "ADDTASK" => {
                 let task = helpers::create_run_task_payload(args)?;
-                Ok(Self::RunTask(task))
+                Ok(Self::AddTask(task))
             }
             "REGISTERAGENT" => match args.next() {
-                Some(agent_id) => match args.next() {
-                    Some(max_tasks) => {
-                        let max_tasks = if let Ok(v) = max_tasks.parse::<usize>() {
-                            v
-                        } else {
-                            return Err(RepReqError::ParseError(
-                                "Arg MAX_TASKS is not a valid integer".to_string(),
-                            ));
-                        };
-                        Ok(Self::RegisterAgent(agent_id, max_tasks))
-                    }
-                    None => Err(RepReqError::ParseError("Missing arg MAX_TASKS".to_string())),
-                },
+                Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
                 None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
             },
             "AGENTTASKSTATUS" => match args.next() {
@@ -113,8 +101,8 @@ impl API for PrincipalAPI {
                 "Deletes a specific scheduled task in the database by its id",
             ),
             (
-                "RUNTASK",
-                "Sends a task definition to the principal for execution on an agent",
+                "ADDTASK",
+                "Adds a task to the principal task queue for execution on an agent",
             ),
             (
                 "REGISTERAGENT",
@@ -141,14 +129,14 @@ impl API for PrincipalAPI {
                 let next_run_timestamp = task.next_run_timestamp;
                 format!("CREATETASK|{task_name}|{task_type}|{command}|{args}|{cron}|{next_run_timestamp}")
             }
-            Self::RunTask(task) => {
+            Self::AddTask(task) => {
                 let task_str: String = task.to_string();
-                format!("RUNTASK|{task_str}")
+                format!("ADDTASK|{task_str}")
             }
             Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
             Self::ListTasks => "LISTTASKS".to_string(),
-            Self::RegisterAgent(agent_id, max_tasks) => {
-                format!("REGISTERAGENT|{agent_id}|{max_tasks}")
+            Self::RegisterAgent(agent_id) => {
+                format!("REGISTERAGENT|{agent_id}")
             }
             Self::AgentTaskStatusUpdate(agent_id, task_id, status) => {
                 let status = status.to_string();

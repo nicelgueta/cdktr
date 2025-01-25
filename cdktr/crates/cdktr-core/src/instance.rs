@@ -1,17 +1,12 @@
-use log::{debug, error, info, trace, warn};
+use log::{debug, warn};
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 
 use crate::{
-    api::{PrincipalAPI, API},
+    client::PrincipalClient,
     db::get_connection,
-    exceptions::GenericError,
     models::Task,
-    server::{
-        agent::AgentServer, models::ClientResponseMessage, principal::PrincipalServer,
-        traits::Server,
-    },
-    task_router::TaskRouter,
+    server::{principal::PrincipalServer, traits::Server},
     taskmanager,
     utils::{
         data_structures::{AgentPriorityQueue, AsyncQueue},
@@ -46,83 +41,34 @@ impl InstanceType {
 }
 
 /// Spawns the TaskManager in a separate coroutine
-async fn spawn_tm(
-    instance_id: String,
-    max_tm_tasks: usize,
-    task_queue: AsyncQueue<Task>,
-) -> tokio::task::JoinHandle<()> {
+async fn spawn_tm(instance_id: String, max_tm_tasks: usize) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
+        let task_queue = AsyncQueue::new();
         let mut tm = taskmanager::TaskManager::new(instance_id, max_tm_tasks, task_queue);
         tm.start().await
     })
 }
 
-async fn spawn_task_router(
-    task_router_queue: AsyncQueue<Task>,
-    live_agents: AgentPriorityQueue,
-) -> tokio::task::JoinHandle<()> {
-    debug!("Spawning Task Router");
-    let handle = tokio::spawn(async move {
-        let mut task_router = TaskRouter::new(task_router_queue, live_agents);
-        task_router.start().await
-    });
-    debug!("Task Router spawned");
-    handle
-}
-
-async fn spawn_principal_heartbeat(
-    instance_id: String,
-    principal_uri: String,
-    max_tm_tasks: usize,
-) {
-    debug!("Spawning agent heartbeat loop");
-    tokio::spawn(async move {
+async fn start_heartbeat_loop(principal_client: &PrincipalClient, principal_uri: &str) {
+    loop {
         loop {
-            loop {
-                sleep(Duration::from_millis(1000)).await;
-                let request = PrincipalAPI::Ping;
-                match request.send(&principal_uri, DEFAULT_TIMEOUT).await {
-                    Ok(cli_resp) => {
-                        let msg: String = cli_resp.into();
-                        trace!("Principal response: {}", msg)
-                    }
-                    Err(e) => match e {
-                        GenericError::TimeoutError => {
-                            error!("Agent heartbeat timed out pinging principal");
-                            break;
-                        }
-                        _ => panic!("Unspecified error in principal heartbeat"),
-                    },
-                }
+            sleep(Duration::from_millis(1000)).await;
+            if let Err(_e) = principal_client
+                .heartbeat(principal_uri, DEFAULT_TIMEOUT)
+                .await
+            {
+                break;
             }
-            // broken out of loop owing to timeout so we need to re-register with the principal
-            warn!("Attempting to reconnect to principal @ {}", &principal_uri);
-            let request = PrincipalAPI::RegisterAgent(instance_id.clone(), max_tm_tasks);
-            match request.send(&principal_uri, DEFAULT_TIMEOUT).await {
-                Ok(cli_msg) => {
-                    match cli_msg {
-                        ClientResponseMessage::Success => {
-                            info!("Successfully reconnected to principal")
-                        }
-                        e => {
-                            let msg_str: String = e.into();
-                            error!(
-                                "Established connection to principal but got unexpected message: {msg_str}", 
-                            );
-                            break; // kill the loop for good
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to re-register with principal. Got error {}",
-                        e.to_string()
-                    );
-                    break;
-                }
-            };
         }
-    });
+        // broken out of loop owing to timeout so we need to re-register with the principal
+        warn!("Attempting to reconnect to principal @ {}", principal_uri);
+        if let Err(_e) = principal_client
+            .register_with_principal(principal_uri)
+            .await
+        {
+            break;
+        }
+    }
 }
 
 pub struct Hub {
@@ -140,7 +86,7 @@ impl Hub {
         principal_host: String,
         principal_port: usize,
         database_url: Option<String>,
-        max_tm_tasks: usize,
+        max_tm_tasks: Option<usize>,
     ) {
         let instance_id = get_instance_id(&instance_host, instance_port);
         match self.instance_type {
@@ -151,22 +97,8 @@ impl Hub {
                     database_url.unwrap_or(String::from(":memory:"))
                 );
 
-                // Create the main task queue for the TaskRouter which multiple
-                // event listeners can add to
-                let task_router_queue = AsyncQueue::new();
-
-                // create the priority queue of agent meta that will be used by the server
-                // and task router
-                let live_agents = AgentPriorityQueue::new();
-                let mut principal_server = PrincipalServer::new(
-                    db_cnxn.clone(),
-                    instance_id.clone(),
-                    Some(live_agents.clone()),
-                    task_router_queue.clone(),
-                );
-
-                // create the TaskRouter component which will wait for tasks in its queue
-                spawn_task_router(task_router_queue, live_agents).await;
+                let mut principal_server =
+                    PrincipalServer::new(db_cnxn.clone(), instance_id.clone());
 
                 // start REP/REQ server loop for principal
                 principal_server
@@ -175,37 +107,20 @@ impl Hub {
                     .expect("CDKTR: Unable to start client server");
             }
             InstanceType::AGENT => {
-                // Create the task queue that will be passed to both the task manager and the
-                // server.
-                let main_task_queue = AsyncQueue::new();
-
-                let mut agent_server =
-                    AgentServer::new(instance_id.clone(), main_task_queue.clone());
                 let principal_uri = get_server_tcp_uri(&principal_host, principal_port);
-                let register_res = agent_server
-                    .register_with_principal(&principal_uri, max_tm_tasks)
-                    .await;
-                if let Err(e) = register_res {
-                    error!("Failed to register with principal: {}", e.to_string());
-                    return;
-                }
-                // start heartbeat coroutine loop to check if reconnecting is required
-                spawn_principal_heartbeat(instance_id.clone(), principal_uri.clone(), max_tm_tasks)
+                let principal_client = PrincipalClient::new(instance_id.clone());
+                let _ = principal_client
+                    .register_with_principal(&principal_uri)
                     .await;
 
-                loop {
-                    let task_q_cl = main_task_queue.clone();
-                    let tm_task = spawn_tm(instance_id.clone(), max_tm_tasks, task_q_cl).await;
+                // create the task manager that handles the task execution threads
+                let max_tasks = max_tm_tasks.expect(
+                    "Agent cannot be instantiatied without specifying max number of concurrent tasks it can handle."
+                );
+                spawn_tm(instance_id, max_tasks).await;
 
-                    // start REP/REQ server for agent
-                    let agent_loop_exit_code = agent_server
-                        .start(&instance_host, instance_port)
-                        .await
-                        .expect("CDKTR: Unable to start client server");
-                    error!("SERVER: Loop exited with code {}", agent_loop_exit_code);
-                    tm_task.abort();
-                    error!("SERVER: Task Manager killed");
-                }
+                debug!("Starting agent heartbeat loop");
+                start_heartbeat_loop(&principal_client, &principal_uri).await;
             }
         };
     }

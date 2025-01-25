@@ -42,6 +42,10 @@ impl<T> AsyncQueue<T> {
         self.inner.lock().await.is_empty()
     }
 
+    pub async fn size(&self) -> usize {
+        self.inner.lock().await.len()
+    }
+
     /// Similar to .get() but intead of returning an Option<T> it repeatedly polls
     /// the inner VecDeque until an item T is available
     /// TODO: loop currently set to 500 millis. this dependency needs to be inverted
@@ -75,8 +79,8 @@ impl<T> AsyncQueue<T> {
 /// O(1) pops. Since we prioritise speed over space for our principal, this is the chosen approach
 #[derive(Clone, Debug)]
 pub struct AgentPriorityQueue {
-    // item(capacity, unique_id)
-    heap: Arc<Mutex<BinaryHeap<(i32, usize)>>>,
+    // item(utilisation, unique_id)
+    heap: Arc<Mutex<BinaryHeap<(usize, usize)>>>,
 
     // unique_id to indicate staleness
     node_map: Arc<Mutex<HashMap<usize, AgentMeta>>>,
@@ -104,17 +108,17 @@ impl AgentPriorityQueue {
     /// push actually needs to handle 3 data structures.
     /// This needs to generate a unique id that is used
     /// as a key to the agentmeta hashmap. This key is pushed onto the max-heap along
-    /// with the capacity generate from the agentmeta which serves as the key attribute
+    /// with the utilisation generate from the agentmeta which serves as the key attribute
     /// determining its order in the queue. Then that unique id is inserted into a hasmap with
     /// the agent_id as the key so that the unique id can be easily retrieved when only the
     /// agent id is know like incoming requests from the agents to update their status
     pub async fn push(&mut self, agent_meta: AgentMeta) {
         let next_id = UNIQUENESS_COUNTER.fetch_add(1, Ordering::Relaxed);
         let agent_id = agent_meta.agent_id();
-        // add capacity and agent_id tuple to the max heap
+        // add utilisation and agent_id tuple to the max heap
         {
             let mut heap = self.heap.lock().await;
-            (*heap).push((agent_meta.capacity(), next_id));
+            (*heap).push((agent_meta.utilisation(), next_id));
         }
 
         // move agentmeta node to internal map
@@ -134,7 +138,7 @@ impl AgentPriorityQueue {
     pub async fn pop(&mut self) -> Result<AgentMeta, GenericError> {
         let mut heap = self.heap.lock().await;
         loop {
-            if let Some((_capacity, unique_id)) = (*heap).pop() {
+            if let Some((_utilisation, unique_id)) = (*heap).pop() {
                 // remove item from both the heap and agent_meta hashmap and return the agentmeta
                 let agent_meta = {
                     let mut node_map = self.node_map.lock().await;
@@ -207,7 +211,7 @@ impl AgentPriorityQueue {
             None => return Err(GenericError::MissingAgents),
         }
     }
-    /// O(log n) ID lookup to update agent capacity which directly affects its position in the queue. This is
+    /// O(log n) ID lookup to update agent utilisation which directly affects its position in the queue. This is
     /// time complexity can be acheived because we use the hashmap to mutably access the AgentMeta, make the update
     /// and then push back using .push() which is a O(log n) insert.
     pub async fn update_running_tasks(
@@ -259,7 +263,9 @@ mod tests {
         });
         // check that nothing on queue - this check is almost certain to actually
         // occur before the 200 millis is up that the spawned task will take to
-        // put something on the queue
+        // put something on the queue.
+        // this is done after the spawn to prove that the item received on the queue
+        // comes from another thread
         assert!(queue.is_empty().await);
 
         // wait on receipt of item
@@ -281,11 +287,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_async_queue_size() {
+        let mut q = AsyncQueue::new();
+        assert_eq!(q.size().await, 0);
+
+        q.put(1).await;
+        assert_eq!(q.size().await, 1);
+
+        let _ = q.get_wait().await;
+        assert_eq!(q.size().await, 0)
+    }
+
+    #[tokio::test]
     async fn test_is_empty() {
         let mut pq = AgentPriorityQueue::new();
         assert!(pq.is_empty().await);
 
-        let agent = AgentMeta::new("localhost".to_string(), 9999, 2, 0);
+        let agent = AgentMeta::new("localhost".to_string(), 9999, 0);
         pq.push(agent).await;
         assert!(!pq.is_empty().await);
     }
@@ -293,15 +311,20 @@ mod tests {
     #[tokio::test]
     async fn test_basic_apq() {
         let mut pq = AgentPriorityQueue::new();
-        let agents = vec![
-            AgentMeta::new("localhost".to_string(), 9999, 2, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 3, 0),
-            AgentMeta::new("localhost".to_string(), 9997, 1, 0),
+        let mut agents = vec![
+            AgentMeta::new("localhost".to_string(), 9997, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 0),
+            AgentMeta::new("localhost".to_string(), 9999, 0),
         ];
-        for ag_meta in agents {
-            pq.push(ag_meta).await
+        let simulated_utilisation: Vec<usize> = vec![2, 3, 1];
+        for utilisation in simulated_utilisation {
+            let mut ag_meta = agents.pop().unwrap();
+            for _ in 0..(utilisation.clone() as i32) {
+                ag_meta.inc_running_tasks();
+            }
+            pq.push(ag_meta.clone()).await
         }
-        // capacity for all should be max - 0 to start
+        // utilisation for all should be max - 0 to start
         let top = pq.pop().await.unwrap();
         assert_eq!(&top.agent_id(), "localhost-9998");
 
@@ -318,14 +341,19 @@ mod tests {
     #[tokio::test]
     async fn test_update_timestamp() {
         let mut pq = AgentPriorityQueue::new();
-        let agents = vec![
-            AgentMeta::new("localhost".to_string(), 9999, 3, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 4, 0),
-            AgentMeta::new("localhost".to_string(), 9997, 2, 0),
-            AgentMeta::new("localhost".to_string(), 9996, 1, 0),
+        let mut agents = vec![
+            AgentMeta::new("localhost".to_string(), 9996, 0),
+            AgentMeta::new("localhost".to_string(), 9997, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 0),
+            AgentMeta::new("localhost".to_string(), 9999, 0),
         ];
-        for ag_meta in agents {
-            pq.push(ag_meta).await
+        let simulated_utilisation: Vec<usize> = vec![3, 4, 2, 1];
+        for utilisation in simulated_utilisation {
+            let mut ag_meta = agents.pop().unwrap();
+            for _ in 0..(utilisation.clone() as i32) {
+                ag_meta.inc_running_tasks();
+            }
+            pq.push(ag_meta.clone()).await
         }
 
         assert!(pq
@@ -345,7 +373,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_timestamp_not_exist() {
         let mut pq = AgentPriorityQueue::new();
-        let agents = vec![AgentMeta::new("somedude".to_string(), 9999, 3, 0)];
+        let agents = vec![AgentMeta::new("somedude".to_string(), 9999, 0)];
         for ag_meta in agents {
             pq.push(ag_meta).await
         }
@@ -356,15 +384,22 @@ mod tests {
     #[tokio::test]
     async fn test_remove() {
         let mut pq = AgentPriorityQueue::new();
-        let agents = vec![
-            AgentMeta::new("not-edit".to_string(), 9999, 3, 0),
-            AgentMeta::new("to-edit".to_string(), 9998, 4, 0),
-            AgentMeta::new("not-edit".to_string(), 9997, 2, 0),
-            AgentMeta::new("not-edit".to_string(), 9996, 1, 0),
+        let mut agents = vec![
+            AgentMeta::new("not-edit".to_string(), 9996, 0),
+            AgentMeta::new("not-edit".to_string(), 9997, 0),
+            AgentMeta::new("to-edit".to_string(), 9998, 0),
+            AgentMeta::new("not-edit".to_string(), 9999, 0),
         ];
-        for ag_meta in agents {
-            pq.push(ag_meta).await
+
+        let simulated_utilisation: Vec<usize> = vec![3, 4, 2, 1];
+        for utilisation in simulated_utilisation {
+            let mut ag_meta = agents.pop().unwrap();
+            for _ in 0..(utilisation.clone() as i32) {
+                ag_meta.inc_running_tasks();
+            }
+            pq.push(ag_meta.clone()).await
         }
+
         let agent_id = "to-edit-9998";
         let agent_meta = pq
             .remove(agent_id)
@@ -385,72 +420,94 @@ mod tests {
     #[tokio::test]
     async fn test_update_running_tasks_inc() {
         let mut pq = AgentPriorityQueue::new();
-        let agents = vec![
-            AgentMeta::new("localhost".to_string(), 9999, 1, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 2, 0),
-            AgentMeta::new("localhost".to_string(), 9997, 3, 0),
-            AgentMeta::new("localhost".to_string(), 9996, 4, 0),
+        let mut agents = vec![
+            AgentMeta::new("localhost".to_string(), 9996, 0),
+            AgentMeta::new("localhost".to_string(), 9997, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 0),
+            AgentMeta::new("localhost".to_string(), 9999, 0),
         ];
-        for ag_meta in agents {
-            pq.push(ag_meta).await
+
+        let simulated_utilisation: Vec<usize> = vec![1, 2, 3, 4];
+        for utilisation in simulated_utilisation {
+            let mut ag_meta = agents.pop().unwrap();
+            for _ in 0..(utilisation.clone() as i32) {
+                ag_meta.inc_running_tasks();
+            }
+            pq.push(ag_meta.clone()).await
         }
+
         // check increase task
-        pq.update_running_tasks("localhost-9998", true).await;
+        let _ = pq.update_running_tasks("localhost-9998", true).await;
 
         let am = pq.remove("localhost-9998").await.unwrap();
-        assert_eq!(am.capacity(), 1); // 2 (max tasks) - 1 (increase) == 1
+        assert_eq!(am.utilisation(), 3);
     }
     #[tokio::test]
     async fn test_update_running_tasks_dec() {
         let mut pq = AgentPriorityQueue::new();
-        let mut already_running = AgentMeta::new("localhost".to_string(), 9996, 4, 0);
+        let mut already_running = AgentMeta::new("localhost".to_string(), 9996, 0);
         already_running.inc_running_tasks();
 
-        assert_eq!(already_running.capacity(), 3);
+        assert_eq!(already_running.utilisation(), 1);
+        let _ = pq.push(already_running).await;
 
-        let agents = vec![
-            AgentMeta::new("localhost".to_string(), 9999, 1, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 2, 0),
-            AgentMeta::new("localhost".to_string(), 9997, 3, 0),
-            already_running,
+        // put some other items in there
+        let mut agents = vec![
+            AgentMeta::new("localhost".to_string(), 9997, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 0),
+            AgentMeta::new("localhost".to_string(), 9999, 0),
         ];
-        for ag_meta in agents {
-            pq.push(ag_meta).await
+
+        let simulated_utilisation: Vec<usize> = vec![1, 2, 3];
+        for utilisation in simulated_utilisation {
+            let mut ag_meta = agents.pop().unwrap();
+            for _ in 0..(utilisation.clone() as i32) {
+                ag_meta.inc_running_tasks();
+            }
+            pq.push(ag_meta.clone()).await
         }
+
         // check decrease task
         pq.update_running_tasks("localhost-9996", false)
             .await
             .unwrap();
 
         let am = pq.remove("localhost-9996").await.unwrap();
-        assert_eq!(am.capacity(), 4); // back to full capacity
+        assert_eq!(am.utilisation(), 0); // back to 0 utilisation
     }
 
     #[tokio::test]
     async fn test_update_running_tasks_flow() {
-        // this test should show that we can update the capacity
+        // this test should show that we can update the utilisation
         // of an item which then changes it's place in the queue
         let mut pq = AgentPriorityQueue::new();
-        let agents = vec![
-            AgentMeta::new("localhost".to_string(), 9999, 1, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 2, 0),
-            AgentMeta::new("localhost".to_string(), 9997, 3, 0),
-            AgentMeta::new("localhost".to_string(), 9996, 4, 0),
+        let mut agents = vec![
+            AgentMeta::new("localhost".to_string(), 9996, 0),
+            AgentMeta::new("localhost".to_string(), 9997, 0),
+            AgentMeta::new("localhost".to_string(), 9998, 0),
+            AgentMeta::new("localhost".to_string(), 9999, 0),
         ];
-        for ag_meta in agents {
-            pq.push(ag_meta).await
+
+        let simulated_utilisation: Vec<usize> = vec![1, 2, 3, 4];
+        for utilisation in simulated_utilisation {
+            let mut ag_meta = agents.pop().unwrap();
+            for _ in 0..(utilisation.clone() as i32) {
+                ag_meta.inc_running_tasks();
+            }
+            pq.push(ag_meta.clone()).await
         }
 
-        // assert 9996 with highest capacty is top of the queue
+        // assert 9996 with highest utilisation is top of the queue
         let am = pq.pop().await.expect("should be popping here");
         assert_eq!(am.agent_id(), "localhost-9996".to_string());
         pq.push(am).await;
 
-        // simulate two tasks running on 9996 which now makes 9997 top of the queue
-        pq.update_running_tasks("localhost-9996", true)
+        // simulate two tasks running on 9997 which now makes 9997 top of the queue
+        pq.update_running_tasks("localhost-9997", true)
             .await
             .expect("Should be able to increase");
-        pq.update_running_tasks("localhost-9996", true)
+
+        pq.update_running_tasks("localhost-9997", true)
             .await
             .expect("Should be able to increase");
 

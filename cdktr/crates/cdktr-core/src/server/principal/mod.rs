@@ -25,28 +25,18 @@ pub struct PrincipalServer {
 }
 
 impl PrincipalServer {
-    pub fn new(
-        db_cnxn: Arc<Mutex<SqliteConnection>>,
-        instance_id: String,
-        live_agents: Option<AgentPriorityQueue>,
-        task_queue: AsyncQueue<Task>,
-    ) -> Self {
-        let live_agents = live_agents.unwrap_or(AgentPriorityQueue::new());
+    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>>, instance_id: String) -> Self {
         Self {
             db_cnxn,
-            live_agents,
             instance_id,
-            task_queue,
+            live_agents: AgentPriorityQueue::new(),
+            task_queue: AsyncQueue::new(),
         }
     }
 
     /// Registers the agent with the principal server. If it exists
     /// already then it simply updates with the latest timestamp
-    async fn register_agent(
-        &mut self,
-        agent_id: &String,
-        max_tasks: usize,
-    ) -> (ClientResponseMessage, usize) {
+    async fn register_agent(&mut self, agent_id: &String) -> (ClientResponseMessage, usize) {
         let now = Utc::now().timestamp_micros();
         let update_result = self.live_agents.update_timestamp(agent_id, now).await;
         match update_result {
@@ -54,7 +44,7 @@ impl PrincipalServer {
             Err(_e) => {
                 // agent not registered before so add new
                 let (a_host, a_port) = split_instance_id(agent_id);
-                let agent_meta = AgentMeta::new(a_host, a_port, max_tasks, now);
+                let agent_meta = AgentMeta::new(a_host, a_port, now);
                 self.live_agents.push(agent_meta).await
             }
         };
@@ -82,13 +72,10 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 helpers::handle_delete_task(&mut db_cnxn, task_id)
             }
-            PrincipalAPI::RunTask(task) => {
-                self.task_queue.put(task).await;
-                (ClientResponseMessage::Success, 0)
+            PrincipalAPI::AddTask(task) => {
+                helpers::handle_add_task(task, &mut self.task_queue).await
             }
-            PrincipalAPI::RegisterAgent(agent_id, max_tasks) => {
-                self.register_agent(&agent_id, max_tasks).await
-            }
+            PrincipalAPI::RegisterAgent(agent_id) => self.register_agent(&agent_id).await,
             PrincipalAPI::AgentTaskStatusUpdate(agent_id, task_id, status) => {
                 helpers::handle_agent_task_status_update(
                     self.live_agents.clone(),
@@ -122,7 +109,7 @@ mod tests {
             "LISTTASKS",
             "CREATETASK|echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744",
             "DELETETASK|1",
-            "RUNTASK|PROCESS|echo|hello",
+            "ADDTASK|PROCESS|echo|hello",
             "REGISTERAGENT|8999|2",
         ];
         for zmq_s in all_happies {
@@ -160,7 +147,7 @@ mod tests {
             ),
             ("DELETETASK|1", ClientResponseMessage::Success, 0),
             (
-                "RUNTASK|PROCESS|echo|hello",
+                "ADDTASK|PROCESS|echo|hello",
                 ClientResponseMessage::Success,
                 0,
             ),
@@ -171,8 +158,7 @@ mod tests {
             ),
         ];
 
-        let mut server =
-            PrincipalServer::new(get_db(), "fake_ins".to_string(), None, AsyncQueue::new());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
         for (zmq_s, response, exp_exit_code) in test_params {
             println!("Testing {zmq_s}");
             let zmq_msg = ZmqMessage::from(zmq_s);
@@ -187,10 +173,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_new() {
-        let mut server =
-            PrincipalServer::new(get_db(), "fake_ins".to_string(), None, AsyncQueue::new());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
         let agent_id = String::from("localhost-4567");
-        let (resp, exit_code) = server.register_agent(&agent_id, 3).await;
+        let (resp, exit_code) = server.register_agent(&agent_id).await;
         {
             server.live_agents.pop().await.unwrap();
         }
@@ -200,31 +185,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_already_exists() {
-        let mut server =
-            PrincipalServer::new(get_db(), "fake_ins".to_string(), None, AsyncQueue::new());
+        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
         let agent_id = String::from("localhost-4567");
-        let max_tasks = 3;
-        server.register_agent(&agent_id, max_tasks).await;
+        server.register_agent(&agent_id).await;
         let old_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };
         sleep(Duration::from_micros(10));
-        let (resp, exit_code) = server.register_agent(&agent_id, 3).await;
+        let (resp, exit_code) = server.register_agent(&agent_id).await;
         let new_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };
         assert!(new_timestamp > old_timestamp);
         assert!(resp == ClientResponseMessage::Success);
         assert!(exit_code == 0)
-    }
-
-    #[tokio::test]
-    async fn test_run_task() {
-        let mut task_queue = AsyncQueue::new();
-        let mut server =
-            PrincipalServer::new(get_db(), "fake_ins".to_string(), None, task_queue.clone());
-        let zmq_message = ZmqMessage::from("RUNTASK|PROCESS|echo|hello world");
-        let run_task_msg = PrincipalAPI::try_from(zmq_message).expect("Should be a valid messge");
-        let (resp, code) = server.handle_client_message(run_task_msg).await;
-        assert_eq!(resp, ClientResponseMessage::Success);
-        assert_eq!(code, 0);
-        assert!(!&task_queue.is_empty().await);
-        assert!(task_queue.get().await.is_some());
     }
 }
