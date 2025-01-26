@@ -18,7 +18,7 @@ mod utils;
 
 use config::{Component, PageComponent};
 
-pub struct App {
+struct App {
     tab: usize,
     tabs: Vec<PageComponent>,
     exit: bool,
@@ -146,8 +146,7 @@ impl Widget for &App {
     }
 }
 
-#[tokio::main]
-async fn main() -> io::Result<()> {
+pub async fn tui_main() -> io::Result<()> {
     let mut terminal = tui::init()?;
     let app_config = config::AppConfig::new();
     let app_result = App::new(app_config).run(&mut terminal).await;

@@ -140,22 +140,20 @@ impl Into<ZMQArgs> for ZmqMessage {
 /// status
 #[derive(Clone, Debug)]
 pub struct AgentMeta {
-    pub host: String,
-    pub port: usize,
+    agent_id: String,
     running_tasks: usize,
     pub last_ping_timestamp: i64,
 }
 impl AgentMeta {
-    pub fn new(host: String, port: usize, last_ping_timestamp: i64) -> Self {
+    pub fn new(agent_id: String, last_ping_timestamp: i64) -> Self {
         Self {
-            host,
-            port,
+            agent_id,
             last_ping_timestamp,
             running_tasks: 0,
         }
     }
     pub fn agent_id(&self) -> String {
-        get_instance_id(&self.host, self.port)
+        self.agent_id.clone()
     }
 
     pub fn update_timestamp(&mut self, new_ts: i64) {
@@ -187,7 +185,7 @@ mod tests {
 
     #[test]
     fn test_agent_meta_methods() {
-        let mut agent = AgentMeta::new("localhost".to_string(), 9999, 0);
+        let mut agent = AgentMeta::new("localhost-9999".to_string(), 0);
         assert_eq!(agent.agent_id(), "localhost-9999");
         assert_eq!(agent.utilisation(), 0);
 

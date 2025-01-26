@@ -1,21 +1,21 @@
 book:
 	mdbook serve ./cdkr-book --open
 test:
-	cd cdktr && cargo test
+	cargo test
 fmt:
-	cd cdktr && cargo fmt
+	cargo fmt
 setup:
 # setup dotenv
 	printf "CDKTR_PRINCIPAL_PORT=5561\nRUST_LOG=info" > .env
 # render mermaid diagrams in docs
 	cargo install mdbook-mermaid
 commit:
-	cd cdktr && cargo fmt --check
+	cargo fmt --check
 push: test
 
 principal:
-	cd cdktr && cargo run --bin cdktr-cli PRINCIPAL
+	cd cdktr && cargo run --bin cdktr-cli -- start -i principal
 agent:
-	cd cdktr && cargo run --bin cdktr-cli AGENT 5562
+	cd cdktr && cargo run --bin cdktr-cli -- start -i agent
 tui:
 	cd cdktr && cargo run --bin cdktr-tui

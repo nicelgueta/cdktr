@@ -302,7 +302,7 @@ mod tests {
         let mut pq = AgentPriorityQueue::new();
         assert!(pq.is_empty().await);
 
-        let agent = AgentMeta::new("localhost".to_string(), 9999, 0);
+        let agent = AgentMeta::new("localhost-9999".to_string(), 0);
         pq.push(agent).await;
         assert!(!pq.is_empty().await);
     }
@@ -311,9 +311,9 @@ mod tests {
     async fn test_basic_apq() {
         let mut pq = AgentPriorityQueue::new();
         let mut agents = vec![
-            AgentMeta::new("localhost".to_string(), 9997, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 0),
-            AgentMeta::new("localhost".to_string(), 9999, 0),
+            AgentMeta::new("localhost-9997".to_string(), 0),
+            AgentMeta::new("localhost-9998".to_string(), 0),
+            AgentMeta::new("localhost-9999".to_string(), 0),
         ];
         let simulated_utilisation: Vec<usize> = vec![2, 3, 1];
         for utilisation in simulated_utilisation {
@@ -341,10 +341,10 @@ mod tests {
     async fn test_update_timestamp() {
         let mut pq = AgentPriorityQueue::new();
         let mut agents = vec![
-            AgentMeta::new("localhost".to_string(), 9996, 0),
-            AgentMeta::new("localhost".to_string(), 9997, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 0),
-            AgentMeta::new("localhost".to_string(), 9999, 0),
+            AgentMeta::new("localhost-9996".to_string(), 0),
+            AgentMeta::new("localhost-9997".to_string(), 0),
+            AgentMeta::new("localhost-9998".to_string(), 0),
+            AgentMeta::new("localhost-9999".to_string(), 0),
         ];
         let simulated_utilisation: Vec<usize> = vec![3, 4, 2, 1];
         for utilisation in simulated_utilisation {
@@ -355,10 +355,7 @@ mod tests {
             pq.push(ag_meta.clone()).await
         }
 
-        assert!(pq
-            .update_timestamp(&"localhost-9997".to_string(), 2)
-            .await
-            .is_ok());
+        assert!(pq.update_timestamp(&"localhost-9997", 2).await.is_ok());
 
         // check is updated when accessed via pop
         // (third item)
@@ -372,7 +369,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_timestamp_not_exist() {
         let mut pq = AgentPriorityQueue::new();
-        let agents = vec![AgentMeta::new("somedude".to_string(), 9999, 0)];
+        let agents = vec![AgentMeta::new("somedude-9999".to_string(), 0)];
         for ag_meta in agents {
             pq.push(ag_meta).await
         }
@@ -384,10 +381,10 @@ mod tests {
     async fn test_remove() {
         let mut pq = AgentPriorityQueue::new();
         let mut agents = vec![
-            AgentMeta::new("not-edit".to_string(), 9996, 0),
-            AgentMeta::new("not-edit".to_string(), 9997, 0),
-            AgentMeta::new("to-edit".to_string(), 9998, 0),
-            AgentMeta::new("not-edit".to_string(), 9999, 0),
+            AgentMeta::new("not-edit-9996".to_string(), 0),
+            AgentMeta::new("not-edit-9997".to_string(), 0),
+            AgentMeta::new("to-edit-9998".to_string(), 0),
+            AgentMeta::new("not-edit-9999".to_string(), 0),
         ];
 
         let simulated_utilisation: Vec<usize> = vec![3, 4, 2, 1];
@@ -420,10 +417,10 @@ mod tests {
     async fn test_update_running_tasks_inc() {
         let mut pq = AgentPriorityQueue::new();
         let mut agents = vec![
-            AgentMeta::new("localhost".to_string(), 9996, 0),
-            AgentMeta::new("localhost".to_string(), 9997, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 0),
-            AgentMeta::new("localhost".to_string(), 9999, 0),
+            AgentMeta::new("localhost-9996".to_string(), 0),
+            AgentMeta::new("localhost-9997".to_string(), 0),
+            AgentMeta::new("localhost-9998".to_string(), 0),
+            AgentMeta::new("localhost-9999".to_string(), 0),
         ];
 
         let simulated_utilisation: Vec<usize> = vec![1, 2, 3, 4];
@@ -444,7 +441,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_running_tasks_dec() {
         let mut pq = AgentPriorityQueue::new();
-        let mut already_running = AgentMeta::new("localhost".to_string(), 9996, 0);
+        let mut already_running = AgentMeta::new("localhost-9996".to_string(), 0);
         already_running.inc_running_tasks();
 
         assert_eq!(already_running.utilisation(), 1);
@@ -452,9 +449,9 @@ mod tests {
 
         // put some other items in there
         let mut agents = vec![
-            AgentMeta::new("localhost".to_string(), 9997, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 0),
-            AgentMeta::new("localhost".to_string(), 9999, 0),
+            AgentMeta::new("localhost-9997".to_string(), 0),
+            AgentMeta::new("localhost-9998".to_string(), 0),
+            AgentMeta::new("localhost-9999".to_string(), 0),
         ];
 
         let simulated_utilisation: Vec<usize> = vec![1, 2, 3];
@@ -481,10 +478,10 @@ mod tests {
         // of an item which then changes it's place in the queue
         let mut pq = AgentPriorityQueue::new();
         let mut agents = vec![
-            AgentMeta::new("localhost".to_string(), 9996, 0),
-            AgentMeta::new("localhost".to_string(), 9997, 0),
-            AgentMeta::new("localhost".to_string(), 9998, 0),
-            AgentMeta::new("localhost".to_string(), 9999, 0),
+            AgentMeta::new("localhost-9996".to_string(), 0),
+            AgentMeta::new("localhost-9997".to_string(), 0),
+            AgentMeta::new("localhost-9998".to_string(), 0),
+            AgentMeta::new("localhost-9999".to_string(), 0),
         ];
 
         let simulated_utilisation: Vec<usize> = vec![1, 2, 3, 4];

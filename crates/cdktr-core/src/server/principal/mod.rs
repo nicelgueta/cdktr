@@ -7,10 +7,7 @@ use tokio::sync::Mutex;
 use crate::{
     api::PrincipalAPI,
     models::{AgentMeta, Task},
-    utils::{
-        data_structures::{AgentPriorityQueue, AsyncQueue},
-        split_instance_id,
-    },
+    utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
 
 use super::{models::ClientResponseMessage, traits::Server};
@@ -43,8 +40,7 @@ impl PrincipalServer {
             Ok(_) => (),
             Err(_e) => {
                 // agent not registered before so add new
-                let (a_host, a_port) = split_instance_id(agent_id);
-                let agent_meta = AgentMeta::new(a_host, a_port, now);
+                let agent_meta = AgentMeta::new(agent_id.clone(), now);
                 self.live_agents.push(agent_meta).await
             }
         };
