@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[derive(clap::ValueEnum, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
