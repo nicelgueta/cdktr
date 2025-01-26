@@ -37,6 +37,13 @@ pub enum PrincipalAPI {
     /// Args:
     ///     agent_id, task_id, status
     AgentTaskStatusUpdate(String, String, TaskStatus),
+    /// An endpoint that can be polled for work by Agents. Agents provide their
+    /// instance id token (agent_id) and if there is work available on the task queue
+    /// then the principal will pop a task from the global queue and provide it to the agent
+    /// if not, it will just send a simple Success (OK) message
+    /// Args:
+    ///     agent_id
+    FetchTask(String),
 }
 
 impl TryFrom<ZMQArgs> for PrincipalAPI {
@@ -76,6 +83,10 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                 },
                 None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
             },
+            "FETCHTASK" => match args.next() {
+                Some(agent_id) => Ok(Self::FetchTask(agent_id)),
+                None => Err(RepReqError::ParseError("Missing agent id".to_string())),
+            },
             _ => Err(RepReqError::ParseError(format!(
                 "Unrecognised message type: {}",
                 msg_type
@@ -86,7 +97,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
 
 impl API for PrincipalAPI {
     fn get_meta(&self) -> Vec<APIMeta> {
-        const META: [(&'static str, &'static str); 7] = [
+        const META: [(&'static str, &'static str); 8] = [
             ("PING", "Check server is online"),
             (
                 "CREATETASK",
@@ -112,6 +123,10 @@ impl API for PrincipalAPI {
                 "AGENTTASKSTATUS",
                 "Allows an agent to update the principal with the status of a specific task",
             ),
+            (
+                "FETCHTASK",
+                "Allows an agent to fetch a unit or work from the principal task queue. Returns a success message if there is no work to do."
+            )
         ];
         META.iter()
             .map(|(action, desc)| APIMeta::new(action.to_string(), desc.to_string()))
@@ -141,6 +156,9 @@ impl API for PrincipalAPI {
             Self::AgentTaskStatusUpdate(agent_id, task_id, status) => {
                 let status = status.to_string();
                 format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{status}")
+            }
+            Self::FetchTask(agent_id) => {
+                format!("FETCHTASK|{agent_id}")
             }
         }
     }
@@ -299,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_principal_req_from_zmq_str() {
-        let req_types = ["PING"];
+        let req_types = ["PING", "FETCHTASK|1234"];
         for rt in req_types {
             PrincipalAPI::try_from(ZmqMessage::from(rt))
                 .expect(&format!("Failed to create AgentAPI from {}", rt));

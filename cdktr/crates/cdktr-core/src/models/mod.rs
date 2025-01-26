@@ -70,6 +70,7 @@ impl TaskStatus {
 /// `TASKDEF|PROCESS|ls|thisdir`
 /// The tokens would be: ["PROCESS", "ls", "thisdir"]. This is because the message
 /// would have already been determined to be a task definition (TASKDEF)
+#[derive(Debug)]
 pub struct ZMQArgs {
     inner: VecDeque<String>,
 }
@@ -84,10 +85,20 @@ impl ZMQArgs {
     pub fn len(&self) -> usize {
         self.inner.len()
     }
+    pub fn to_string(&self) -> String {
+        let v = Vec::from(self.inner.clone());
+        v.join("|")
+    }
 }
 impl Into<Vec<String>> for ZMQArgs {
     fn into(self) -> Vec<String> {
         self.inner.into()
+    }
+}
+impl Into<String> for ZMQArgs {
+    fn into(self) -> String {
+        let v: Vec<String> = self.inner.into();
+        v.join("|")
     }
 }
 
@@ -215,5 +226,13 @@ mod tests {
     fn test_zmqargs_from_string() {
         let zmq_args = ZMQArgs::from("arg1|arg2".to_string());
         assert_eq!(zmq_args.len(), 2);
+    }
+
+    #[test]
+    fn test_zmqargs_to_string() {
+        let zmq_args = ZMQArgs::from("arg1|arg2|arg3 and space|arg4".to_string());
+        assert_eq!(zmq_args.len(), 4);
+        let st = zmq_args.to_string();
+        assert_eq!(st, "arg1|arg2|arg3 and space|arg4".to_string())
     }
 }

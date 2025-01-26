@@ -33,7 +33,7 @@ impl APIMeta {
 
 /// The API trait defines the interface for the ZMQ-based APIs that external modules and systems
 /// can leverage to communicate with CDKTR. The APIs are also used internally between different components
-///  
+///
 #[async_trait]
 pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFrom<ZMQArgs> {
     // returns the metadata for all implemented endpoints
@@ -50,6 +50,9 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
     ) -> Result<ClientResponseMessage, GenericError> {
         trace!("Requesting @ {} with msg: {}", tcp_uri, self.to_string());
         let zmq_m = send_recv_with_timeout(tcp_uri.to_string(), self.into(), timeout).await?;
-        Ok(ClientResponseMessage::from(zmq_m))
+        // dbg!(&zmq_m);
+        let cli_msg = ClientResponseMessage::from(zmq_m);
+        // dbg!(&cli_msg);
+        Ok(cli_msg)
     }
 }

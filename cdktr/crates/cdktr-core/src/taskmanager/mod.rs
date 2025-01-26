@@ -113,19 +113,19 @@ impl TaskManager {
 
     async fn task_execution_loop(&mut self) {
         loop {
-            while self.task_queue.is_empty().await
-                || *self.thread_counter.lock().await > self.max_threads
-            {
+            while *self.thread_counter.lock().await >= self.max_threads {
                 // if the queue is empty (no tasks to do) or the manager is currently running the
                 // maxium allowed concurrent threads then just hang tight
-                trace!("Waiting");
-                sleep(Duration::from_micros(500)).await
+                trace!("Local task queue is full - waiting for completion");
+                sleep(Duration::from_micros(1000)).await
             }
-            let task = {
-                self.task_queue.get().await.expect(&format!(
-                    "TASKMANAGER-{}: Unable to pop task from queue",
-                    &self.instance_id
-                ))
+            let task_result = self.task_queue.get().await;
+            let task = match task_result {
+                None => {
+                    trace!("No tasks on local queue");
+                    continue;
+                }
+                Some(task) => task,
             };
             let task_exe_result = self.run_in_executor(task).await;
             match task_exe_result {

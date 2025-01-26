@@ -21,7 +21,7 @@ async fn _main() {
     let instance_host = env::var("CDKTR_INSTANCE_HOST").unwrap_or("0.0.0.0".to_string());
     let principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
     let database_url: Option<String> = None;
-    let max_tm_tasks = 8;
+    let max_tm_tasks = 1;
 
     let principal_port = match env::var("CDKTR_PRINCIPAL_PORT") {
         Ok(port) => port

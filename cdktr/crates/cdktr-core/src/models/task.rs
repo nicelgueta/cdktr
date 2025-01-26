@@ -46,7 +46,7 @@ impl TryFrom<ZMQArgs> for Task {
                     arg
                 } else {
                     return Err(ZMQParseError::ParseError(
-                        "Missing tokens for PROCESS msg. Expected tokens COMMAND and ARGS"
+                        "Missing tokens for PROCESS msg. Expected tokens COMMAND and (optional) ARGS"
                             .to_string(),
                     ));
                 };

@@ -8,12 +8,11 @@ use crate::{
     models::Task,
     server::{principal::PrincipalServer, traits::Server},
     taskmanager,
-    utils::{
-        data_structures::{AgentPriorityQueue, AsyncQueue},
-        get_instance_id,
-    },
+    utils::{data_structures::AsyncQueue, get_instance_id},
     zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT},
 };
+
+const POLL_INTERVAL_MS: u64 = 1;
 
 pub enum InstanceType {
     PRINCIPAL,
@@ -41,22 +40,31 @@ impl InstanceType {
 }
 
 /// Spawns the TaskManager in a separate coroutine
-async fn spawn_tm(instance_id: String, max_tm_tasks: usize) -> tokio::task::JoinHandle<()> {
+async fn spawn_tm(
+    instance_id: String,
+    max_tm_tasks: usize,
+    task_queue: AsyncQueue<Task>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let task_queue = AsyncQueue::new();
         let mut tm = taskmanager::TaskManager::new(instance_id, max_tm_tasks, task_queue);
         tm.start().await
     })
 }
 
-async fn start_heartbeat_loop(principal_client: &PrincipalClient, principal_uri: &str) {
+async fn start_fetch_task_loop(
+    mut task_queue: AsyncQueue<Task>,
+    principal_client: &PrincipalClient,
+    principal_uri: &str,
+) {
     loop {
         loop {
-            sleep(Duration::from_millis(1000)).await;
-            if let Err(_e) = principal_client
-                .heartbeat(principal_uri, DEFAULT_TIMEOUT)
+            sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
+            if let Err(e) = principal_client
+                .process_fetch_task(&mut task_queue, principal_uri, DEFAULT_TIMEOUT)
                 .await
             {
+                let msg = e.to_string();
+                debug!("Failed get success on fetching task: {}", msg);
                 break;
             }
         }
@@ -114,13 +122,14 @@ impl Hub {
                     .await;
 
                 // create the task manager that handles the task execution threads
+                let task_queue = AsyncQueue::new();
                 let max_tasks = max_tm_tasks.expect(
                     "Agent cannot be instantiatied without specifying max number of concurrent tasks it can handle."
                 );
-                spawn_tm(instance_id, max_tasks).await;
+                spawn_tm(instance_id, max_tasks, task_queue.clone()).await;
 
                 debug!("Starting agent heartbeat loop");
-                start_heartbeat_loop(&principal_client, &principal_uri).await;
+                start_fetch_task_loop(task_queue, &principal_client, &principal_uri).await;
             }
         };
     }

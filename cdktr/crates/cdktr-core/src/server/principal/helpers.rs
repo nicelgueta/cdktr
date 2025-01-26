@@ -9,7 +9,7 @@ use crate::{
 };
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
-use log::debug;
+use log::{debug, info, trace};
 
 pub fn handle_create_task(
     db_cnxn: &mut SqliteConnection,
@@ -97,12 +97,36 @@ pub async fn handle_add_task(
     task: Task,
     queue: &mut AsyncQueue<Task>,
 ) -> (ClientResponseMessage, usize) {
-    debug!(
+    info!(
         "Adding task to global task queue - task -> {}",
         task.to_string()
     );
     queue.put(task).await;
+    info!("Current task queue size: {}", queue.size().await);
     (ClientResponseMessage::Success, 0)
+}
+
+pub async fn handle_fetch_task(
+    task_queue: &mut AsyncQueue<Task>,
+    agent_id: String,
+) -> (ClientResponseMessage, usize) {
+    // TODO: do something with the agent ID like this agent is allowed to
+    // process this type of task
+    let task_res = task_queue.get().await;
+    if let Some(task) = task_res {
+        info!(
+            "Agent {agent_id} requested task | Sending task -> {}",
+            task.to_string()
+        );
+        info!("Current task queue size: {}", task_queue.size().await);
+        (
+            ClientResponseMessage::SuccessWithPayload(task.to_string()),
+            0,
+        )
+    } else {
+        trace!("No task found - sending empty success to client");
+        (ClientResponseMessage::Success, 0)
+    }
 }
 
 #[cfg(test)]
@@ -218,5 +242,44 @@ mod tests {
         let task = Task::try_from("PROCESS|echo|hello world".to_string()).unwrap();
         handle_add_task(task, &mut queue).await;
         assert_eq!(queue.size().await, 1)
+    }
+
+    #[tokio::test]
+    async fn test_fetch_task_no_tasks() {
+        let mut task_queue = AsyncQueue::new();
+        assert_eq!(task_queue.size().await, 0);
+
+        let (cli_msg, code) = handle_fetch_task(&mut task_queue, "1234".to_string()).await;
+
+        assert_eq!(task_queue.size().await, 0);
+        assert_eq!(cli_msg, ClientResponseMessage::Success);
+        assert_eq!(code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_task_2_tasks() {
+        let mut task_queue = AsyncQueue::new();
+
+        // put some dummy tasks onthe queue
+        task_queue
+            .put(Task::try_from("PROCESS|echo|hello world".to_string()).unwrap())
+            .await;
+        task_queue
+            .put(Task::try_from("PROCESS|echo|hello world".to_string()).unwrap())
+            .await;
+
+        assert_eq!(task_queue.size().await, 2);
+
+        let (cli_msg, code) = handle_fetch_task(&mut task_queue, "1234".to_string()).await;
+
+        assert_eq!(task_queue.size().await, 1);
+
+        assert_eq!(
+            cli_msg,
+            ClientResponseMessage::SuccessWithPayload("PROCESS|echo|hello world".to_string())
+        );
+        assert_eq!(code, 0);
+
+        assert_eq!(cli_msg.payload(), "PROCESS|echo|hello world".to_string())
     }
 }

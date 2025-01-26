@@ -5,14 +5,15 @@ use tokio::time::sleep;
 use crate::{
     api::{PrincipalAPI, API},
     exceptions::GenericError,
-    prelude::ClientResponseMessage,
-    prelude::CDKTR_DEFAULT_TIMEOUT,
+    models::Task,
+    prelude::{ClientResponseMessage, CDKTR_DEFAULT_TIMEOUT},
+    utils::data_structures::AsyncQueue,
 };
 
 mod helpers;
 
-const RETRY_ATTEMPTS: &'static str = "10";
-const RETRY_INTERVAL: u64 = 3;
+const RETRY_ATTEMPTS: usize = 10;
+const RETRY_INTERVAL_MS: u64 = 3000;
 
 /// This client is used to house utility functions at a slightly higher level than the raw API
 /// implemented by the PrincipalAPI.
@@ -42,10 +43,7 @@ impl PrincipalClient {
                         break;
                     }
                     other => {
-                        warn!("Non-success message -> {}", {
-                            let m: String = other.into();
-                            m
-                        });
+                        warn!("Non-success message -> {}", other.to_string());
                     }
                 }
             } else {
@@ -57,37 +55,57 @@ impl PrincipalClient {
                     return Err(GenericError::TimeoutError);
                 }
                 warn!(
-                    " Failed to communicate to principal: {} - trying again {} seconds (attempt {} of {})",
+                    " Failed to communicate to principal: {} - trying again in {} ms (attempt {} of {})",
                     reconn_result.unwrap_err().to_string(),
-                    RETRY_INTERVAL,
+                    RETRY_INTERVAL_MS.to_string(),
                     actual_attempts,
                     max_reconnection_attempts
                 );
-                sleep(Duration::from_secs(RETRY_INTERVAL)).await;
+                sleep(Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         }
 
         Ok(())
     }
 
-    pub async fn heartbeat(
+    pub async fn process_fetch_task(
         &self,
+        task_queue: &mut AsyncQueue<Task>,
         principal_uri: &str,
         timeout: Duration,
     ) -> Result<(), GenericError> {
-        let request = PrincipalAPI::Ping;
+        let request = PrincipalAPI::FetchTask(self.instance_id.clone());
         match request.send(&principal_uri, timeout).await {
-            Ok(cli_resp) => {
-                let msg: String = cli_resp.into();
-                trace!("Principal response: {}", msg);
-                Ok(())
-            }
+            Ok(cli_resp) => match cli_resp {
+                ClientResponseMessage::Success => {
+                    trace!("No work on global task queue - waiting");
+                    Ok(())
+                }
+                ClientResponseMessage::SuccessWithPayload(task_str) => {
+                    info!("Task delivered from Principal -> {}", &task_str);
+                    let task_res = Task::try_from(task_str);
+                    match task_res {
+                        Ok(task) => {
+                            task_queue.put(task).await;
+                            Ok(())
+                        }
+                        Err(e) => Err(GenericError::ZMQParseError(e)),
+                    }
+                }
+                other => Err(GenericError::RuntimeError(format!(
+                    "Unexpected client response message received from principal: {}",
+                    other.to_string()
+                ))),
+            },
             Err(e) => match e {
                 GenericError::TimeoutError => {
                     error!("Agent heartbeat timed out pinging principal");
                     Err(GenericError::TimeoutError)
                 }
-                _ => panic!("Unspecified error in principal heartbeat"),
+                e => Err(GenericError::RuntimeError(format!(
+                    "Unspecified error in principal heartbeat: {}",
+                    e.to_string()
+                ))),
             },
         }
     }

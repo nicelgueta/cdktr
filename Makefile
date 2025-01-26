@@ -19,4 +19,3 @@ agent:
 	cd cdktr && cargo run --bin cdktr-cli AGENT 5562
 tui:
 	cd cdktr && cargo run --bin cdktr-tui
-	

@@ -14,7 +14,7 @@ def sync_to_subscriber(port: int):
 
     print("Waiting for sync")
     socket.recv()
-    print("Received sync") 
+    print("Received sync")
     socket.send(b"SYNC")
 
 def create_task():
@@ -41,21 +41,30 @@ def start_req_socket(principal_port):
     while True:
         print("\nWhat do you want to do? ")
         print("1. Simulate a ZMQ event task being sent to the Principal for agent execution")
-        # print("2. Simulate a ZMQ event task being sent to the Principal for agent execution")
+        print("2. Stream a load of tasks with a given interval to the principal")
         ans = input("Answer: ")
         match ans:
             case "1":
                 msg = run_task()
+                if msg:
+                    socket.send(bytes(msg, 'utf-8'))
+                    message = socket.recv()
+                    print(f"Received reply: {message.decode('utf-8')}")
+            case "2":
+                stream_interval_ms = int(input("Set interval in millis: "))
+                task_n = 0
+                while True:
+                    socket.send(bytes(f"ADDTASK|PROCESS|echo|task|{task_n}", 'utf-8'))
+                    message = socket.recv()
+                    print(f"Received reply: {message.decode('utf-8')}")
+                    time.sleep(stream_interval_ms/1000)
+                    task_n+=1
             case _:
                 msg = None
                 print("Not a valid option")
-        if msg:
-            socket.send(bytes(msg, 'utf-8'))
-            message = socket.recv()
-            print(f"Received reply: {message.decode('utf-8')}")
 
 if __name__ == "__main__":
     import dotenv
     dotenv.load_dotenv()
     p_port = int(os.getenv("CDKTR_PRINCIPAL_PORT") or input("Enter principal port number: "))
-    start_req_socket(p_port) 
+    start_req_socket(p_port)

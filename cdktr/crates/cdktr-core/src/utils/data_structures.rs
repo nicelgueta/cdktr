@@ -13,8 +13,7 @@ use tokio::{
 
 /// A simple queue that can be accessed across threads. The queue
 /// holds an internal Arc<Mutex<T>> to abstract the verbose handling
-/// of the mutex from the consumer
-///
+/// of the mutex away from the consumer
 #[derive(Clone, Debug)]
 pub struct AsyncQueue<T> {
     inner: Arc<Mutex<VecDeque<T>>>,

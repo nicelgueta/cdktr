@@ -84,6 +84,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 )
                 .await
             }
+            PrincipalAPI::FetchTask(agent_id) => {
+                helpers::handle_fetch_task(&mut self.task_queue, agent_id).await
+            }
         }
     }
 }
