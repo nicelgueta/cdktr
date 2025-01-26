@@ -151,7 +151,7 @@ pub async fn tui_main() -> io::Result<()> {
     let app_config = config::AppConfig::new();
     let app_result = App::new(app_config).run(&mut terminal).await;
     tui::restore()?;
-    if let (Err(e)) = app_result {
+    if let Err(e) = app_result {
         println!("Error: {:?}", e);
         return Err(e);
     } else {
