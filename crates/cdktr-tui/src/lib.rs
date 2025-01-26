@@ -161,7 +161,6 @@ pub async fn tui_main() -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    
 
     // #[test]
     // fn render() {

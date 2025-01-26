@@ -20,4 +20,3 @@ macro_rules! args_to_model {
         }
     };
 }
-

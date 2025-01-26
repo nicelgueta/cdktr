@@ -1,4 +1,3 @@
-
 use action_factory::{ActionHandler, ACTIONS};
 use ratatui::{
     buffer::Buffer,

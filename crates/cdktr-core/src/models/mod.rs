@@ -1,10 +1,6 @@
 mod task;
 
-use crate::{
-    exceptions,
-    server::models::RepReqError,
-    utils::arg_str_to_vec,
-};
+use crate::{exceptions, server::models::RepReqError, utils::arg_str_to_vec};
 use std::collections::VecDeque;
 pub use task::Task;
 use zeromq::ZmqMessage;
