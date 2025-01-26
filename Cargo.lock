@@ -200,6 +200,7 @@ dependencies = [
  "dotenv",
  "env_logger",
  "log",
+ "rustyrs",
  "serde",
  "tokio",
 ]
@@ -1051,6 +1052,15 @@ name = "rustversion"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
+
+[[package]]
+name = "rustyrs"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0dd07263b37ee5151189c8b8ac71b7e1dd82d2dc46bb2d5a80da52ca637d380e"
+dependencies = [
+ "rand",
+]
 
 [[package]]
 name = "ryu"

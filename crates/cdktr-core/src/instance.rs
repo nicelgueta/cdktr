@@ -12,7 +12,7 @@ use crate::{
     zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT},
 };
 
-const POLL_INTERVAL_MS: u64 = 1;
+const POLL_INTERVAL_MS: u64 = 50;
 
 /// Spawns the TaskManager in a separate coroutine
 async fn spawn_tm(

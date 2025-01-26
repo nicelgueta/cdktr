@@ -6,6 +6,7 @@ use std::env;
 
 use cdktr_core::instance::{start_agent, start_principal};
 use cdktr_tui::tui_main;
+use rustyrs::get_slug;
 
 mod api;
 mod models;
@@ -68,7 +69,7 @@ async fn _main() {
         CdktrCli::Start(args) => {
             let instance_type = args.instance_type;
             let max_tasks = args.max_tasks;
-            let instance_id = "fake-id-1234".to_string();
+            let instance_id = get_slug(3).unwrap();
             info!(
                 "Starting {} instance: {}",
                 instance_type.to_string(),

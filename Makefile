@@ -14,8 +14,8 @@ commit:
 push: test
 
 principal:
-	cd cdktr && cargo run --bin cdktr-cli -- start -i principal
+	cargo run --bin cdktr-cli -- start -i principal
 agent:
-	cd cdktr && cargo run --bin cdktr-cli -- start -i agent
+	cargo run --bin cdktr-cli -- start -i agent
 tui:
-	cd cdktr && cargo run --bin cdktr-tui
+	cargo run --bin cdktr-tui
