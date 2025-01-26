@@ -1,15 +1,14 @@
-use std::collections::HashMap;
 
-use action_factory::{APIAction, ActionHandler, ACTIONS};
+use action_factory::{ActionHandler, ACTIONS};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
-    widgets::{Block, Borders, List, ListState, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, List, ListState, Paragraph, StatefulWidget, Widget},
 };
 
-use crate::{config::Component, utils::vec_to_hashmap};
+use crate::config::Component;
 
 mod action_factory;
 
@@ -68,7 +67,7 @@ impl ControlPanel {
             Color::White
         }
     }
-    async fn toggle_param(&mut self) {}
+    // async fn toggle_param(&mut self) {}
     async fn execute_action(&mut self) {
         let msg = self.action_handler.act().await;
         self.action_handler.update_resp(msg);

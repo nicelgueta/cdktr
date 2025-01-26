@@ -9,7 +9,7 @@ use crate::{
 };
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
-use log::{debug, info, trace};
+use log::{info, trace};
 
 pub fn handle_create_task(
     db_cnxn: &mut SqliteConnection,

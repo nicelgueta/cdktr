@@ -1,9 +1,7 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Style, Stylize},
-    text::{Line, Span, Text},
-    widgets::{Block, Paragraph, Tabs, Widget},
+    layout::Rect,
+    widgets::{Block, Paragraph, Widget},
 };
 
 use crate::config::Component;
@@ -18,7 +16,7 @@ impl Component for Dashboard {
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
         Vec::new()
     }
-    async fn handle_key_event(&mut self, ke: ratatui::crossterm::event::KeyEvent) {}
+    async fn handle_key_event(&mut self, _ke: ratatui::crossterm::event::KeyEvent) {}
 }
 
 impl Dashboard {

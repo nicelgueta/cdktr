@@ -113,8 +113,8 @@ impl PrincipalClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use zeromq::ZmqMessage;
+    
+    
 
     // TODO: add tests
 }

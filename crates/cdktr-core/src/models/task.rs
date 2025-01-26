@@ -1,7 +1,6 @@
 use super::{exceptions::ZMQParseError, ZMQArgs};
-use crate::{exceptions::GenericError, executors::ProcessTask};
+use crate::executors::ProcessTask;
 use serde::Deserialize;
-use zeromq::ZmqMessage;
 
 /// A Task is the encapsulation provided for single unit of work defined and utilised
 /// by difference components of the system. On the ZMQ sockets, it's encoded as a
