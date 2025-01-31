@@ -11,20 +11,21 @@ use rustyrs::get_slug;
 mod api;
 mod models;
 
+/// CDKTR Command Line Interface
+/// You can manage your entire CDKTR setup using this CLI
 #[derive(Parser)]
 #[command(name = "cdktr")]
 #[command(bin_name = "cdktr")]
 enum CdktrCli {
-    Tui,
-    // Task(TaskArgs),
-    Start(StartArgs),
-}
+    /// Open up the main CDKTR TUI
+    Ui,
 
-#[derive(clap::Args)]
-#[command(version, about, long_about = None)]
-struct TaskArgs {
-    #[arg(long, short)]
-    json: Option<std::path::PathBuf>,
+    /// Interact with a live principal instance
+    /// for task management
+    Task(api::TaskArgs),
+
+    /// Start a principal or agent node
+    Start(StartArgs),
 }
 
 #[derive(clap::Args)]
@@ -69,7 +70,7 @@ async fn _main() {
         CdktrCli::Start(args) => {
             let instance_type = args.instance_type;
             let max_tasks = args.max_tasks;
-            let instance_id = get_slug(3).unwrap();
+            let instance_id = get_slug(2).unwrap();
             info!(
                 "Starting {} instance: {}",
                 instance_type.to_string(),
@@ -85,9 +86,10 @@ async fn _main() {
                 }
             }
         }
-        CdktrCli::Tui => {
+        CdktrCli::Ui => {
             let _ = tui_main().await;
             ()
         }
+        CdktrCli::Task(args) => (),
     }
 }

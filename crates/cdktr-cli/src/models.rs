@@ -14,3 +14,11 @@ impl InstanceType {
         }
     }
 }
+
+#[derive(clap::ValueEnum, Clone, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskAction {
+    /// action to create a new task in the principal database
+    Create,
+    Trigger,
+}
