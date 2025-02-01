@@ -2,7 +2,7 @@ use crate::utils::data_structures::AsyncQueue;
 use async_trait::async_trait;
 use tokio::sync::mpsc::Sender;
 
-use super::FlowExecutionResult;
+use super::{FlowExecutionResult, Task};
 
 /// An Executor is a trait that defines the interface for components that
 /// are responsible for executing tasks. The executor is responsible for
@@ -20,3 +20,9 @@ pub trait Executor {
 pub trait EventListener<T> {
     async fn start_listening(&mut self, out_queue: AsyncQueue<T>);
 }
+
+pub trait ToTask {
+    fn to_task(&self) -> Task;
+}
+
+pub trait TaskPayload {}

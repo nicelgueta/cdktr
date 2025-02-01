@@ -2,11 +2,8 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::executors::ProcessTask;
-use crate::{models::Task, utils::arg_str_to_vec};
-
-pub trait ToTask {
-    fn to_task(&self) -> Task;
-}
+use crate::models::{traits::ToTask, Task};
+use crate::utils::arg_str_to_vecd;
 
 #[derive(Queryable, Selectable, Deserialize, Serialize, Debug, Clone, Insertable)]
 #[diesel(table_name = crate::db::schema::schedules)]
@@ -26,7 +23,7 @@ impl ToTask for ScheduledTask {
         match &self.task_type[..] {
             "PROCESS" => {
                 let args = if let Some(astr) = &self.args {
-                    Some(arg_str_to_vec(astr.to_string()).into())
+                    Some(arg_str_to_vecd(&astr.to_string()).into())
                 } else {
                     None
                 };

@@ -1,6 +1,10 @@
 mod task;
 
-use crate::{exceptions, server::models::RepReqError, utils::arg_str_to_vec};
+use crate::{
+    exceptions,
+    server::models::RepReqError,
+    utils::{arg_str_to_vecd, vecd_to_arg_str},
+};
 use std::collections::VecDeque;
 pub use task::Task;
 use zeromq::ZmqMessage;
@@ -60,13 +64,12 @@ impl TaskStatus {
     }
 }
 
-/// This struct is returned from a parsed ZMQ message after the type has
-/// been determined from the first token in the message.
-/// So for example, given the raw ZMQ string:
-/// `TASKDEF|PROCESS|ls|thisdir`
-/// The tokens would be: ["PROCESS", "ls", "thisdir"]. This is because the message
-/// would have already been determined to be a task definition (TASKDEF)
-#[derive(Debug)]
+/// The ZMQArgs struct acts as an iterator of arguments that other
+/// functions and structs can use to iterate over the pipe-delimited
+/// messages sent over ZMQ. To avoid clashing with pipes, the \ character
+/// is used as an escape. Any intended \ character should be doubled \\ in
+/// order to avoid potential parsing issues.
+#[derive(Debug, Clone)]
 pub struct ZMQArgs {
     inner: VecDeque<String>,
 }
@@ -82,8 +85,7 @@ impl ZMQArgs {
         self.inner.len()
     }
     pub fn to_string(&self) -> String {
-        let v = Vec::from(self.inner.clone());
-        v.join("|")
+        self.clone().into()
     }
 }
 impl Into<Vec<String>> for ZMQArgs {
@@ -93,15 +95,15 @@ impl Into<Vec<String>> for ZMQArgs {
 }
 impl Into<String> for ZMQArgs {
     fn into(self) -> String {
-        let v: Vec<String> = self.inner.into();
-        v.join("|")
+        vecd_to_arg_str(&self.inner)
     }
 }
 
+/// creating ZMQArgs from string automatically escapes pipes
 impl From<String> for ZMQArgs {
     fn from(value: String) -> Self {
         Self {
-            inner: arg_str_to_vec(value),
+            inner: arg_str_to_vecd(&value),
         }
     }
 }
@@ -220,6 +222,22 @@ mod tests {
     fn test_zmqargs_from_string() {
         let zmq_args = ZMQArgs::from("arg1|arg2".to_string());
         assert_eq!(zmq_args.len(), 2);
+    }
+
+    #[test]
+    fn test_zmqargs_from_string_with_pipes_escaped() {
+        let zmq_args = ZMQArgs::from("arg1|arg\\|2|arg3".to_string());
+        assert_eq!(zmq_args.len(), 3);
+    }
+    #[test]
+    fn test_zmqargs_from_string_badly_escaped() {
+        let zmq_args = ZMQArgs::from("arg1|arg|2|arg3".to_string());
+        assert_eq!(zmq_args.len(), 4);
+    }
+    #[test]
+    fn test_zmqargs_from_string_with_backslashes() {
+        let zmq_args = ZMQArgs::from("arg\\1|ar\\g2|\\\\".to_string());
+        assert_eq!(zmq_args.len(), 3);
     }
 
     #[test]

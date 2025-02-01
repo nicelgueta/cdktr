@@ -87,7 +87,7 @@ impl TaskManager {
                 let mut counter = thread_counter.lock().await;
                 *counter += 1;
             }
-
+            info!("Entering task ");
             let _flow_result = executor.run(tx).await;
             // TODO: handle the result
 

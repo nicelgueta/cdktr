@@ -1,10 +1,9 @@
 use crate::db::update_next_timestamp;
-use crate::db::{
-    get_queueable_schedules,
-    models::{ScheduledTask, ToTask},
+use crate::db::{get_queueable_schedules, models::ScheduledTask};
+use crate::models::{
+    traits::{EventListener, ToTask},
+    Task,
 };
-use crate::models::traits::EventListener;
-use crate::models::Task;
 use crate::utils::data_structures::AsyncQueue;
 use async_trait::async_trait;
 use chrono::Utc;
