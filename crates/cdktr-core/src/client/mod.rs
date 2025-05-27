@@ -4,6 +4,7 @@ use tokio::time::sleep;
 
 use crate::{
     api::{PrincipalAPI, API},
+    db::schema::schedules::task_name,
     exceptions::GenericError,
     models::Task,
     prelude::{ClientResponseMessage, CDKTR_DEFAULT_TIMEOUT},
@@ -20,14 +21,18 @@ const RETRY_INTERVAL_MS: u64 = 3000;
 pub struct PrincipalClient {
     /// ID of the principal currently subscribed to
     instance_id: String,
+    principal_uri: String,
 }
 
 impl PrincipalClient {
-    pub fn new(instance_id: String) -> Self {
-        Self { instance_id }
+    pub fn new(instance_id: String, principal_uri: String) -> Self {
+        Self {
+            instance_id,
+            principal_uri,
+        }
     }
-    pub async fn register_with_principal(&self, principal_uri: &str) -> Result<(), GenericError> {
-        debug!("Registering agent with principal @ {}", &principal_uri);
+    pub async fn register_with_principal(&mut self) -> Result<(), GenericError> {
+        debug!("Registering agent with principal @ {}", &self.principal_uri);
         let max_reconnection_attempts: usize = env::var("AGENT_RECONNNECT_ATTEMPTS")
             .unwrap_or(RETRY_ATTEMPTS.to_string())
             .parse()
@@ -35,7 +40,9 @@ impl PrincipalClient {
         let mut actual_attempts: usize = 0;
         loop {
             let request = PrincipalAPI::RegisterAgent(self.instance_id.clone());
-            let reconn_result = request.send(principal_uri, CDKTR_DEFAULT_TIMEOUT).await;
+            let reconn_result = request
+                .send(&self.principal_uri, CDKTR_DEFAULT_TIMEOUT)
+                .await;
             if let Ok(cli_msg) = reconn_result {
                 match cli_msg {
                     ClientResponseMessage::Success => {
@@ -68,44 +75,69 @@ impl PrincipalClient {
         Ok(())
     }
 
-    pub async fn process_fetch_task(
+    /// waits indefinitely for a task from the principal
+    pub async fn wait_next_task(
         &self,
-        task_queue: &mut AsyncQueue<Task>,
-        principal_uri: &str,
+        sleep_interval: Duration,
         timeout: Duration,
-    ) -> Result<(), GenericError> {
+    ) -> Result<Task, GenericError> {
+        loop {
+            let task_res = self.fetch_next_task(timeout).await;
+            let task = match task_res {
+                Ok(task_opt) => match task_opt {
+                    Some(task) => task,
+                    None => {
+                        // no data on queue so sleep and await next call
+                        sleep(sleep_interval).await;
+                        continue;
+                    }
+                },
+                Err(e) => match e {
+                    GenericError::NoDataException(_err_msg) => {
+                        trace!("No work on global task queue - waiting");
+                        sleep(sleep_interval).await;
+                        continue;
+                    }
+                    other_error => return Err(other_error),
+                },
+            };
+            return Ok(task);
+        }
+    }
+
+    pub async fn fetch_next_task(&self, timeout: Duration) -> Result<Option<Task>, GenericError> {
         let request = PrincipalAPI::FetchTask(self.instance_id.clone());
-        match request.send(&principal_uri, timeout).await {
+        match request.send(&self.principal_uri, timeout).await {
             Ok(cli_resp) => match cli_resp {
                 ClientResponseMessage::Success => {
-                    trace!("No work on global task queue - waiting");
-                    Ok(())
+                    Err(GenericError::NoDataException("Queue empty".to_string()))
                 }
                 ClientResponseMessage::SuccessWithPayload(task_str) => {
-                    info!("Task delivered from Principal -> {}", &task_str);
+                    info!("Task received from Principal -> {}", &task_str);
                     let task_res = Task::try_from(task_str);
-                    match task_res {
-                        Ok(task) => {
-                            task_queue.put(task).await;
-                            Ok(())
-                        }
+                    return match task_res {
+                        Ok(task) => Ok(Some(task)),
                         Err(e) => Err(GenericError::ZMQParseError(e)),
-                    }
+                    };
                 }
-                other => Err(GenericError::RuntimeError(format!(
-                    "Unexpected client response message received from principal: {}",
-                    other.to_string()
-                ))),
+                other => {
+                    return Err(GenericError::RuntimeError(format!(
+                        "Unexpected client response message received from principal: {}",
+                        other.to_string()
+                    )))
+                }
             },
             Err(e) => match e {
                 GenericError::TimeoutError => {
                     error!("Agent heartbeat timed out pinging principal");
-                    Err(GenericError::TimeoutError)
+                    return Err(GenericError::TimeoutError);
                 }
-                e => Err(GenericError::RuntimeError(format!(
-                    "Unspecified error in principal heartbeat: {}",
-                    e.to_string()
-                ))),
+                e => {
+                    return Err(GenericError::RuntimeError(format!(
+                        "Unspecified error in principal heartbeat: {}",
+                        e.to_string()
+                    )))
+                }
             },
         }
     }

@@ -62,12 +62,14 @@ source = { virtual = "." }
 dependencies = [
     { name = "python-dotenv" },
     { name = "pyzmq" },
+    { name = "rustyrs" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "pyzmq", specifier = ">=26.2.0" },
+    { name = "rustyrs", specifier = ">=0.5.3" },
 ]
 
 [[package]]
@@ -133,4 +135,30 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/dd/9a/10ed3c7f72b4c24e719c59359fbadd1a27556a28b36cdf1cd9e4fb7845d5/pyzmq-26.2.0-cp313-cp313t-musllinux_1_1_aarch64.whl", hash = "sha256:25bf2374a2a8433633c65ccb9553350d5e17e60c8eb4de4d92cc6bd60f01d306", size = 1183489 },
     { url = "https://files.pythonhosted.org/packages/72/2d/8660892543fabf1fe41861efa222455811adac9f3c0818d6c3170a1153e3/pyzmq-26.2.0-cp313-cp313t-musllinux_1_1_i686.whl", hash = "sha256:007137c9ac9ad5ea21e6ad97d3489af654381324d5d3ba614c323f60dab8fae6", size = 1492932 },
     { url = "https://files.pythonhosted.org/packages/7b/d6/32fd69744afb53995619bc5effa2a405ae0d343cd3e747d0fbc43fe894ee/pyzmq-26.2.0-cp313-cp313t-musllinux_1_1_x86_64.whl", hash = "sha256:470d4a4f6d48fb34e92d768b4e8a5cc3780db0d69107abf1cd7ff734b9766eb0", size = 1392485 },
+]
+
+[[package]]
+name = "rustyrs"
+version = "0.5.3"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/ae/b5936fd529c8a2142b785a38d624c4732eeeb9f170239d25897e0a5b824a/rustyrs-0.5.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:a814f8452aaa932d4b98faec4aef00c3ef61ddeb2f21061e6332736c98a89f37", size = 247576 },
+    { url = "https://files.pythonhosted.org/packages/8a/73/19d6948ab5bc68a1faef9ee837383d9587fff30fae2931fc7240d24abaa1/rustyrs-0.5.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:217bc640d2bb84f1bbcc4aec4dff2e4d058b5e3a70f1bf7a8e5d1bc40a2d82a3", size = 283588 },
+    { url = "https://files.pythonhosted.org/packages/c6/61/23c3eeb918ff264b62c31ea28b49152214b1ba1b3276a07bfcb902ed6118/rustyrs-0.5.3-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:ae2be1858d8c1941669494e1d225cb6ba189a1a167c8e6c84535d4a7f9839a00", size = 298530 },
+    { url = "https://files.pythonhosted.org/packages/4c/a9/2b0bd7255fb479f0886ed24802e421d5bac1ad0c9f4f1d1115880ba3d37c/rustyrs-0.5.3-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:05c21a6f6a778996b6edc8d4260465502a28c3c681604c88cf518a9b6e0294e5", size = 470318 },
+    { url = "https://files.pythonhosted.org/packages/49/fb/86d30fb009fd3adacf22249a08634338f377863bab8949e9f2a5f6a538b8/rustyrs-0.5.3-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:d84bff5dcee076f0d5bc0f441f1896a75d9483b68d887d49fafc0847921d333f", size = 451323 },
+    { url = "https://files.pythonhosted.org/packages/07/ef/fd746b94e8c35b031ac59c22fa7bf14677409748df3921a86c6f33cb8482/rustyrs-0.5.3-cp311-cp311-win32.whl", hash = "sha256:da4e8578088c78902f2c7ce3efbc6810db58beba61eef843c9af2291236407b5", size = 135615 },
+    { url = "https://files.pythonhosted.org/packages/7f/64/91539b3a2cbae15aa19bc7dfe7b399f21ee83757152733c2c00d65c4a7aa/rustyrs-0.5.3-cp311-cp311-win_amd64.whl", hash = "sha256:fe89674b5c64782001b93a3a5cb67b816c37cdf60d5fc9ccc5773ac5126aac55", size = 147057 },
+    { url = "https://files.pythonhosted.org/packages/87/34/83d7edb2cb1982b5e0e0d424277a55242b8ed5fd1be4568f822c8e2bf1db/rustyrs-0.5.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:a5d9de9ee2aeaa0d47f72121435b465cd488a1274b748f3734186f9faa615792", size = 247018 },
+    { url = "https://files.pythonhosted.org/packages/aa/30/e82ef019d44968a254e382d92f3da1db42d3976b5ab7646f0926431dd672/rustyrs-0.5.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:059cb2af287b8023a40cf03ce6b9b491af32881b7c36544d0a118b71ca4f2a41", size = 282831 },
+    { url = "https://files.pythonhosted.org/packages/f5/d9/9af132a6af77ce8863bc681007072563ef3ca73da934084fd3af741f8a0a/rustyrs-0.5.3-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:c55f6b66b1996a1650374b7d58c49b42aca20a8ed38f7117a25a67a52b23f4cc", size = 298147 },
+    { url = "https://files.pythonhosted.org/packages/19/3b/ea5fbbb5cffcc27a604fba1f6cc3e95d324173fde8f4410001dc86f5a527/rustyrs-0.5.3-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:552a1ef841e128da870bf477dd54ff7d43b02865ebb8a0f0aaf935cd81d577cc", size = 469774 },
+    { url = "https://files.pythonhosted.org/packages/a4/bd/2c3210370fb8b0561802bf931de3d35d6632fc6c81c51423a27213eacfd8/rustyrs-0.5.3-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:c6f42d948d22fd34c633f97141e8e675661ea4ab43ad62aba4c2365bd818c0ee", size = 451420 },
+    { url = "https://files.pythonhosted.org/packages/48/96/e95c6b7297324670d5308142bed81ff2314ca010f1a07073f727533f7dec/rustyrs-0.5.3-cp312-cp312-win32.whl", hash = "sha256:0660464a7db40cb5edcfacd4be508b650d0a8723d4f0a0322bfd6eedc19a5506", size = 135049 },
+    { url = "https://files.pythonhosted.org/packages/86/8b/dcb607504d9d553cd754e10be94e073220fd4950af664f3e1727d71f3bee/rustyrs-0.5.3-cp312-cp312-win_amd64.whl", hash = "sha256:6f6e85af17732212b58317eb46a89aae2d2c96e6c946fd426535b7b2e2f81ae0", size = 147102 },
+    { url = "https://files.pythonhosted.org/packages/dc/b4/9260f36a49278629fe70da050da50d38db3c1063f615660d25d0205ac66e/rustyrs-0.5.3-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:88c20a2e7fa1605ea61d2f349eea381df04ce2c1ae6e529a15b7daade9fa8f5d", size = 246982 },
+    { url = "https://files.pythonhosted.org/packages/e5/d4/10ef8559e7095dc785bbd4d2d55c450a9f9d2b121bd8ae914b5efa0abf91/rustyrs-0.5.3-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:36a4fa6f32f1ccaa4a322def0fb5e6a0a412583b1cad9d5418e069cf635099a0", size = 282808 },
+    { url = "https://files.pythonhosted.org/packages/25/61/106c6da01b8862899a5f671405566bd5b00e032b05af78ec73069836a548/rustyrs-0.5.3-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:02ae35d903f1dbb930b4396998e5a28db285f065d804bdcfdd14651e9005ad4e", size = 298214 },
+    { url = "https://files.pythonhosted.org/packages/82/f1/d3f5616af97ff558bd58d7d63d3f5159f7d76eea9a244dc525a845a35c0b/rustyrs-0.5.3-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:7ff7e1d98407ae0469faf2735335c30e349729274b64ec898a455a7c1e204147", size = 469371 },
+    { url = "https://files.pythonhosted.org/packages/3b/4e/fd9f00dd561e9c07bcf963877482a5640b5edeb66f0d69dfd013c4c305c3/rustyrs-0.5.3-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:5585ffecd35b7f5790cc7cd5569b525440e3ad7771dbe5324c2a0868d8dab5d7", size = 451323 },
 ]

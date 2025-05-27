@@ -20,3 +20,4 @@ serde_json = "1.0.117"
 tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread", "io-std", "process", "io-util", "sync", "time"] }
 ratatui = { version = "0.27.0", features = ["all-widgets"] }
 zeromq = "0.4.1"
+rustyrs = "0.5.5"

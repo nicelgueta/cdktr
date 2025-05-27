@@ -4,7 +4,7 @@ use crate::exceptions::{GenericError, ZMQParseError};
 use tokio::time::timeout;
 use zeromq::{RepSocket, ReqSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
 
-pub static DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
+pub static DEFAULT_TIMEOUT: Duration = Duration::from_millis(5000);
 
 ///
 pub async fn get_zmq_req(endpoint_uri: &str) -> ReqSocket {

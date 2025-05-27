@@ -10,6 +10,7 @@ def conducktor_print(s: str):
         # process so just ignore
         pass
 
-for i in  range(int(sys.argv[1])):
-    conducktor_print(i)
-    time.sleep(1)
+id_, task_time = sys.argv[1:]
+conducktor_print(f"Started task {id_} with task_time {task_time}")
+time.sleep(int(task_time))
+conducktor_print(f"Exiting python task {id_}")

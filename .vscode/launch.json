@@ -44,37 +44,17 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'cdktr'",
+            "name": "Debug cdktr agent",
             "cargo": {
                 "args": [
-                    "build",
-                    "--bin=cdktr",
-                    "--package=cdktr"
+                    "run"
                 ],
                 "filter": {
                     "name": "cdktr",
                     "kind": "bin"
                 }
             },
-            "args": ["principal", "5561"],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug run executable 'cdktr'",
-            "cargo": {
-                "args": [
-                    "run",
-                    "--bin=cdktr",
-                    "--package=cdktr"
-                ],
-                "filter": {
-                    "name": "cdktr",
-                    "kind": "bin"
-                }
-            },
-            "args": ["principal", "5561"],
+            "args": ["start", "-i", "agent", "-m", "1"],
             "cwd": "${workspaceFolder}"
         },
         {

@@ -217,6 +217,7 @@ dependencies = [
  "dotenv",
  "env_logger",
  "log",
+ "rustyrs",
  "serde",
  "serde_json",
  "tokio",
@@ -1055,9 +1056,9 @@ checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
 
 [[package]]
 name = "rustyrs"
-version = "0.5.3"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dd07263b37ee5151189c8b8ac71b7e1dd82d2dc46bb2d5a80da52ca637d380e"
+checksum = "1d5f43941e3bc5120b8a98c910f7fb5093a3a010c350a46590e5b962a6dd8a50"
 dependencies = [
  "rand",
 ]

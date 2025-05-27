@@ -10,7 +10,11 @@ use super::{FlowExecutionResult, Task};
 #[async_trait]
 pub trait Executor {
     fn new(command: &str, args: Option<Vec<String>>) -> Self;
-    async fn run(&self, tx: Sender<String>) -> FlowExecutionResult;
+    async fn run(
+        &self,
+        stdout_tx: Sender<String>,
+        stderr_tx: Sender<String>,
+    ) -> FlowExecutionResult;
 }
 
 /// The event listener trait is for implementing components that

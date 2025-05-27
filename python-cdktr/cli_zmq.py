@@ -54,7 +54,7 @@ def start_req_socket(principal_port):
                 stream_interval_ms = int(input("Set interval in millis: "))
                 task_n = 0
                 while True:
-                    socket.send(bytes(f"ADDTASK|PROCESS|echo|task|{task_n}", 'utf-8'))
+                    socket.send(bytes(f"ADDTASK|PROCESS|python|python-cdktr/s.py|{task_n}|{5}", 'utf-8'))
                     message = socket.recv()
                     print(f"Received reply: {message.decode('utf-8')}")
                     time.sleep(stream_interval_ms/1000)

@@ -136,4 +136,31 @@ mod tests {
         let args: VecDeque<String> = vec!["world".to_string()].into();
         assert_eq!(vecd_to_arg_str(&args), "world".to_string())
     }
+
+    #[test]
+    fn test_vecd_to_arg_str_escape_outer_single_quote() {
+        let args: VecDeque<String> = vec![
+            "python".to_string(),
+            "-c".to_string(),
+            r#"'import time;time.sleep(1);print("Done")'"#.to_string(),
+        ]
+        .into();
+        assert_eq!(
+            vecd_to_arg_str(&args),
+            r#"python|-c|'import time;time.sleep(1);print("Done")'"#.to_string()
+        )
+    }
+
+    #[test]
+    fn test_arg_to_vecd_escape_outer_single_quote() {
+        let args = r#"python|-c|'import time;time.sleep(1);print("Done")'"#.to_string();
+        assert_eq!(
+            arg_str_to_vecd(&args),
+            vec![
+                "python".to_string(),
+                "-c".to_string(),
+                r#"'import time;time.sleep(1);print("Done")'"#.to_string()
+            ]
+        )
+    }
 }

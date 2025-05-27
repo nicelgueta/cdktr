@@ -14,8 +14,10 @@ commit:
 push: test
 
 principal:
-	cargo run --bin cdktr-cli -- start -i principal
+	cargo run start -i principal
 agent:
-	cargo run --bin cdktr-cli -- start -i agent
+	cargo run start -i agent -m 6
 tui:
-	cargo run --bin cdktr-tui
+	cargo run ui
+pycli:
+	python python-cdktr/cli_zmq.py
