@@ -12,12 +12,13 @@ mod utils;
 mod zmq_helpers;
 
 // public api
+pub mod config;
 pub mod instance;
 pub mod prelude {
     pub use crate::{
         api::{APIMeta, PrincipalAPI, API},
         server::models::ClientResponseMessage,
-        zmq_helpers::{get_server_tcp_uri, DEFAULT_TIMEOUT as CDKTR_DEFAULT_TIMEOUT},
+        zmq_helpers::get_server_tcp_uri,
     };
 }
 

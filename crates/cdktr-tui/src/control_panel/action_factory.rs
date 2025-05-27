@@ -1,6 +1,8 @@
-use cdktr_core::prelude::{
-    get_server_tcp_uri, ClientResponseMessage, PrincipalAPI, API, CDKTR_DEFAULT_TIMEOUT,
+use cdktr_core::{
+    config::CDKTR_DEFAULT_TIMEOUT,
+    prelude::{get_server_tcp_uri, ClientResponseMessage, PrincipalAPI, API},
 };
+
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},

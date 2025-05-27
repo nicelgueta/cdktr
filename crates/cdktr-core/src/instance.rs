@@ -1,4 +1,4 @@
-use log::{debug, info, warn};
+use log::{debug, error};
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 
@@ -21,7 +21,8 @@ pub async fn start_agent(
     let mut tm = taskmanager::TaskManager::new(instance_id, max_tm_tasks, principal_uri).await;
     let loop_res = tm.start().await;
     if let Err(e) = loop_res {
-        info!("{}", e.to_string())
+        error!("{}", e.to_string());
+        std::process::exit(1);
     };
 }
 

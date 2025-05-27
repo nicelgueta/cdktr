@@ -12,5 +12,7 @@ def conducktor_print(s: str):
 
 id_, task_time = sys.argv[1:]
 conducktor_print(f"Started task {id_} with task_time {task_time}")
-time.sleep(int(task_time))
+for i in range(int(task_time)):
+    conducktor_print(f"ckpt: {i} of {task_time}")
+    time.sleep(1)
 conducktor_print(f"Exiting python task {id_}")

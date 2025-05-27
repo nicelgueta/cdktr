@@ -1,11 +1,11 @@
 use crate::{
     client::PrincipalClient,
+    config::CDKTR_DEFAULT_TIMEOUT,
     exceptions::GenericError,
     executors::get_executor,
     models::{traits::Executor, Task},
-    zmq_helpers::DEFAULT_TIMEOUT,
 };
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use rustyrs::EternalSlugGenerator;
 use std::sync::Arc;
 use std::time::Duration;
@@ -89,6 +89,7 @@ impl TaskManager {
     pub async fn run_in_executor(
         &mut self,
         task: Task,
+        task_execution_id: String,
     ) -> Result<TaskExecutionHandle, TaskManagerError> {
         {
             if *self.thread_counter.lock().await >= self.max_threads {
@@ -99,6 +100,7 @@ impl TaskManager {
         let (stdout_tx, stdout_rx) = mpsc::channel(32);
         let (stderr_tx, stderr_rx) = mpsc::channel(32);
         let executor = get_executor(task);
+        let task_id_clone = task_execution_id.clone();
         let handle = tokio::spawn(async move {
             // inform the TaskManager of another running process
             {
@@ -106,9 +108,9 @@ impl TaskManager {
                 let mut counter = thread_counter.lock().await;
                 *counter += 1;
             }
-            info!("Entering task ");
+            info!("Spawning task {task_id_clone}");
             let _flow_result = executor.run(stdout_tx, stderr_tx).await;
-            info!("Exiting task ");
+            info!("Exiting task {task_id_clone}");
             // TODO: handle the result
 
             // inform TaskManager process has terminated
@@ -119,36 +121,57 @@ impl TaskManager {
         });
 
         // pass the join handle and receiver up to the calling function for control of
-        // the spwaned coroutine
+        // the spawned coroutine
         Ok(TaskExecutionHandle::new(handle, stdout_rx, stderr_rx))
     }
 
     pub async fn start(&mut self) -> Result<(), GenericError> {
-        let _ = self.principal_client.register_with_principal().await;
+        let register_result = self.principal_client.register_with_principal().await;
+        if let Err(e) = register_result {
+            error!(
+                "Failed to register with principal host {}. Check host is available",
+                self.principal_client.get_uri()
+            );
+            return Err(e);
+        }
 
         info!(
             "TASKMANAGER-{}: Beginning task execution loop",
             self.instance_id
         );
-        self.task_execution_loop().await
+        let loop_res = self.task_execution_loop().await;
+        if let Err(e) = loop_res {
+            error!("{}", e.to_string());
+            while *self.thread_counter.lock().await > 0 {
+                warn!(
+                    "Tasks still running after principal loss- awaiting completion before aborting"
+                );
+                sleep(Duration::from_secs(10)).await;
+            }
+            Err(e)
+        } else {
+            Ok(())
+        }
     }
 
     async fn task_execution_loop(&mut self) -> Result<(), GenericError> {
         loop {
             let task_result = self
                 .principal_client
-                .wait_next_task(WAIT_TASK_SLEEP_INTERVAL_MS, DEFAULT_TIMEOUT)
+                .wait_next_task(WAIT_TASK_SLEEP_INTERVAL_MS, CDKTR_DEFAULT_TIMEOUT)
                 .await;
             let task = match task_result {
                 Ok(task) => task,
                 Err(e) => {
                     error!("{}", e.to_string());
-                    continue;
+                    return Err(e);
                 }
             };
             loop {
-                let task_exe_result: Result<TaskExecutionHandle, TaskManagerError> =
-                    self.run_in_executor(task.to_owned()).await;
+                let task_execution_id = self.name_gen.next();
+                let task_exe_result: Result<TaskExecutionHandle, TaskManagerError> = self
+                    .run_in_executor(task.to_owned(), task_execution_id.clone())
+                    .await;
                 match task_exe_result {
                     Err(e) => match e {
                         TaskManagerError::TooManyThreadsError => {
@@ -160,7 +183,6 @@ impl TaskManager {
                     Ok(mut task_exe) => {
                         // need to spawn the reading of the logs of the run task in order to free this thread
                         // to go back to looking at the queue
-                        let task_execution_id = self.name_gen.next();
                         tokio::spawn(async move {
                             while let Some(msg) = task_exe.wait_stdout().await {
                                 info!("{task_execution_id} | STDOUT | {msg}");
@@ -195,7 +217,7 @@ mod tests {
     async fn test_run_single_flow() {
         let task = get_task(vec!["PROCESS", "echo", "test_run_flow"]);
         let mut zk = TaskManager::new("tm1".to_string(), 1, "tcp://fake-uri".to_string()).await;
-        let result = zk.run_in_executor(task).await;
+        let result = zk.run_in_executor(task, "fakeid".to_string()).await;
         assert!(result.is_ok());
         result.unwrap().wait_stdout().await.unwrap();
     }
@@ -204,7 +226,7 @@ mod tests {
     async fn test_run_single_flow_slow() {
         let mut zk = TaskManager::new("tm1".to_string(), 1, "tcp://fake-uri".to_string()).await;
         let task = get_task(vec!["PROCESS", "sleep", "1"]);
-        let mut result = zk.run_in_executor(task).await;
+        let mut result = zk.run_in_executor(task, "fakeid".to_string()).await;
         assert!(result.is_ok());
         let mut i = 0;
         while let Some(msg) = result.as_mut().unwrap().wait_stdout().await {
@@ -220,9 +242,9 @@ mod tests {
         let task1 = get_task(vec!["PROCESS", "sleep", "2"]);
         let task2 = get_task(vec!["PROCESS", "sleep", "2"]);
         let task3 = get_task(vec!["PROCESS", "sleep", "1"]);
-        let mut result1 = zk.run_in_executor(task1).await;
-        let mut result2 = zk.run_in_executor(task2).await;
-        let mut result3 = zk.run_in_executor(task3).await;
+        let mut result1 = zk.run_in_executor(task1, "fakeid".to_string()).await;
+        let mut result2 = zk.run_in_executor(task2, "fakeid".to_string()).await;
+        let mut result3 = zk.run_in_executor(task3, "fakeid".to_string()).await;
         assert!(result1.is_ok());
         assert!(result2.is_ok());
         assert!(result3.is_ok());
@@ -253,15 +275,15 @@ mod tests {
         let mut zk = TaskManager::new("tm1".to_string(), 1, "tcp://fake-uri".to_string()).await;
         let task1 = get_task(vec!["PROCESS", "sleep", "2"]);
         let task2 = get_task(vec!["PROCESS", "sleep", "3"]);
-        let result1 = zk.run_in_executor(task1).await;
-        let result2 = zk.run_in_executor(task2).await;
+        let result1 = zk.run_in_executor(task1, "fakeid".to_string()).await;
+        let result2 = zk.run_in_executor(task2, "fakeid".to_string()).await;
         assert!(result1.is_ok());
         assert!(result2.is_ok());
 
         let second = Duration::from_millis(1000);
         sleep(second).await;
         let task3 = get_task(vec!["PROCESS", "sleep", "1"]);
-        let result3 = zk.run_in_executor(task3).await;
+        let result3 = zk.run_in_executor(task3, "fakeid".to_string()).await;
 
         match result3 {
             Ok(_handle) => panic!("Adding another thread beyond max threads should error"),
