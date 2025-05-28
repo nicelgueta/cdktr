@@ -1,0 +1,17 @@
+workflow:
+  cron: "*/2 * * * * *"
+  start_time: 2025-01-20T12:30:00
+  tasks:
+    task1:
+      type: subprocess
+      payload:
+        cmd: echo
+        args:
+          - hello
+          - world
+    task2:
+      type: pycdktr
+      depends: ["task1"]
+      payload:
+        extra_pip_packages:
+          - pandas>=2.0.0, < 2.2.0

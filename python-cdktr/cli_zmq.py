@@ -1,6 +1,7 @@
 import zmq
 import time
 import os
+import pandas as pd
 
 context = zmq.Context()
 
@@ -17,17 +18,10 @@ def sync_to_subscriber(port: int):
     print("Received sync")
     socket.send(b"SYNC")
 
-def create_task():
-    next_run = int(time.time()) + 5
-    return (
-        'CREATETASK|{"task_name": "echo hello","task_type": '
-        '"PROCESS","command": "echo","args": "python generated task","cron": '
-        f'"* * * * * *","next_run_timestamp": {next_run}' "}"
-    )
 
 def run_task():
-    cmd = input("Enter bash command: ")
-    zmq_str = f"ADDTASK|PROCESS|{'|'.join(cmd.split(' '))}"
+    cmd = input("Enter task id: ")
+    zmq_str = f"RUNTASK|{cmd}"
     return zmq_str
 
 def start_req_socket(principal_port):
@@ -41,7 +35,8 @@ def start_req_socket(principal_port):
     while True:
         print("\nWhat do you want to do? ")
         print("1. Simulate a ZMQ event task being sent to the Principal for agent execution")
-        print("2. Stream a load of tasks with a given interval to the principal")
+        print("2. Stream a load of run tasks with a given interval to the principal")
+        print("3. List all tasks saved in db")
         ans = input("Answer: ")
         match ans:
             case "1":
@@ -59,6 +54,10 @@ def start_req_socket(principal_port):
                     print(f"Received reply: {message.decode('utf-8')}")
                     time.sleep(stream_interval_ms/1000)
                     task_n+=1
+            case "3":
+                    socket.send(bytes(f"LISTTASKS", "utf-8"))
+                    message = socket.recv()
+
             case _:
                 msg = None
                 print("Not a valid option")

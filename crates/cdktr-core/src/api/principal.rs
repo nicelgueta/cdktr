@@ -12,14 +12,8 @@ use crate::{
 pub enum PrincipalAPI {
     /// Check server is online
     Ping,
-    /// Creates a new scheudled task in the principal database
-    CreateTask(NewScheduledTask),
     /// Lists all scheduled tasks currently stored in the database
     ListTasks,
-    /// Deletes a specific scheduled task in the database by its id
-    /// Args:
-    ///     task_id : i64
-    DeleteTask(i32),
     /// Runs a task by id. Principal then adds the task to the primary
     /// work queue to be picked up by a agent worker.
     /// Args:
@@ -57,9 +51,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
         match msg_type.as_str() {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
-            "CREATETASK" => Ok(Self::CreateTask(helpers::create_new_task_payload(args)?)),
             "LISTTASKS" => Ok(Self::ListTasks),
-            "DELETETASK" => Ok(Self::DeleteTask(helpers::delete_task_payload(args)?)),
             "RUNTASK" => Ok(Self::RunTask(helpers::create_run_task_payload(args)?)),
             "REGISTERAGENT" => match args.next() {
                 Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
@@ -94,19 +86,11 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
 
 impl API for PrincipalAPI {
     fn get_meta(&self) -> Vec<APIMeta> {
-        const META: [(&'static str, &'static str); 7] = [
+        const META: [(&'static str, &'static str); 5] = [
             ("PING", "Check server is online"),
             (
-                "CREATETASK",
-                "Creates a new scheudled task in the principal database",
-            ),
-            (
                 "LISTTASKS",
-                "Lists all scheduled tasks currently stored in the database",
-            ),
-            (
-                "DELETETASK",
-                "Deletes a specific scheduled task in the database by its id",
+                "Lists all scheduled tasks currently stored in the workflow directory",
             ),
             (
                 "REGISTERAGENT",
@@ -128,16 +112,6 @@ impl API for PrincipalAPI {
     fn to_string(&self) -> String {
         match self {
             Self::Ping => "PING".to_string(),
-            Self::CreateTask(task) => {
-                let task_name = &task.task_name;
-                let task_type = &task.task_type;
-                let command = &task.command;
-                let args = &task.args;
-                let cron = &task.cron;
-                let next_run_timestamp = task.next_run_timestamp;
-                format!("CREATETASK|{task_name}|{task_type}|{command}|{args}|{cron}|{next_run_timestamp}")
-            }
-            Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
             Self::RunTask(task_id) => format!("RUNTASK|{task_id}"),
             Self::ListTasks => "LISTTASKS".to_string(),
             Self::RegisterAgent(agent_id) => {
@@ -181,44 +155,6 @@ mod helpers {
         server::models::RepReqError,
     };
 
-    /// Creates a new task from the provided ZMQArgs
-    /// Order for the ZMQArgs is:
-    /// task_name: String - name of the task,
-    /// task_type: String - type of task. eg. PROCESS,
-    /// command: String - command to run,
-    /// args: String - comma separated list of arguments,
-    /// cron: String - cron expression for the task,
-    /// next_run_timestamp: i32 - timestamp for the next run of the task - i.e. the start time.
-    pub fn create_new_task_payload(mut args: ZMQArgs) -> Result<NewScheduledTask, RepReqError> {
-        let task = NewScheduledTask {
-            task_name: args
-                .next()
-                .ok_or(RepReqError::ParseError("task_name is missing".to_string()))?,
-            task_type: args
-                .next()
-                .ok_or(RepReqError::ParseError("task_type is missing".to_string()))?,
-            command: args
-                .next()
-                .ok_or(RepReqError::ParseError("command is missing".to_string()))?,
-            args: args
-                .next()
-                .ok_or(RepReqError::ParseError("args is missing".to_string()))?,
-            cron: args
-                .next()
-                .ok_or(RepReqError::ParseError("cron is missing".to_string()))?,
-            next_run_timestamp: args
-                .next()
-                .ok_or(RepReqError::ParseError(
-                    "next_run_timestamp is missing".to_string(),
-                ))?
-                .parse()
-                .or(Err(RepReqError::ParseError(
-                    "next_run_timestamp is not a valid integer".to_string(),
-                )))?,
-        };
-        Ok(task)
-    }
-
     pub fn create_run_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
         let task_id = if let Some(task_id) = args.next() {
             task_id
@@ -237,74 +173,10 @@ mod helpers {
         }
     }
 
-    pub fn delete_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
-        if let Some(v) = args.next() {
-            match v.parse() {
-                Ok(v) => Ok(v),
-                Err(e) => Err(RepReqError::ParseError(format!(
-                    "Unable to create integer from value '{}'. Error: {}",
-                    &v,
-                    e.to_string()
-                ))),
-            }
-        } else {
-            Err(RepReqError::ParseError(
-                "No payload found for DELETETASK command. Requires TASK_ID".to_string(),
-            ))
-        }
-    }
-
     #[cfg(test)]
     mod tests {
         use super::*;
         use crate::models::ZMQArgs;
-
-        #[test]
-        fn test_create_task_payload_happy_from_string() {
-            // not inlcude original CREATETASK since that should be handled already
-            let arg_s = "echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744".to_string();
-            assert!(create_new_task_payload(ZMQArgs::from(arg_s)).is_ok())
-        }
-
-        #[test]
-        fn test_create_task_payload_happy_from_vec() {
-            let arg_v: Vec<String> = vec![
-                "echo hello",
-                "PROCESS",
-                "echo",
-                "hello",
-                "0 3 * * * *",
-                "1720313744",
-            ]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-            assert!(create_new_task_payload(ZMQArgs::from(arg_v)).is_ok())
-        }
-
-        #[test]
-        fn test_create_task_payload_invalid_json() {
-            let args = vec![r#"{"task_name": "#.to_string()];
-            assert!(create_new_task_payload(ZMQArgs::from(args)).is_err())
-        }
-
-        #[test]
-        fn test_create_task_payload_valid_json_but_not_task() {
-            let args = vec![r#"{"task_name": "missing all other props"}"#.to_string()];
-            assert!(create_new_task_payload(ZMQArgs::from(args)).is_err())
-        }
-
-        #[test]
-        fn test_delete_task_happy() {
-            let args = vec!["1".to_string()];
-            assert!(delete_task_payload(ZMQArgs::from(args)).is_ok())
-        }
-
-        #[test]
-        fn test_delete_task_invalid() {
-            let args = vec!["not_an_int".to_string()];
-            assert!(delete_task_payload(ZMQArgs::from(args)).is_err())
-        }
     }
 }
 

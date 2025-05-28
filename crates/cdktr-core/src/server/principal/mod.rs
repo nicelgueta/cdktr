@@ -56,17 +56,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
     ) -> (ClientResponseMessage, usize) {
         match cli_msg {
             PrincipalAPI::Ping => (ClientResponseMessage::Pong, 0),
-            PrincipalAPI::CreateTask(new_task) => {
-                let mut db_cnxn = self.db_cnxn.lock().await;
-                helpers::handle_create_task(&mut db_cnxn, new_task)
-            }
             PrincipalAPI::ListTasks => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 helpers::handle_list_tasks(&mut db_cnxn)
-            }
-            PrincipalAPI::DeleteTask(task_id) => {
-                let mut db_cnxn = self.db_cnxn.lock().await;
-                helpers::handle_delete_task(&mut db_cnxn, task_id)
             }
             PrincipalAPI::RunTask(task_id) => {
                 let mut db_cnxn = self.db_cnxn.lock().await;
@@ -104,14 +96,7 @@ mod tests {
 
     #[test]
     fn test_principal_request_from_zmq_str_all_happy() {
-        let all_happies = vec![
-            "PING",
-            "LISTTASKS",
-            "CREATETASK|echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744",
-            "DELETETASK|1",
-            "RUNTASK|1",
-            "REGISTERAGENT|8999|2",
-        ];
+        let all_happies = vec!["PING", "LISTTASKS", "RUNTASK|1", "REGISTERAGENT|8999|2"];
         for zmq_s in all_happies {
             let zmq_msg = ZmqMessage::from(zmq_s);
             let res = PrincipalAPI::try_from(zmq_msg);
@@ -133,29 +118,7 @@ mod tests {
                 0,
             ),
             (
-                "CREATETASK|echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744",
-                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
-                0,
-            ),
-            (
                 "RUNTASK|1",
-                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
-                0,
-            ),
-            (
-                "LISTTASKS",
-                Box::new(|r: ClientResponseMessage| {
-                    r.to_string().chars().take(10).collect::<String>()
-                        == ClientResponseMessage::SuccessWithPayload("[{\"id\":1".to_string())
-                            .to_string()
-                            .chars()
-                            .take(10)
-                            .collect::<String>()
-                }),
-                0,
-            ),
-            (
-                "DELETETASK|1",
                 Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
                 0,
             ),
