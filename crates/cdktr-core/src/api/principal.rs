@@ -18,13 +18,13 @@ pub enum PrincipalAPI {
     ListTasks,
     /// Deletes a specific scheduled task in the database by its id
     /// Args:
-    ///     task_id : i32
+    ///     task_id : i64
     DeleteTask(i32),
-    /// Adds a task to the primary task queue held on the principal
-    /// that agents reuest work from
+    /// Runs a task by id. Principal then adds the task to the primary
+    /// work queue to be picked up by a agent worker.
     /// Args:
-    ///     task: Task
-    AddTask(Task),
+    ///     task_id: i64
+    RunTask(i32),
     /// Allows an agent to register itself with the principal
     /// so that the principal can set a heartbeat for it. If the agent
     /// is already registered then this behaves in a similar way to
@@ -60,10 +60,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
             "CREATETASK" => Ok(Self::CreateTask(helpers::create_new_task_payload(args)?)),
             "LISTTASKS" => Ok(Self::ListTasks),
             "DELETETASK" => Ok(Self::DeleteTask(helpers::delete_task_payload(args)?)),
-            "ADDTASK" => {
-                let task = helpers::create_run_task_payload(args)?;
-                Ok(Self::AddTask(task))
-            }
+            "RUNTASK" => Ok(Self::RunTask(helpers::create_run_task_payload(args)?)),
             "REGISTERAGENT" => match args.next() {
                 Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
                 None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
@@ -97,7 +94,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
 
 impl API for PrincipalAPI {
     fn get_meta(&self) -> Vec<APIMeta> {
-        const META: [(&'static str, &'static str); 8] = [
+        const META: [(&'static str, &'static str); 7] = [
             ("PING", "Check server is online"),
             (
                 "CREATETASK",
@@ -110,10 +107,6 @@ impl API for PrincipalAPI {
             (
                 "DELETETASK",
                 "Deletes a specific scheduled task in the database by its id",
-            ),
-            (
-                "ADDTASK",
-                "Adds a task to the principal task queue for execution on an agent",
             ),
             (
                 "REGISTERAGENT",
@@ -144,11 +137,8 @@ impl API for PrincipalAPI {
                 let next_run_timestamp = task.next_run_timestamp;
                 format!("CREATETASK|{task_name}|{task_type}|{command}|{args}|{cron}|{next_run_timestamp}")
             }
-            Self::AddTask(task) => {
-                let task_str: String = task.to_string();
-                format!("ADDTASK|{task_str}")
-            }
             Self::DeleteTask(task_id) => format!("DELETETASK|{task_id}"),
+            Self::RunTask(task_id) => format!("RUNTASK|{task_id}"),
             Self::ListTasks => "LISTTASKS".to_string(),
             Self::RegisterAgent(agent_id) => {
                 format!("REGISTERAGENT|{agent_id}")
@@ -229,11 +219,19 @@ mod helpers {
         Ok(task)
     }
 
-    pub fn create_run_task_payload(args: ZMQArgs) -> Result<Task, RepReqError> {
-        match Task::try_from(args) {
-            Ok(task) => Ok(task),
+    pub fn create_run_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
+        let task_id = if let Some(task_id) = args.next() {
+            task_id
+        } else {
+            return Err(RepReqError::ParseError(
+                "Request is missing task_id".to_string(),
+            ));
+        };
+        match task_id.parse() {
+            Ok(v) => Ok(v),
             Err(e) => Err(RepReqError::ParseError(format!(
-                "Invalid task definition. Error: {}",
+                "Unable to create integer from task_id '{}'. Error: {}",
+                &task_id,
                 e.to_string()
             ))),
         }

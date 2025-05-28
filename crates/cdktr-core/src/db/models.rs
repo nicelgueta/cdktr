@@ -6,7 +6,7 @@ use crate::models::{traits::ToTask, Task};
 use crate::utils::arg_str_to_vecd;
 
 #[derive(Queryable, Selectable, Deserialize, Serialize, Debug, Clone, Insertable)]
-#[diesel(table_name = crate::db::schema::schedules)]
+#[diesel(table_name = crate::db::schema::tasks)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct ScheduledTask {
     pub id: i32,
@@ -15,8 +15,8 @@ pub struct ScheduledTask {
     pub command: String,
     pub args: Option<String>,
     pub cron: Option<String>,
-    pub timestamp_created: i32,
-    pub next_run_timestamp: i32,
+    pub timestamp_created: i64,
+    pub next_run_timestamp: i64,
 }
 impl ToTask for ScheduledTask {
     fn to_task(&self) -> Task {
@@ -39,12 +39,12 @@ impl ToTask for ScheduledTask {
 }
 
 #[derive(Insertable, Deserialize, Serialize, Debug)]
-#[diesel(table_name = crate::db::schema::schedules)]
+#[diesel(table_name = crate::db::schema::tasks)]
 pub struct NewScheduledTask {
     pub task_name: String,
     pub task_type: String,
     pub command: String,
     pub args: String,
     pub cron: String,
-    pub next_run_timestamp: i32,
+    pub next_run_timestamp: i64,
 }

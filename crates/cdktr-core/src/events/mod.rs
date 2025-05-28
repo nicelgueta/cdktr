@@ -11,7 +11,7 @@ mod scheduler;
 /// Spawns the Scheduler in a separate coroutine
 async fn _spawn_scheduler(
     db_cnxn: Arc<Mutex<diesel::SqliteConnection>>,
-    poll_interval_seconds: i32,
+    poll_interval_seconds: u64,
     task_router_queue: AsyncQueue<Task>,
 ) -> tokio::task::JoinHandle<()> {
     debug!("Spawning scheduler");

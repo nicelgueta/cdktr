@@ -11,8 +11,7 @@ pub fn get_connection(database_url: Option<&str>) -> SqliteConnection {
         .expect(&format!("Failed to establish connection to {}", db_url));
     if db_url == ":memory:" {
         use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-        pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
-
+        pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("src/db/migrations");
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
     };
     cnxn
@@ -20,14 +19,14 @@ pub fn get_connection(database_url: Option<&str>) -> SqliteConnection {
 
 pub fn get_queueable_schedules(
     cnxn: &mut SqliteConnection,
-    current_timestamp: i32,
-    poll_interval: i32,
+    current_timestamp: i64,
+    poll_interval: u64,
 ) -> Vec<ScheduledTask> {
     // used in order to used the field names directly as variables
-    use self::schema::schedules::dsl::*;
+    use self::schema::tasks::dsl::*;
 
-    let nxt_ts = current_timestamp + poll_interval;
-    let results = schedules
+    let nxt_ts = current_timestamp + poll_interval as i64;
+    let results = tasks
         .filter(next_run_timestamp.lt(nxt_ts))
         .filter(next_run_timestamp.ge(current_timestamp))
         .select(ScheduledTask::as_select())
@@ -39,10 +38,10 @@ pub fn get_queueable_schedules(
 pub fn update_next_timestamp(
     cnxn: &mut SqliteConnection,
     task_id: i32,
-    timestamp: i32,
+    timestamp: i64,
 ) -> Result<usize, diesel::result::Error> {
-    use self::schema::schedules::dsl::*;
-    diesel::update(schedules.filter(id.eq(task_id)))
+    use self::schema::tasks::dsl::*;
+    diesel::update(tasks.filter(id.eq(task_id)))
         .set(next_run_timestamp.eq(timestamp))
         .execute(cnxn)
 }
@@ -55,7 +54,7 @@ mod tests {
     use chrono::Utc;
     use diesel::RunQueryDsl;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("src/db/migrations");
 
     /// helper macro to provide a nice syntax to generate the database models from a
     /// json token tree
@@ -69,11 +68,11 @@ mod tests {
 
     #[test]
     fn test_insert_query_schedules() {
-        use super::schema::schedules;
+        use super::schema::tasks;
         let mut cnxn = get_connection(None);
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
         let current_datetime = Utc::now();
-        let curr = current_datetime.timestamp() as i32;
+        let curr = current_datetime.timestamp();
         let nxt = curr + 86_400;
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
                 {
@@ -117,7 +116,7 @@ mod tests {
                     "next_run_timestamp": nxt - 10 // should be found
                 }
         ]);
-        diesel::insert_into(schedules::table)
+        diesel::insert_into(tasks::table)
             .values(&schedule_json)
             .execute(&mut cnxn)
             .expect("Failed to execute insert for schedules");
@@ -129,11 +128,11 @@ mod tests {
 
     #[test]
     fn test_update_next_timestamp() {
-        use super::schema::schedules;
+        use super::schema::tasks;
         let mut cnxn = get_connection(None);
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
 
-        let curr = Utc::now().timestamp() as i32;
+        let curr = Utc::now().timestamp();
 
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
                 {
@@ -145,15 +144,15 @@ mod tests {
                     "next_run_timestamp": curr // should be found as is start
                 },
         ]);
-        diesel::insert_into(schedules::table)
+        diesel::insert_into(tasks::table)
             .values(&schedule_json)
             .execute(&mut cnxn)
             .expect("Failed to execute insert for schedules");
         let new_ts = curr + 32;
         update_next_timestamp(&mut cnxn, 1, new_ts).expect("Failed to update timestamp");
 
-        let mut results: Vec<ScheduledTask> = schedules::dsl::schedules
-            .filter(schedules::id.eq(1))
+        let mut results: Vec<ScheduledTask> = tasks::dsl::tasks
+            .filter(tasks::id.eq(1))
             .select(ScheduledTask::as_select())
             .load(&mut cnxn)
             .expect("Failed to query schedules");

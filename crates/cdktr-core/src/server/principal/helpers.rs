@@ -3,7 +3,7 @@
 ///
 use crate::{
     db::models::{NewScheduledTask, ScheduledTask},
-    models::{Task, TaskStatus},
+    models::{traits::ToTask, Task, TaskStatus},
     server::models::ClientResponseMessage,
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
@@ -15,8 +15,8 @@ pub fn handle_create_task(
     db_cnxn: &mut SqliteConnection,
     scheduled_task: NewScheduledTask,
 ) -> (ClientResponseMessage, usize) {
-    use crate::db::schema::schedules;
-    let result = diesel::insert_into(schedules::table)
+    use crate::db::schema::tasks;
+    let result = diesel::insert_into(tasks::table)
         .values(&scheduled_task)
         .execute(db_cnxn);
     match result {
@@ -26,9 +26,9 @@ pub fn handle_create_task(
 }
 
 pub fn handle_list_tasks(db_cnxn: &mut SqliteConnection) -> (ClientResponseMessage, usize) {
-    use crate::db::schema::schedules::dsl::*;
+    use crate::db::schema::tasks::dsl::*;
     let results: Result<Vec<ScheduledTask>, diesel::result::Error> =
-        schedules.select(ScheduledTask::as_select()).load(db_cnxn);
+        tasks.select(ScheduledTask::as_select()).load(db_cnxn);
     match results {
         Ok(res) => match serde_json::to_string(&res) {
             Ok(json_str) => (ClientResponseMessage::SuccessWithPayload(json_str), 0),
@@ -54,8 +54,8 @@ pub fn handle_delete_task(
     db_cnxn: &mut SqliteConnection,
     task_id: i32,
 ) -> (ClientResponseMessage, usize) {
-    use crate::db::schema::schedules::dsl::*;
-    let result = diesel::delete(schedules.filter(id.eq(task_id))).execute(db_cnxn);
+    use crate::db::schema::tasks::dsl::*;
+    let result = diesel::delete(tasks.filter(id.eq(task_id))).execute(db_cnxn);
     match result {
         Ok(num_affected) => {
             if num_affected >= 1 {
@@ -93,14 +93,28 @@ pub async fn handle_agent_task_status_update(
     )
 }
 
-pub async fn handle_add_task(
-    task: Task,
+pub async fn handle_run_task(
+    task_id: i32,
+    db_cnxn: &mut SqliteConnection,
     queue: &mut AsyncQueue<Task>,
 ) -> (ClientResponseMessage, usize) {
-    info!(
-        "Adding task to global task queue - task -> {}",
-        task.to_string()
-    );
+    use crate::db::schema::tasks::dsl::*;
+    info!("Staging task -> {}", task_id.to_string());
+    let task_res: Result<ScheduledTask, diesel::result::Error> = tasks
+        .filter(id.eq(task_id))
+        .select(ScheduledTask::as_select())
+        .first(db_cnxn);
+    let task = if let Ok(task) = task_res {
+        task.to_task()
+    } else {
+        return (
+            ClientResponseMessage::ServerError(format!(
+                "Failed to retreive task with id {}",
+                task_id
+            )),
+            0,
+        );
+    };
     queue.put(task).await;
     info!("Current task queue size: {}", queue.size().await);
     (ClientResponseMessage::Success, 0)
@@ -136,17 +150,14 @@ mod tests {
 
     use super::*;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("src/db/migrations");
 
     fn setup_db() -> SqliteConnection {
         let mut cnxn = SqliteConnection::establish(":memory:").unwrap();
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
         cnxn
     }
-
-    #[test]
-    fn test_handle_create_task_happy() {
-        let mut db_cnxn = setup_db();
+    fn add_task_to_db(db_cnxn: &mut SqliteConnection) {
         let task = NewScheduledTask {
             task_name: "echo hello".to_string(),
             task_type: "PROCESS".to_string(),
@@ -156,9 +167,15 @@ mod tests {
             next_run_timestamp: 1720313744,
         };
         assert_eq!(
-            handle_create_task(&mut db_cnxn, task),
+            handle_create_task(db_cnxn, task),
             (ClientResponseMessage::Success, 0)
         )
+    }
+
+    #[test]
+    fn test_handle_create_task_happy() {
+        let mut db_cnxn = setup_db();
+        add_task_to_db(&mut db_cnxn);
     }
 
     #[test]
@@ -237,10 +254,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_add_task_to_queue() {
+    async fn test_handle_run_task() {
+        let mut db_cnxn = setup_db();
+        add_task_to_db(&mut db_cnxn);
+
         let mut queue = AsyncQueue::new();
-        let task = Task::try_from("PROCESS|echo|hello world".to_string()).unwrap();
-        handle_add_task(task, &mut queue).await;
+        handle_run_task(1, &mut db_cnxn, &mut queue).await;
+
         assert_eq!(queue.size().await, 1)
     }
 

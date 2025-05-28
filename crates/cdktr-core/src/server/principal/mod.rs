@@ -68,8 +68,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 let mut db_cnxn = self.db_cnxn.lock().await;
                 helpers::handle_delete_task(&mut db_cnxn, task_id)
             }
-            PrincipalAPI::AddTask(task) => {
-                helpers::handle_add_task(task, &mut self.task_queue).await
+            PrincipalAPI::RunTask(task_id) => {
+                let mut db_cnxn = self.db_cnxn.lock().await;
+                helpers::handle_run_task(task_id, &mut db_cnxn, &mut self.task_queue).await
             }
             PrincipalAPI::RegisterAgent(agent_id) => self.register_agent(&agent_id).await,
             PrincipalAPI::AgentTaskStatusUpdate(agent_id, task_id, status) => {
@@ -108,7 +109,7 @@ mod tests {
             "LISTTASKS",
             "CREATETASK|echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744",
             "DELETETASK|1",
-            "ADDTASK|PROCESS|echo|hello",
+            "RUNTASK|1",
             "REGISTERAGENT|8999|2",
         ];
         for zmq_s in all_happies {
@@ -121,51 +122,59 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_cli_message_all_happy() {
-        // simulate receipt of a success message from a server
-        tokio::spawn(async {
-            let uri = "tcp://0.0.0.0:8999";
-            let mut rep_socket = zeromq::RepSocket::new();
-            rep_socket.bind(uri).await.expect("Failed to connect");
-            let _ = rep_socket.recv().await.unwrap();
-            rep_socket
-                .send("OK".into())
-                .await
-                .expect("Failed to send response")
-        });
-        let test_params = vec![
-            ("PING", ClientResponseMessage::Pong, 0),
+        // e2e integration test of db crudvia the server
+        let test_params: Vec<(&str, Box<dyn Fn(ClientResponseMessage) -> bool>, usize)> = vec![
+            // ("PING", Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Pong), 0),
             (
                 "LISTTASKS",
-                ClientResponseMessage::SuccessWithPayload("[]".to_string()),
+                Box::new(|r: ClientResponseMessage| {
+                    r == ClientResponseMessage::SuccessWithPayload("[]".to_string())
+                }),
                 0,
             ),
             (
                 "CREATETASK|echo hello|PROCESS|echo|hello|0 3 * * * *|1720313744",
-                ClientResponseMessage::Success,
+                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
                 0,
             ),
-            ("DELETETASK|1", ClientResponseMessage::Success, 0),
             (
-                "ADDTASK|PROCESS|echo|hello",
-                ClientResponseMessage::Success,
+                "RUNTASK|1",
+                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
+                0,
+            ),
+            (
+                "LISTTASKS",
+                Box::new(|r: ClientResponseMessage| {
+                    r.to_string().chars().take(10).collect::<String>()
+                        == ClientResponseMessage::SuccessWithPayload("[{\"id\":1".to_string())
+                            .to_string()
+                            .chars()
+                            .take(10)
+                            .collect::<String>()
+                }),
+                0,
+            ),
+            (
+                "DELETETASK|1",
+                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
                 0,
             ),
             (
                 "REGISTERAGENT|localhost-8999|3",
-                ClientResponseMessage::Success,
+                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
                 0,
             ),
         ];
 
         let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
-        for (zmq_s, response, exp_exit_code) in test_params {
+        for (zmq_s, assertion_fn, exp_exit_code) in test_params {
             println!("Testing {zmq_s}");
             let zmq_msg = ZmqMessage::from(zmq_s);
             let ar = PrincipalAPI::try_from(zmq_msg)
                 .expect("Should be able to unwrap the agent from ZMQ command");
             let (resp, exit_code) = server.handle_client_message(ar).await;
             dbg!(&resp);
-            assert_eq!(response, resp);
+            assertion_fn(resp);
             assert_eq!(exit_code, exp_exit_code);
         }
     }

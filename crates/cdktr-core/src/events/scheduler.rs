@@ -29,7 +29,7 @@ use tokio::time::sleep;
 /// earliest to latest
 pub struct Scheduler {
     db_cnxn: Arc<Mutex<SqliteConnection>>,
-    poll_interval_seconds: i32,
+    poll_interval_seconds: u64,
     task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
 }
 
@@ -44,7 +44,7 @@ impl EventListener<Task> for Scheduler {
             poll_db_loop(
                 task_queue,
                 db_cnxn_cl,
-                Utc::now().timestamp() as i32,
+                Utc::now().timestamp(),
                 poll_interval_seconds,
                 None,
             )
@@ -56,7 +56,7 @@ impl EventListener<Task> for Scheduler {
 }
 
 impl Scheduler {
-    pub fn _new(db_cnxn: Arc<Mutex<SqliteConnection>>, poll_interval_seconds: i32) -> Self {
+    pub fn _new(db_cnxn: Arc<Mutex<SqliteConnection>>, poll_interval_seconds: u64) -> Self {
         Self {
             db_cnxn,
             poll_interval_seconds,
@@ -93,11 +93,11 @@ impl Scheduler {
 async fn poll_db_loop(
     task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
     db_cnxn: Arc<Mutex<SqliteConnection>>,
-    start_timestamp: i32,
-    poll_interval_seconds: i32,
-    kill_after: Option<i32>,
+    start_timestamp: i64,
+    poll_interval_seconds: u64,
+    kill_after: Option<i64>,
 ) {
-    while (Utc::now().timestamp() as i32) < start_timestamp {
+    while (Utc::now().timestamp()) < start_timestamp {
         thread::sleep(Duration::from_millis(10));
     }
     // use start + poll interval in order not to accidentally overlap schedules with
@@ -109,7 +109,7 @@ async fn poll_db_loop(
                 break;
             }
         };
-        let secs = Duration::from_secs(poll_interval_seconds as u64);
+        let secs = Duration::from_secs(poll_interval_seconds);
         thread::sleep(secs);
         {
             let mut cnxn = db_cnxn.lock().await;
@@ -121,15 +121,15 @@ async fn poll_db_loop(
             )
             .await;
         }
-        current_timestamp += poll_interval_seconds as i32;
+        current_timestamp += poll_interval_seconds as i64;
     }
     info!("Polling loop has ended");
 }
 async fn poll_db(
     task_queue: Arc<Mutex<VecDeque<ScheduledTask>>>,
     cnxn: &mut diesel::SqliteConnection,
-    current_timestamp: i32,
-    poll_interval_seconds: i32,
+    current_timestamp: i64,
+    poll_interval_seconds: u64,
 ) {
     let scheds = get_queueable_schedules(cnxn, current_timestamp, poll_interval_seconds);
     if scheds.len() < 1 {
@@ -141,7 +141,7 @@ async fn poll_db(
             match &task.cron {
                 Some(cron) => {
                     let schedule = Schedule::from_str(cron).unwrap();
-                    let next_run_ts = schedule.upcoming(Utc).next().unwrap().timestamp() as i32;
+                    let next_run_ts = schedule.upcoming(Utc).next().unwrap().timestamp();
                     update_next_timestamp(cnxn, task.id, next_run_ts).expect(&format!(
                         "SCHEDULER: failed to update next run timestamp for {}",
                         &task.id
@@ -154,7 +154,7 @@ async fn poll_db(
 }
 
 fn first_task_is_ready(first_task: &ScheduledTask) -> bool {
-    (Utc::now().timestamp() as i32) >= first_task.next_run_timestamp
+    (Utc::now().timestamp()) >= first_task.next_run_timestamp
 }
 
 #[cfg(test)]
@@ -171,7 +171,7 @@ mod tests {
 
     use diesel::RunQueryDsl;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("src/db/migrations");
     /// helper macro to provide a nice syntax to generate the database models from a
     /// json token tree
     macro_rules! model_from_json {
@@ -185,7 +185,7 @@ mod tests {
     #[tokio::test]
     async fn test_first_is_ready() {
         let mut q: VecDeque<ScheduledTask> = VecDeque::new();
-        let curr_timestamp = Utc::now().timestamp() as i32;
+        let curr_timestamp = Utc::now().timestamp();
         let tasks = [
             ScheduledTask {
                 id: 1,
@@ -227,13 +227,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_poll_db() {
-        use crate::db::schema::schedules;
+        use crate::db::schema::tasks;
         let task_queue: Arc<Mutex<VecDeque<ScheduledTask>>> = Arc::new(Mutex::new(VecDeque::new()));
         let mut cnxn = get_connection(None);
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
 
         // load some dummy data
-        let curr = Utc::now().timestamp() as i32;
+        let curr = Utc::now().timestamp();
         let poll_interval_seconds = 5;
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
             {
@@ -261,10 +261,10 @@ mod tests {
                 "next_run_timestamp": curr + 10 // should not be queued
             }
         ]);
-        diesel::insert_into(schedules::table)
+        diesel::insert_into(tasks::table)
             .values(&schedule_json)
             .execute(&mut cnxn)
-            .expect("Failed to execute insert for schedules");
+            .expect("Failed to execute insert for tasks");
 
         // runn the test
         poll_db(task_queue.clone(), &mut cnxn, curr, poll_interval_seconds).await;
@@ -278,13 +278,13 @@ mod tests {
         /// Test the loop by running a poll interval of 1 second but running for 5 seconds.
         /// This means that 2 of the 3 scheduled tasks should be picked up since they're all <= 5
         /// seconds of the total duration of the loop
-        use crate::db::schema::schedules;
+        use crate::db::schema::tasks;
         let task_queue: Arc<Mutex<VecDeque<ScheduledTask>>> = Arc::new(Mutex::new(VecDeque::new()));
         let mut cnxn = get_connection(None);
         cnxn.run_pending_migrations(MIGRATIONS).unwrap();
 
         // load some dummy data
-        let curr = Utc::now().timestamp() as i32;
+        let curr = Utc::now().timestamp();
         let poll_interval_seconds = 1;
         let schedule_json = model_from_json!(Vec<NewScheduledTask>, [
             {
@@ -338,10 +338,10 @@ mod tests {
                 "next_run_timestamp": curr + 5 // should not be queued
             }
         ]);
-        diesel::insert_into(schedules::table)
+        diesel::insert_into(tasks::table)
             .values(&schedule_json)
             .execute(&mut cnxn)
-            .expect("Failed to execute insert for schedules");
+            .expect("Failed to execute insert for tasks");
 
         // runn the test
         poll_db_loop(

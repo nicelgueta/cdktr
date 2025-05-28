@@ -21,3 +21,5 @@ tui:
 	cargo run ui
 pycli:
 	python python-cdktr/cli_zmq.py
+run-migration:
+	diesel migration run
