@@ -82,37 +82,6 @@ mod tests {
 
     use super::*;
 
-    #[ignore] //TODO fix to use mock
-    #[test]
-    fn test_handle_list_tasks_empty_db() {
-        let wfs: WorkflowStore = serde_json::from_value(json!({
-            "dir": "/some/dir",
-            "inner": {
-                "wf1": {
-                    "cron": "*/2 * * * * *",
-                    "start_time":" 2025-01-20T12:30:00+00:00",
-                    "tasks": {
-                        "task1": {
-                            "name": "Task 1",
-                            "description": "Runs first task",
-                            "config": {
-                                "cmd": "echo",
-                                "args": ["hello", "world"]
-                            }
-                        }
-                    }
-
-                }
-            }
-        }))
-        .unwrap();
-        let json_str = serde_json::to_string(&wfs).unwrap();
-        assert_eq!(
-            handle_list_workflows(&wfs),
-            (ClientResponseMessage::SuccessWithPayload(json_str), 0)
-        )
-    }
-
     #[test]
     fn test_handle_list_tasks_1_in_db() {
         // TODO
@@ -135,36 +104,5 @@ mod tests {
         assert_eq!(code, 0);
     }
 
-    // #[tokio::test]
-    // async fn test_fetch_task_2_tasks() {
-    //     let mut task_queue = AsyncQueue::new();
-
-    //     // put some dummy tasks onthe queue
-    //     task_queue
-    //         .put(Workflow {
-    //             name: "fake1".to_string(),
-    //         })
-    //         .await;
-    //     task_queue
-    //         .put(Workflow {
-    //             name: "fake2".to_string(),
-    //         })
-    //         .await;
-
-    //     assert_eq!(task_queue.size().await, 2);
-
-    //     let (cli_msg, code) = handle_fetch_task(&mut task_queue, "1234".to_string()).await;
-
-    //     assert_eq!(task_queue.size().await, 1);
-
-    //     assert_eq!(
-    //         cli_msg,
-    //         ClientResponseMessage::SuccessWithPayload("{\"name\":\"fake1\"}".to_string())
-    //     );
-    //     assert_eq!(code, 0);
-
-    //     let (cli_msg, code) = handle_fetch_task(&mut task_queue, "1234".to_string()).await;
-
-    //     assert_eq!(cli_msg.payload(), "{\"name\":\"fake2\"}".to_string())
-    // }
+    // TODO: more tests needed
 }

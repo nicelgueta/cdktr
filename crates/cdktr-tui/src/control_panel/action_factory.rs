@@ -1,13 +1,14 @@
-use cdktr_core::{config::CDKTR_DEFAULT_TIMEOUT, zmq_helpers::get_server_tcp_uri};
+use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 
 use cdktr_ipc::prelude::{ClientResponseMessage, PrincipalAPI, API};
+use log::warn;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     widgets::{Block, Paragraph, Widget},
 };
-use std::{collections::HashMap, env};
+use std::{collections::HashMap, env, time::Duration};
 
 pub struct RenderConfig<'a> {
     title: &'static str,
@@ -36,28 +37,14 @@ pub trait APIAction {
             Err(e) => return e,
         };
         let cdkr_principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
-        let cdkr_principal_port = env::var("CDKTR_PRINCIPAL_PORT");
-        let cdkr_principal_port = match cdkr_principal_port {
-            Ok(port) => port,
-            Err(_) => {
-                return ClientResponseMessage::ServerError(
-                    "Environment variable CDKTR_PRINCIPAL_PORT not set".to_string(),
-                )
-                .into()
-            }
-        };
-        let cdkr_principal_port = cdkr_principal_port.parse::<usize>();
-        let cdkr_principal_port = match cdkr_principal_port {
-            Ok(port) => port,
-            Err(_) => {
-                return ClientResponseMessage::ServerError(
-                    "CDKTR_PRINCIPAL_PORT is not a valid port number".to_string(),
-                )
-                .into()
-            }
-        };
+        let cdkr_principal_port = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize);
         let uri = get_server_tcp_uri(&cdkr_principal_host, cdkr_principal_port);
-        let result = msg.send(&uri, CDKTR_DEFAULT_TIMEOUT).await;
+        let result = msg
+            .send(
+                &uri,
+                Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64),
+            )
+            .await;
         match result {
             Ok(response) => response.into(),
             Err(e) => ClientResponseMessage::NetworkError(e.to_string()).into(),

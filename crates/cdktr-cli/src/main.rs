@@ -4,6 +4,7 @@ use log::{error, info};
 use models::InstanceType;
 use std::env;
 
+use cdktr_core::get_cdktr_setting;
 use cdktr_ipc::instance::{start_agent, start_principal};
 use cdktr_tui::tui_main;
 use rustyrs::get_slug;
@@ -54,17 +55,10 @@ async fn main() {
 async fn _main() {
     let cli_instance = CdktrCli::parse();
 
-    let principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
-
-    let principal_port: usize = match env::var("CDKTR_PRINCIPAL_PORT") {
-        Ok(port) => port
-            .parse()
-            .expect("CDKTR_PRINCIPAL_PORT must be a valid number"),
-        Err(_) => {
-            error!("Environment variable CDKTR_PRINCIPAL_PORT not set");
-            return;
-        }
-    };
+    let principal_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
+    let principal_port: usize = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT)
+        .parse()
+        .expect("CDKTR_PRINCIPAL_PORT must be a valid number");
 
     match cli_instance {
         CdktrCli::Start(args) => {

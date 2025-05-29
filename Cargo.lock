@@ -253,6 +253,8 @@ version = "0.1.0"
 dependencies = [
  "cdktr-core",
  "cdktr-ipc",
+ "env_logger",
+ "log",
  "ratatui",
  "tokio",
  "zeromq",

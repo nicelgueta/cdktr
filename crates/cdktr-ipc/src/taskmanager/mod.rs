@@ -1,12 +1,11 @@
 use crate::client::PrincipalClient;
-use cdktr_core::{
-    config::CDKTR_DEFAULT_TIMEOUT, exceptions::GenericError, models::traits::Executor,
-};
-use cdktr_workflow::{Task, Workflow};
+use cdktr_core::get_cdktr_setting;
+use cdktr_core::{exceptions::GenericError, models::traits::Executor};
+use cdktr_workflow::Task;
 use log::{debug, error, info, warn};
 use rustyrs::EternalSlugGenerator;
-use std::sync::Arc;
 use std::time::Duration;
+use std::{env, sync::Arc};
 use task_tracker::TaskTracker;
 use task_tracker::ThreadSafeTaskTracker;
 use tokio::sync::mpsc;
@@ -161,7 +160,12 @@ impl TaskManager {
         loop {
             let workflow_result = self
                 .principal_client
-                .wait_next_workflow(WAIT_TASK_SLEEP_INTERVAL_MS, CDKTR_DEFAULT_TIMEOUT)
+                .wait_next_workflow(
+                    WAIT_TASK_SLEEP_INTERVAL_MS,
+                    Duration::from_millis(
+                        get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64
+                    ),
+                )
                 .await;
             let workflow = match workflow_result {
                 Ok(workflow) => workflow,

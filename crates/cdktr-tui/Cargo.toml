@@ -9,4 +9,6 @@ cdktr-core = { workspace = true }
 cdktr-ipc = { workspace = true }
 zeromq = { workspace = true }
 tokio = { workspace = true}
+env_logger = { workspace = true }
+log = { workspace = true }
 

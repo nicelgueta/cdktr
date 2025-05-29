@@ -2,10 +2,7 @@ use crate::{
     api::{PrincipalAPI, API},
     prelude::ClientResponseMessage,
 };
-use cdktr_core::{
-    config::{CDKTR_DEFAULT_TIMEOUT, CDKTR_RETRY_ATTEMPTS},
-    exceptions::GenericError,
-};
+use cdktr_core::{exceptions::GenericError, get_cdktr_setting};
 use cdktr_workflow::Workflow;
 use log::{debug, error, info, trace, warn};
 use std::{env, time::Duration};
@@ -27,16 +24,17 @@ impl PrincipalClient {
         }
     }
     pub async fn register_with_principal(&mut self) -> Result<(), GenericError> {
+        let cdktr_retry_attempts: usize = get_cdktr_setting!(CDKTR_RETRY_ATTEMPTS, usize);
+        let cdktr_default_timeout: Duration =
+            Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
+
         debug!("Registering agent with principal @ {}", &self.principal_uri);
-        let max_reconnection_attempts: usize = env::var("AGENT_RECONNNECT_ATTEMPTS")
-            .unwrap_or(CDKTR_RETRY_ATTEMPTS.to_string())
-            .parse()
-            .unwrap();
+        let max_reconnection_attempts = cdktr_retry_attempts;
         let mut actual_attempts: usize = 0;
         loop {
             let request = PrincipalAPI::RegisterAgent(self.instance_id.clone());
             let reconn_result = request
-                .send(&self.principal_uri, CDKTR_DEFAULT_TIMEOUT)
+                .send(&self.principal_uri, cdktr_default_timeout)
                 .await;
             if let Ok(cli_msg) = reconn_result {
                 match cli_msg {
@@ -59,7 +57,7 @@ impl PrincipalClient {
                 warn!(
                     "Failed to communicate to principal: {} - trying again in {} ms (attempt {} of {})",
                     reconn_result.unwrap_err().to_string(),
-                    CDKTR_DEFAULT_TIMEOUT.as_millis().to_string(),
+                    cdktr_default_timeout.as_millis().to_string(),
                     actual_attempts,
                     max_reconnection_attempts
                 );
@@ -78,6 +76,9 @@ impl PrincipalClient {
         sleep_interval: Duration,
         timeout: Duration,
     ) -> Result<Workflow, GenericError> {
+        let cdktr_retry_attempts: usize = get_cdktr_setting!(CDKTR_RETRY_ATTEMPTS, usize);
+        let cdktr_default_timeout: Duration =
+            Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
         let mut reconnection_attempts: usize = 0;
         loop {
             let workflow_res = self.fetch_next_workflow(timeout).await;
@@ -100,15 +101,15 @@ impl PrincipalClient {
                         continue;
                     }
                     GenericError::TimeoutError => {
-                        if reconnection_attempts == CDKTR_RETRY_ATTEMPTS {
+                        if reconnection_attempts == cdktr_retry_attempts {
                             error!("Max reconnection attempts reached - aborting");
                             return Err(GenericError::RuntimeError(
                                 "Connection with principal host was lost. Process aborting"
                                     .to_string(),
                             ));
                         };
-                        let retry_interval = CDKTR_DEFAULT_TIMEOUT.as_millis();
-                        warn!("Failed to communicate to principal - trying again in {retry_interval} ms (attempt {reconnection_attempts} of {CDKTR_RETRY_ATTEMPTS})");
+                        let retry_interval = cdktr_default_timeout.as_millis();
+                        warn!("Failed to communicate to principal - trying again in {retry_interval} ms (attempt {reconnection_attempts} of {cdktr_retry_attempts})");
                         reconnection_attempts += 1;
                         continue;
                     }
