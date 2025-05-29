@@ -1,13 +1,11 @@
+use cdktr_core::{utils::get_instance_id, zmq_helpers::get_server_tcp_uri};
 use log::{debug, error};
-use std::{sync::Arc, time::Duration};
-use tokio::{sync::Mutex, time::sleep};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::{
-    db::get_connection,
     server::{principal::PrincipalServer, traits::Server},
     taskmanager,
-    utils::get_instance_id,
-    zmq_helpers::get_server_tcp_uri,
 };
 
 /// Starts the main agent loop
@@ -27,19 +25,10 @@ pub async fn start_agent(
 }
 
 /// Starts the main principal loop
-pub async fn start_principal(
-    instance_host: String,
-    instance_port: usize,
-    database_url: Option<String>,
-) {
+pub async fn start_principal(instance_host: String, instance_port: usize) {
     let instance_id = get_instance_id(&instance_host, instance_port);
-    let db_cnxn = Arc::new(Mutex::new(get_connection(database_url.as_deref())));
-    debug!(
-        "Created db connection to {}",
-        database_url.unwrap_or(String::from(":memory:"))
-    );
 
-    let mut principal_server = PrincipalServer::new(db_cnxn.clone(), instance_id.clone());
+    let mut principal_server = PrincipalServer::new(instance_id.clone());
 
     // start REP/REQ server loop for principal
     principal_server

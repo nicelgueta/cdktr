@@ -19,6 +19,7 @@ pub enum GenericError {
     MissingAgents,
     TimeoutError,
     ZMQParseError(ZMQParseError),
+    ParseError(String),
     RuntimeError(String),
     NoDataException(String), // APIError(String),
 }
@@ -30,6 +31,7 @@ impl GenericError {
             Self::ZMQParseError(zmq_e) => format!("ZMQ Error: {}", zmq_e.to_string()),
             Self::RuntimeError(s) => format!("Runtime Error: {}", s.clone()),
             Self::NoDataException(s) => format!("NoDataException: {}", s.clone()),
+            Self::ParseError(s) => format!("ParseError: {}", s.clone()),
             // Self::APIError(s) => s.clone(),
         }
     }

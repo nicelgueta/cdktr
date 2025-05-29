@@ -1,16 +1,15 @@
+use crate::{
+    api::{PrincipalAPI, API},
+    prelude::ClientResponseMessage,
+};
+use cdktr_core::{
+    config::{CDKTR_DEFAULT_TIMEOUT, CDKTR_RETRY_ATTEMPTS},
+    exceptions::GenericError,
+};
+use cdktr_workflow::Workflow;
 use log::{debug, error, info, trace, warn};
 use std::{env, time::Duration};
 use tokio::time::sleep;
-
-use crate::{
-    api::{PrincipalAPI, API},
-    config::{CDKTR_DEFAULT_TIMEOUT, CDKTR_RETRY_ATTEMPTS},
-    exceptions::GenericError,
-    models::Task,
-    prelude::ClientResponseMessage,
-};
-
-mod helpers;
 
 /// This client is used to house utility functions at a slightly higher level than the raw API
 /// implemented by the PrincipalAPI.
@@ -73,26 +72,26 @@ impl PrincipalClient {
     pub fn get_uri(&self) -> String {
         self.principal_uri.clone()
     }
-    /// waits indefinitely for a task from the principal
-    pub async fn wait_next_task(
+    /// waits indefinitely for a workflow from the principal
+    pub async fn wait_next_workflow(
         &self,
         sleep_interval: Duration,
         timeout: Duration,
-    ) -> Result<Task, GenericError> {
+    ) -> Result<Workflow, GenericError> {
         let mut reconnection_attempts: usize = 0;
         loop {
-            let task_res = self.fetch_next_task(timeout).await;
-            let task = match task_res {
-                Ok(task) => {
+            let workflow_res = self.fetch_next_workflow(timeout).await;
+            let workflow = match workflow_res {
+                Ok(workflow) => {
                     if reconnection_attempts > 0 {
                         info!("Successfully reconnected with principal");
                         reconnection_attempts = 0
                     };
-                    task
+                    workflow
                 }
                 Err(e) => match e {
                     GenericError::NoDataException(_err_msg) => {
-                        trace!("No work on global task queue - waiting");
+                        trace!("No work on global workflow queue - waiting");
                         if reconnection_attempts > 0 {
                             info!("Successfully reconnected with principal");
                             reconnection_attempts = 0
@@ -116,24 +115,29 @@ impl PrincipalClient {
                     other_error => return Err(other_error),
                 },
             };
-            return Ok(task);
+            return Ok(workflow);
         }
     }
 
-    pub async fn fetch_next_task(&self, timeout: Duration) -> Result<Task, GenericError> {
-        let request = PrincipalAPI::FetchTask(self.instance_id.clone());
+    pub async fn fetch_next_workflow(&self, timeout: Duration) -> Result<Workflow, GenericError> {
+        let request = PrincipalAPI::FetchWorkflow(self.instance_id.clone());
         match request.send(&self.principal_uri, timeout).await {
             Ok(cli_resp) => match cli_resp {
                 ClientResponseMessage::Success => {
                     Err(GenericError::NoDataException("Queue empty".to_string()))
                 }
-                ClientResponseMessage::SuccessWithPayload(task_str) => {
-                    info!("Task received from Principal -> {}", &task_str);
-                    let task_res = Task::try_from(task_str);
-                    return match task_res {
-                        Ok(task) => Ok(task),
-                        Err(e) => Err(GenericError::ZMQParseError(e)),
+                ClientResponseMessage::SuccessWithPayload(workflow_str) => {
+                    info!("Task received from Principal -> {}", &workflow_str);
+                    let workflow = match Workflow::try_from(workflow_str) {
+                        Ok(wf) => wf,
+                        Err(e) => {
+                            return Err(GenericError::ParseError(format!(
+                                "Failed to read Workflow JSON from ZMQ string. Error: {}",
+                                e.to_string()
+                            )))
+                        }
                     };
+                    return Ok(workflow);
                 }
                 other => {
                     return Err(GenericError::RuntimeError(format!(
@@ -144,7 +148,7 @@ impl PrincipalClient {
             },
             Err(e) => match e {
                 GenericError::TimeoutError => {
-                    error!("Agent call timed out fetching task from principal");
+                    error!("Agent call timed out fetching workflow from principal");
                     return Err(GenericError::TimeoutError);
                 }
                 e => {

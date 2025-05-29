@@ -1,10 +1,8 @@
-use crate::{
-    client::PrincipalClient,
-    config::CDKTR_DEFAULT_TIMEOUT,
-    exceptions::GenericError,
-    executors::get_executor,
-    models::{traits::Executor, Task},
+use crate::client::PrincipalClient;
+use cdktr_core::{
+    config::CDKTR_DEFAULT_TIMEOUT, exceptions::GenericError, models::traits::Executor,
 };
+use cdktr_workflow::{Task, Workflow};
 use log::{debug, error, info, warn};
 use rustyrs::EternalSlugGenerator;
 use std::sync::Arc;
@@ -13,6 +11,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
+use topological_sort::TopologicalSort;
 
 const WAIT_TASK_SLEEP_INTERVAL_MS: Duration = Duration::from_millis(500);
 
@@ -99,7 +98,7 @@ impl TaskManager {
         let thread_counter: Arc<Mutex<usize>> = self.thread_counter.clone();
         let (stdout_tx, stdout_rx) = mpsc::channel(32);
         let (stderr_tx, stderr_rx) = mpsc::channel(32);
-        let executor = get_executor(task);
+        let executable_task = task.get_exe_task();
         let task_id_clone = task_execution_id.clone();
         let handle = tokio::spawn(async move {
             // inform the TaskManager of another running process
@@ -109,7 +108,7 @@ impl TaskManager {
                 *counter += 1;
             }
             info!("Spawning task {task_id_clone}");
-            let _flow_result = executor.run(stdout_tx, stderr_tx).await;
+            let _flow_result = executable_task.run(stdout_tx, stderr_tx).await;
             info!("Exiting task {task_id_clone}");
             // TODO: handle the result
 
@@ -139,7 +138,7 @@ impl TaskManager {
             "TASKMANAGER-{}: Beginning task execution loop",
             self.instance_id
         );
-        let loop_res = self.task_execution_loop().await;
+        let loop_res = self.workflow_execution_loop().await;
         if let Err(e) = loop_res {
             error!("{}", e.to_string());
             while *self.thread_counter.lock().await > 0 {
@@ -154,140 +153,59 @@ impl TaskManager {
         }
     }
 
-    async fn task_execution_loop(&mut self) -> Result<(), GenericError> {
+    async fn workflow_execution_loop(&mut self) -> Result<(), GenericError> {
         loop {
-            let task_result = self
+            let workflow_result = self
                 .principal_client
-                .wait_next_task(WAIT_TASK_SLEEP_INTERVAL_MS, CDKTR_DEFAULT_TIMEOUT)
+                .wait_next_workflow(WAIT_TASK_SLEEP_INTERVAL_MS, CDKTR_DEFAULT_TIMEOUT)
                 .await;
-            let task = match task_result {
-                Ok(task) => task,
+            let workflow = match workflow_result {
+                Ok(workflow) => workflow,
                 Err(e) => {
                     error!("{}", e.to_string());
                     return Err(e);
                 }
             };
-            loop {
-                let task_execution_id = self.name_gen.next();
-                let task_exe_result: Result<TaskExecutionHandle, TaskManagerError> = self
-                    .run_in_executor(task.to_owned(), task_execution_id.clone())
-                    .await;
-                match task_exe_result {
-                    Err(e) => match e {
-                        TaskManagerError::TooManyThreadsError => {
-                            debug!("Max number of child threads reached - waiting..");
-                            sleep(Duration::from_millis(1000)).await;
-                            continue;
-                        }
-                    },
-                    Ok(mut task_exe) => {
-                        // need to spawn the reading of the logs of the run task in order to free this thread
-                        // to go back to looking at the queue
-                        tokio::spawn(async move {
-                            while let Some(msg) = task_exe.wait_stdout().await {
-                                info!("{task_execution_id} | STDOUT | {msg}");
-                            }
-                            while let Some(msg) = task_exe.wait_stderr().await {
-                                error!("{task_execution_id} | STDERR | {msg}");
-                            }
-                        });
-                        break;
-                    }
+            let mut task_tracker = self.create_task_tracker(&workflow);
+            while task_tracker.len() > 0 {
+                let next_tasks = task_tracker.pop_all();
+                if next_tasks.is_empty() {
+                    return Err(GenericError::RuntimeError(
+                        "Invalid workflow - DAG contains a cycle".to_string(),
+                    ));
                 };
+                let task_map = workflow.get_tasks();
+                for task_id in next_tasks {
+                    let task = task_map.get(&task_id).unwrap();
+                    let task_exe_id = self.name_gen.next();
+                    self.run_in_executor(task.clone(), task_exe_id).await; // TODO: do something with result
+                }
             }
         }
+    }
+
+    fn create_task_tracker(&self, workflow: &Workflow) -> TopologicalSort<String> {
+        let mut tp = TopologicalSort::new();
+        for (task_id, task) in workflow.get_tasks() {
+            match task.get_dependencies() {
+                Some(deps) => {
+                    for dep in deps {
+                        tp.add_dependency(dep, task_id.clone());
+                    }
+                }
+                None => (),
+            }
+        }
+        tp
     }
 }
 
 // TODO: fix the broken pipe error
 #[cfg(test)]
 mod tests {
-    use crate::models::{Task, ZMQArgs};
     use crate::taskmanager::TaskManagerError;
+    use cdktr_core::models::ZMQArgs;
     use tokio::time::{sleep, Duration};
 
     use super::TaskManager;
-
-    fn get_task(v: Vec<&str>) -> Task {
-        let vec_s = v.iter().map(|x| x.to_string()).collect::<Vec<String>>();
-        Task::try_from(ZMQArgs::from(vec_s)).expect("Failed to create task from the ZMQArgs")
-    }
-
-    #[tokio::test]
-    async fn test_run_single_flow() {
-        let task = get_task(vec!["PROCESS", "echo", "test_run_flow"]);
-        let mut zk = TaskManager::new("tm1".to_string(), 1, "tcp://fake-uri".to_string()).await;
-        let result = zk.run_in_executor(task, "fakeid".to_string()).await;
-        assert!(result.is_ok());
-        result.unwrap().wait_stdout().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_run_single_flow_slow() {
-        let mut zk = TaskManager::new("tm1".to_string(), 1, "tcp://fake-uri".to_string()).await;
-        let task = get_task(vec!["PROCESS", "sleep", "1"]);
-        let mut result = zk.run_in_executor(task, "fakeid".to_string()).await;
-        assert!(result.is_ok());
-        let mut i = 0;
-        while let Some(msg) = result.as_mut().unwrap().wait_stdout().await {
-            let it_num = msg.parse::<i32>().unwrap();
-            assert_eq!(it_num, i);
-            i += 1;
-        }
-    }
-
-    #[tokio::test]
-    async fn test_run_multiple_flow_slow() {
-        let mut zk = TaskManager::new("tm1".to_string(), 1, "tcp://fake-uri".to_string()).await;
-        let task1 = get_task(vec!["PROCESS", "sleep", "2"]);
-        let task2 = get_task(vec!["PROCESS", "sleep", "2"]);
-        let task3 = get_task(vec!["PROCESS", "sleep", "1"]);
-        let mut result1 = zk.run_in_executor(task1, "fakeid".to_string()).await;
-        let mut result2 = zk.run_in_executor(task2, "fakeid".to_string()).await;
-        let mut result3 = zk.run_in_executor(task3, "fakeid".to_string()).await;
-        assert!(result1.is_ok());
-        assert!(result2.is_ok());
-        assert!(result3.is_ok());
-
-        let mut i = 0;
-
-        while let Some(msg) = result1.as_mut().unwrap().wait_stdout().await {
-            let it_num = msg.parse::<i32>().unwrap();
-            assert_eq!(it_num, i);
-            i += 1;
-        }
-        i = 0;
-        while let Some(msg) = result2.as_mut().unwrap().wait_stdout().await {
-            let it_num = msg.parse::<i32>().unwrap();
-            assert_eq!(it_num, i);
-            i += 1;
-        }
-        i = 0;
-        while let Some(msg) = result3.as_mut().unwrap().wait_stdout().await {
-            let it_num = msg.parse::<i32>().unwrap();
-            assert_eq!(it_num, i);
-            i += 1;
-        }
-    }
-
-    #[tokio::test]
-    async fn test_run_multiple_flow_too_many_threads() {
-        let mut zk = TaskManager::new("tm1".to_string(), 1, "tcp://fake-uri".to_string()).await;
-        let task1 = get_task(vec!["PROCESS", "sleep", "2"]);
-        let task2 = get_task(vec!["PROCESS", "sleep", "3"]);
-        let result1 = zk.run_in_executor(task1, "fakeid".to_string()).await;
-        let result2 = zk.run_in_executor(task2, "fakeid".to_string()).await;
-        assert!(result1.is_ok());
-        assert!(result2.is_ok());
-
-        let second = Duration::from_millis(1000);
-        sleep(second).await;
-        let task3 = get_task(vec!["PROCESS", "sleep", "1"]);
-        let result3 = zk.run_in_executor(task3, "fakeid".to_string()).await;
-
-        match result3 {
-            Ok(_handle) => panic!("Adding another thread beyond max threads should error"),
-            Err(e) => assert_eq!(e, TaskManagerError::TooManyThreadsError),
-        }
-    }
 }

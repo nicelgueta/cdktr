@@ -1,10 +1,9 @@
 use super::traits::{APIMeta, API};
 use zeromq::ZmqMessage;
 
-use crate::{
-    db::models::NewScheduledTask,
-    models::{Task, TaskStatus, ZMQArgs},
-    server::models::RepReqError,
+use cdktr_core::{
+    exceptions::GenericError,
+    models::{TaskStatus, ZMQArgs},
 };
 
 // TODO: make an extension of AgentAPI
@@ -12,13 +11,13 @@ use crate::{
 pub enum PrincipalAPI {
     /// Check server is online
     Ping,
-    /// Lists all scheduled tasks currently stored in the database
-    ListTasks,
+    /// Lists all workflows defined in the workflow directory
+    ListWorkflows,
     /// Runs a task by id. Principal then adds the task to the primary
     /// work queue to be picked up by a agent worker.
     /// Args:
     ///     task_id: i64
-    RunTask(i32),
+    RunTask(String),
     /// Allows an agent to register itself with the principal
     /// so that the principal can set a heartbeat for it. If the agent
     /// is already registered then this behaves in a similar way to
@@ -37,25 +36,25 @@ pub enum PrincipalAPI {
     /// if not, it will just send a simple Success (OK) message
     /// Args:
     ///     agent_id
-    FetchTask(String),
+    FetchWorkflow(String),
 }
 
 impl TryFrom<ZMQArgs> for PrincipalAPI {
-    type Error = RepReqError;
+    type Error = GenericError;
     fn try_from(mut args: ZMQArgs) -> Result<Self, Self::Error> {
         let msg_type = if let Some(token) = args.next() {
             token
         } else {
-            return Err(RepReqError::ParseError(format!("Empty message")));
+            return Err(GenericError::ParseError(format!("Empty message")));
         };
         match msg_type.as_str() {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
-            "LISTTASKS" => Ok(Self::ListTasks),
+            "LSWORKFLOWS" => Ok(Self::ListWorkflows),
             "RUNTASK" => Ok(Self::RunTask(helpers::create_run_task_payload(args)?)),
             "REGISTERAGENT" => match args.next() {
                 Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
-                None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
+                None => Err(GenericError::ParseError("Missing arg AGENT_ID".to_string())),
             },
             "AGENTTASKSTATUS" => match args.next() {
                 Some(agent_id) => match args.next() {
@@ -64,19 +63,19 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                             let status = TaskStatus::try_from(status)?;
                             Ok(Self::AgentTaskStatusUpdate(agent_id, task_id, status))
                         }
-                        None => Err(RepReqError::ParseError(
+                        None => Err(GenericError::ParseError(
                             "Missing arg TASK_STATUS".to_string(),
                         )),
                     },
-                    None => Err(RepReqError::ParseError("Missing arg TASK_ID".to_string())),
+                    None => Err(GenericError::ParseError("Missing arg TASK_ID".to_string())),
                 },
-                None => Err(RepReqError::ParseError("Missing arg AGENT_ID".to_string())),
+                None => Err(GenericError::ParseError("Missing arg AGENT_ID".to_string())),
             },
-            "FETCHTASK" => match args.next() {
-                Some(agent_id) => Ok(Self::FetchTask(agent_id)),
-                None => Err(RepReqError::ParseError("Missing agent id".to_string())),
+            "FETCHWORKFLOW" => match args.next() {
+                Some(agent_id) => Ok(Self::FetchWorkflow(agent_id)),
+                None => Err(GenericError::ParseError("Missing agent id".to_string())),
             },
-            _ => Err(RepReqError::ParseError(format!(
+            _ => Err(GenericError::ParseError(format!(
                 "Unrecognised message type: {}",
                 msg_type
             ))),
@@ -89,8 +88,8 @@ impl API for PrincipalAPI {
         const META: [(&'static str, &'static str); 5] = [
             ("PING", "Check server is online"),
             (
-                "LISTTASKS",
-                "Lists all scheduled tasks currently stored in the workflow directory",
+                "LSWORKFLOWS",
+                "Lists all workflows defined in the workflow directory",
             ),
             (
                 "REGISTERAGENT",
@@ -101,8 +100,8 @@ impl API for PrincipalAPI {
                 "Allows an agent to update the principal with the status of a specific task",
             ),
             (
-                "FETCHTASK",
-                "Allows an agent to fetch a unit or work from the principal task queue. Returns a success message if there is no work to do."
+                "FETCHWORKFLOW",
+                "Allows an agent to fetch a unit of work from the principal task queue. Returns a success message if there is no work to do."
             )
         ];
         META.iter()
@@ -113,7 +112,7 @@ impl API for PrincipalAPI {
         match self {
             Self::Ping => "PING".to_string(),
             Self::RunTask(task_id) => format!("RUNTASK|{task_id}"),
-            Self::ListTasks => "LISTTASKS".to_string(),
+            Self::ListWorkflows => "LSWORKFLOWS".to_string(),
             Self::RegisterAgent(agent_id) => {
                 format!("REGISTERAGENT|{agent_id}")
             }
@@ -121,22 +120,22 @@ impl API for PrincipalAPI {
                 let status = status.to_string();
                 format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{status}")
             }
-            Self::FetchTask(agent_id) => {
-                format!("FETCHTASK|{agent_id}")
+            Self::FetchWorkflow(agent_id) => {
+                format!("FETCHWORKFLOW|{agent_id}")
             }
         }
     }
 }
 
 impl TryFrom<ZmqMessage> for PrincipalAPI {
-    type Error = RepReqError;
+    type Error = GenericError;
     fn try_from(zmq_msg: ZmqMessage) -> Result<Self, Self::Error> {
         let zmq_args: ZMQArgs = zmq_msg.into();
         Self::try_from(zmq_args)
     }
 }
 impl TryFrom<String> for PrincipalAPI {
-    type Error = RepReqError;
+    type Error = GenericError;
     fn try_from(s: String) -> Result<Self, Self::Error> {
         let zmq_args: ZMQArgs = s.into();
         Self::try_from(zmq_args)
@@ -149,23 +148,19 @@ impl Into<ZmqMessage> for PrincipalAPI {
 }
 
 mod helpers {
-    use crate::{
-        db::models::NewScheduledTask,
-        models::{Task, ZMQArgs},
-        server::models::RepReqError,
-    };
+    use cdktr_core::{exceptions::GenericError, models::ZMQArgs};
 
-    pub fn create_run_task_payload(mut args: ZMQArgs) -> Result<i32, RepReqError> {
+    pub fn create_run_task_payload(mut args: ZMQArgs) -> Result<String, GenericError> {
         let task_id = if let Some(task_id) = args.next() {
             task_id
         } else {
-            return Err(RepReqError::ParseError(
+            return Err(GenericError::ParseError(
                 "Request is missing task_id".to_string(),
             ));
         };
         match task_id.parse() {
             Ok(v) => Ok(v),
-            Err(e) => Err(RepReqError::ParseError(format!(
+            Err(e) => Err(GenericError::ParseError(format!(
                 "Unable to create integer from task_id '{}'. Error: {}",
                 &task_id,
                 e.to_string()
@@ -174,10 +169,7 @@ mod helpers {
     }
 
     #[cfg(test)]
-    mod tests {
-        use super::*;
-        use crate::models::ZMQArgs;
-    }
+    mod tests {}
 }
 
 #[cfg(test)]
@@ -187,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_principal_req_from_zmq_str() {
-        let req_types = ["PING", "FETCHTASK|1234"];
+        let req_types = ["PING", "FETCHWORKFLOW|1234"];
         for rt in req_types {
             PrincipalAPI::try_from(ZmqMessage::from(rt))
                 .expect(&format!("Failed to create AgentAPI from {}", rt));

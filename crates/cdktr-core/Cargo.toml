@@ -7,15 +7,10 @@ edition = "2021"
 
 [dependencies]
 async-trait = { workspace = true }
-chrono = { workspace = true }
-cron = { workspace = true }
-diesel = { workspace = true }
-diesel_migrations = { workspace = true }
+tokio = { workspace = true }
 dotenv = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
 zeromq = { workspace = true }
-rustyrs = { workspace = true }

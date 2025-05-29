@@ -4,7 +4,7 @@ use log::{error, info};
 use models::InstanceType;
 use std::env;
 
-use cdktr_core::instance::{start_agent, start_principal};
+use cdktr_ipc::instance::{start_agent, start_principal};
 use cdktr_tui::tui_main;
 use rustyrs::get_slug;
 
@@ -80,10 +80,7 @@ async fn _main() {
                 InstanceType::AGENT => {
                     start_agent(instance_id, principal_host, principal_port, max_tasks).await
                 }
-                InstanceType::PRINCIPAL => {
-                    let database_url: Option<String> = None;
-                    start_principal(principal_host, principal_port, database_url).await
-                }
+                InstanceType::PRINCIPAL => start_principal(principal_host, principal_port).await,
             }
         }
         CdktrCli::Ui => {

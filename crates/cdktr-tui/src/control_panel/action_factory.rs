@@ -1,8 +1,6 @@
-use cdktr_core::{
-    config::CDKTR_DEFAULT_TIMEOUT,
-    prelude::{get_server_tcp_uri, ClientResponseMessage, PrincipalAPI, API},
-};
+use cdktr_core::{config::CDKTR_DEFAULT_TIMEOUT, zmq_helpers::get_server_tcp_uri};
 
+use cdktr_ipc::prelude::{ClientResponseMessage, PrincipalAPI, API};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -206,14 +204,14 @@ macro_rules! create_actions {
     };
 }
 
-pub const ACTIONS: [&'static str; 3] = ["PING", "LISTTASKS", "CREATETASK"];
+pub const ACTIONS: [&'static str; 3] = ["PING", "LSWORKFLOWS", "CREATETASK"];
 
 fn stv(v: Vec<&str>) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
 }
 create_actions!(
     "PING", Ping, "Ping the server to check if it is up", None;
-    "LISTTASKS", ListTasks, "List all registered tasks on the server", None;
+    "LSWORKFLOWS", ListWorkflows, "List all registered tasks on the server", None;
     "CREATETASK", CreateTasks, "Create a new scheduled task", Some(stv(vec!["task_name", "task_type", "command", "args", "cron"]));
 );
 

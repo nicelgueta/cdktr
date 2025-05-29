@@ -1,14 +1,12 @@
 use async_trait::async_trait;
-use chrono::Utc;
-use diesel::SqliteConnection;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-use crate::{
-    api::PrincipalAPI,
-    models::{AgentMeta, Task},
+use cdktr_core::{
+    models::AgentMeta,
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
+use cdktr_workflow::{Workflow, Workflows};
+use chrono::Utc;
+
+use crate::api::PrincipalAPI;
 
 use super::{models::ClientResponseMessage, traits::Server};
 
@@ -16,18 +14,19 @@ mod helpers;
 
 pub struct PrincipalServer {
     instance_id: String,
-    db_cnxn: Arc<Mutex<SqliteConnection>>,
     live_agents: AgentPriorityQueue,
-    task_queue: AsyncQueue<Task>,
+    task_queue: AsyncQueue<Workflow>,
+    workflows: Workflows<Workflow>,
 }
 
 impl PrincipalServer {
-    pub fn new(db_cnxn: Arc<Mutex<SqliteConnection>>, instance_id: String) -> Self {
+    pub fn new(instance_id: String) -> Self {
+        let workflows = Workflows::from_dir("./example_cdktr_tasks").unwrap(); // TODO: remove hardcode
         Self {
-            db_cnxn,
             instance_id,
             live_agents: AgentPriorityQueue::new(),
             task_queue: AsyncQueue::new(),
+            workflows,
         }
     }
 
@@ -56,13 +55,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
     ) -> (ClientResponseMessage, usize) {
         match cli_msg {
             PrincipalAPI::Ping => (ClientResponseMessage::Pong, 0),
-            PrincipalAPI::ListTasks => {
-                let mut db_cnxn = self.db_cnxn.lock().await;
-                helpers::handle_list_tasks(&mut db_cnxn)
-            }
+            PrincipalAPI::ListWorkflows => helpers::handle_list_workflows(&self.workflows),
             PrincipalAPI::RunTask(task_id) => {
-                let mut db_cnxn = self.db_cnxn.lock().await;
-                helpers::handle_run_task(task_id, &mut db_cnxn, &mut self.task_queue).await
+                helpers::handle_run_task(&task_id, &self.workflows, &mut self.task_queue).await
             }
             PrincipalAPI::RegisterAgent(agent_id) => self.register_agent(&agent_id).await,
             PrincipalAPI::AgentTaskStatusUpdate(agent_id, task_id, status) => {
@@ -73,7 +68,7 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 )
                 .await
             }
-            PrincipalAPI::FetchTask(agent_id) => {
+            PrincipalAPI::FetchWorkflow(agent_id) => {
                 helpers::handle_fetch_task(&mut self.task_queue, agent_id).await
             }
         }
@@ -82,21 +77,15 @@ impl Server<PrincipalAPI> for PrincipalServer {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, thread::sleep, time::Duration};
+    use std::{thread::sleep, time::Duration};
 
-    use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
+    use zeromq::{Socket, ZmqMessage};
 
     use super::*;
-    use crate::db::get_connection;
-
-    fn get_db() -> Arc<Mutex<SqliteConnection>> {
-        let db = get_connection(None);
-        Arc::new(Mutex::new(db))
-    }
 
     #[test]
     fn test_principal_request_from_zmq_str_all_happy() {
-        let all_happies = vec!["PING", "LISTTASKS", "RUNTASK|1", "REGISTERAGENT|8999|2"];
+        let all_happies = vec!["PING", "LSWORKFLOWS", "RUNTASK|1", "REGISTERAGENT|8999|2"];
         for zmq_s in all_happies {
             let zmq_msg = ZmqMessage::from(zmq_s);
             let res = PrincipalAPI::try_from(zmq_msg);
@@ -111,7 +100,7 @@ mod tests {
         let test_params: Vec<(&str, Box<dyn Fn(ClientResponseMessage) -> bool>, usize)> = vec![
             // ("PING", Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Pong), 0),
             (
-                "LISTTASKS",
+                "LSWORKFLOWS",
                 Box::new(|r: ClientResponseMessage| {
                     r == ClientResponseMessage::SuccessWithPayload("[]".to_string())
                 }),
@@ -129,7 +118,7 @@ mod tests {
             ),
         ];
 
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
+        let mut server = PrincipalServer::new("fake_ins".to_string());
         for (zmq_s, assertion_fn, exp_exit_code) in test_params {
             println!("Testing {zmq_s}");
             let zmq_msg = ZmqMessage::from(zmq_s);
@@ -144,7 +133,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_new() {
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
+        let mut server = PrincipalServer::new("fake_ins".to_string());
         let agent_id = String::from("localhost-4567");
         let (resp, exit_code) = server.register_agent(&agent_id).await;
         {
@@ -156,7 +145,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_already_exists() {
-        let mut server = PrincipalServer::new(get_db(), "fake_ins".to_string());
+        let mut server = PrincipalServer::new("fake_ins".to_string());
         let agent_id = String::from("localhost-4567");
         server.register_agent(&agent_id).await;
         let old_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };

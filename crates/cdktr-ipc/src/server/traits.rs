@@ -1,7 +1,7 @@
-use crate::zmq_helpers::{get_server_tcp_uri, get_zmq_rep};
-
 use super::models::{ClientResponseMessage, RepReqError};
 use async_trait::async_trait;
+use cdktr_core::exceptions::GenericError;
+use cdktr_core::zmq_helpers::{get_server_tcp_uri, get_zmq_rep};
 use log::info;
 use std::error::Error;
 use zeromq::ZmqMessage;
@@ -12,7 +12,7 @@ use zeromq::{SocketRecv, SocketSend};
 #[async_trait]
 pub trait Server<RT>
 where
-    RT: TryFrom<ZmqMessage, Error = RepReqError> + Send,
+    RT: TryFrom<ZmqMessage, Error = GenericError> + Send,
 {
     /// Method to handle the client request. It returns a tuple of ClientResponseMessage
     /// and a restart flag. This flag is used to determine whether the
@@ -37,7 +37,7 @@ where
 
         let exit_code = loop {
             let zmq_recv = rep_socket.recv().await?;
-            let msg_res: Result<RT, RepReqError> = RT::try_from(zmq_recv.clone());
+            let msg_res: Result<RT, GenericError> = RT::try_from(zmq_recv.clone());
             match msg_res {
                 Ok(cli_msg) => {
                     let (response, exit_code) = self.handle_client_message(cli_msg).await;

@@ -1,6 +1,6 @@
 use zeromq::ZmqMessage;
 
-use crate::models::ZMQArgs;
+use cdktr_core::models::ZMQArgs;
 
 #[derive(Debug)]
 pub enum RepReqError {

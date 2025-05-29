@@ -1,12 +1,8 @@
-mod task;
-
 use crate::{
     exceptions,
-    server::models::RepReqError,
     utils::{arg_str_to_vecd, vecd_to_arg_str},
 };
 use std::collections::VecDeque;
-pub use task::Task;
 use zeromq::ZmqMessage;
 pub mod traits;
 
@@ -37,15 +33,15 @@ pub enum TaskStatus {
     FAILED,
 }
 impl TryFrom<String> for TaskStatus {
-    type Error = RepReqError;
-    fn try_from(value: String) -> Result<Self, RepReqError> {
+    type Error = exceptions::GenericError;
+    fn try_from(value: String) -> Result<Self, exceptions::GenericError> {
         match value.as_str() {
             "PENDING" => Ok(TaskStatus::PENDING),
             "RUNNING" => Ok(TaskStatus::RUNNING),
             "WAITING" => Ok(TaskStatus::WAITING),
             "COMPLETED" => Ok(TaskStatus::COMPLETED),
             "FAILED" => Ok(TaskStatus::FAILED),
-            _ => Err(RepReqError::ParseError(format!(
+            _ => Err(exceptions::GenericError::ParseError(format!(
                 "Unrecognised task status: {}",
                 value
             ))),
