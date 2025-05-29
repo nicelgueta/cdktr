@@ -1,5 +1,6 @@
 mod models;
 use cdktr_core::exceptions::GenericError;
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
@@ -8,11 +9,11 @@ use std::{
 };
 
 use models::key_from_path;
-pub use models::{PythonTask, SubprocessTask, Task, Workflow, FromYaml, WorkflowType};
+pub use models::{FromYaml, PythonTask, SubprocessTask, Task, Workflow};
 
-/// BFS traversal of the workflow directory to find all workflows. Will result in error
-/// for any yaml files that were unsuccessfully parsed.
-pub fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> Result<HashMap<String, T>, GenericError> {
+/// BFS traversal of the workflow directory to find all workflows. Will log and skip
+/// any items that failed to parse. If none parse, this reutrns an empty hashmap
+pub fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> HashMap<String, T> {
     let dir = Path::new(workflow_dir).to_owned();
     let mut workflows = HashMap::new();
     let mut dirs_to_scan: VecDeque<PathBuf> = VecDeque::new();
@@ -20,7 +21,7 @@ pub fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> Result<HashMap<String, T
 
     while dirs_to_scan.len() > 0 {
         let dir = dirs_to_scan.pop_front().unwrap();
-        match fs::read_dir(dir) {
+        match fs::read_dir(&dir) {
             Ok(entries) => {
                 for entry_result in entries {
                     if let Ok(entry) = entry_result {
@@ -35,15 +36,18 @@ pub fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> Result<HashMap<String, T
                             )
                         {
                             let workflow = match T::from_yaml(
-                                path.to_str().expect("failed to get apth as str")
+                                path.to_str().expect("failed to get apth as str"),
                             ) {
                                 Ok(workflow) => workflow,
-                                Err(e) => return Err(GenericError::ParseError(
-                                    format!(
+                                Err(e) => {
+                                    error!(
                                         "Parsing failure for {}. Not a valid workflow definition. Original error: {}",
                                         path.display(),
                                         e.to_string()
-                                )))
+                                    );
+                                    warn!("Skipping workflow {}", path.display());
+                                    continue;
+                                }
                             };
                             workflows
                                 .insert(key_from_path(path, PathBuf::from(workflow_dir)), workflow);
@@ -54,106 +58,67 @@ pub fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> Result<HashMap<String, T
                 }
             }
             Err(e) => {
-                return Err(GenericError::ParseError(format!(
-                    "Unable to read workflow directory: {}",
+                error!(
+                    "Unable to read directory {}: {}",
+                    dir.display(),
                     e.to_string()
-                )))
+                );
             }
         }
     }
-    Ok(workflows)
+    workflows
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Workflows<T: FromYaml> {
+pub struct WorkflowStore {
     dir: String,
-    inner: HashMap<String, T>,
+    inner: HashMap<String, Workflow>,
 }
-impl<T: FromYaml> Workflows<T> {
+impl WorkflowStore {
     pub fn from_dir(workflow_dir: &str) -> Result<Self, GenericError> {
         Ok(Self {
             dir: workflow_dir.to_string(),
-            inner: get_yaml_map(workflow_dir)?,
+            inner: get_yaml_map(workflow_dir),
         })
     }
-    pub fn get(&self, workflow_id: &str) -> Option<&T> {
+    pub fn get(&self, workflow_id: &str) -> Option<&Workflow> {
         self.inner.get(workflow_id)
     }
 
     pub fn get_workflow_dir(&self) -> &str {
         self.dir.as_str()
     }
+
+    pub fn count(&self) -> usize {
+        self.inner.len()
+    }
 }
 
-impl ToString for Workflows<Workflow> {
+impl ToString for WorkflowStore {
     fn to_string(&self) -> String {
         serde_json::to_string(self).expect("Workflow store could not be serialised to JSON")
     }
 }
 
-pub mod testing {
-    // make easy mocks available to other crates
-    use crate::{models::FromYaml, Task, WorkflowType};
-    use serde::{Deserialize, Serialize};
-    use serde_json::json;
-    use std::{collections::HashMap, fs, io};
-
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-    pub struct MockWorkflow {
-        pub name: String,
-        pub path: String,
-        pub contents: String,
-        task: Task
-    }
-    impl FromYaml for MockWorkflow {
-        type Error = io::Error;
-        fn from_yaml(file_path: &str) -> Result<Self, Self::Error> {
-            let contents = fs::read_to_string(file_path)?;
-            let mock_workflow: MockWorkflow = serde_yml::from_str(&contents).unwrap();
-            Ok(mock_workflow)
-        }
-    }
-    impl ToString for MockWorkflow {
-        fn to_string(&self) -> String {
-            serde_json::to_string(self).expect("Workflow could not be serialised to JSON")
-        }
-    }
-    impl WorkflowType for MockWorkflow {
-        fn get_task(&self, task_id: &str) -> Option<&crate::Task> {
-
-        }
-        fn name(&self) -> &String {
-            &self.name
-        }
-        fn get_tasks(&self) -> &std::collections::HashMap<String, crate::Task> {
-            let mut hm = HashMap::new();
-            hm.insert("faketask", Task::)
-        }
-        fn new(path: String, name: String, contents: &str) -> Self {
-            Self {
-                name,
-                path
-            }
-        }
-        fn path(&self) -> &String {
-            &self.name
-        }
-        fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, cdktr_core::exceptions::GenericError> {
-            Ok(chrono::DateTime::parse_from_rfc2822("Tue, 1 Jul 2003 10:52:37 +0200").unwrap().to_utc())
-        }
-        fn validate(&self) -> Result<(), cdktr_core::exceptions::GenericError> {
-            Ok(())
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::testing;
     use super::*;
     use std::fs::{self, File};
     use std::io::Write;
     use tempfile::{tempdir, TempDir};
+
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct MockYamlContent {
+        name: String,
+    }
+    impl FromYaml for MockYamlContent {
+        type Error = GenericError;
+        fn from_yaml(file_path: &str) -> Result<Self, Self::Error> {
+            let obj: MockYamlContent =
+                serde_yml::from_str(&fs::read_to_string(file_path).unwrap()).unwrap();
+            Ok(obj)
+        }
+    }
 
     #[test]
     fn test_key_from_path() {
@@ -196,39 +161,28 @@ mod tests {
         let (wf_dir, tmp_dir) = get_tmp_dir();
 
         // Call function
-        let result = get_yaml_map::<testing::MockWorkflow>(wf_dir.to_str().unwrap()).unwrap();
+        let result = get_yaml_map::<MockYamlContent>(wf_dir.to_str().unwrap());
 
         let mut expected = HashMap::new();
         expected.insert(
             "workflow1".to_string(),
-            testing::MockWorkflow {
+            MockYamlContent {
                 name: "wf1".to_string(),
             },
         );
         expected.insert(
             "sub1.workflow2".to_string(),
-            testing::MockWorkflow {
+            MockYamlContent {
                 name: "wf2".to_string(),
             },
         );
         expected.insert(
             "sub1.sub2.workflow3".to_string(),
-            testing::MockWorkflow {
+            MockYamlContent {
                 name: "wf3".to_string(),
             },
         );
 
         assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_get_workflows_with_nested_yaml_files() {
-        let (wf_dir, tmp_dir) = get_tmp_dir();
-        let workflows = Workflows::from_dir(wf_dir.to_str().unwrap()).unwrap();
-
-        let exp1 = testing::MockWorkflow {
-            name: "wf2".to_string(),
-        };
-        assert_eq!(workflows.get("sub1.workflow2"), Some(&exp1));
     }
 }

@@ -12,7 +12,7 @@ pub enum PrincipalAPI {
     /// Check server is online
     Ping,
     /// Lists all workflows defined in the workflow directory
-    ListWorkflows,
+    ListWorkflowStore,
     /// Runs a task by id. Principal then adds the task to the primary
     /// work queue to be picked up by a agent worker.
     /// Args:
@@ -50,7 +50,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
         match msg_type.as_str() {
             // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
-            "LSWORKFLOWS" => Ok(Self::ListWorkflows),
+            "LSWORKFLOWS" => Ok(Self::ListWorkflowStore),
             "RUNTASK" => Ok(Self::RunTask(helpers::create_run_task_payload(args)?)),
             "REGISTERAGENT" => match args.next() {
                 Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
@@ -112,7 +112,7 @@ impl API for PrincipalAPI {
         match self {
             Self::Ping => "PING".to_string(),
             Self::RunTask(task_id) => format!("RUNTASK|{task_id}"),
-            Self::ListWorkflows => "LSWORKFLOWS".to_string(),
+            Self::ListWorkflowStore => "LSWORKFLOWS".to_string(),
             Self::RegisterAgent(agent_id) => {
                 format!("REGISTERAGENT|{agent_id}")
             }

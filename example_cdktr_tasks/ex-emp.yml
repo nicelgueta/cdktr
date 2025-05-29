@@ -1,0 +1,4 @@
+description: Empty tasks - so technically a valid workflow
+cron: "*/2 * * * * *"
+start_time: 2025-01-20T12:30:00+00:00
+tasks:

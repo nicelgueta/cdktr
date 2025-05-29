@@ -127,9 +127,12 @@ impl PrincipalClient {
                     Err(GenericError::NoDataException("Queue empty".to_string()))
                 }
                 ClientResponseMessage::SuccessWithPayload(workflow_str) => {
-                    info!("Task received from Principal -> {}", &workflow_str);
+                    debug!("Workflow received from Principal -> {}", &workflow_str);
                     let workflow = match Workflow::try_from(workflow_str) {
-                        Ok(wf) => wf,
+                        Ok(wf) => {
+                            info!("Workflow received from Principal -> {}", wf.name());
+                            wf
+                        }
                         Err(e) => {
                             return Err(GenericError::ParseError(format!(
                                 "Failed to read Workflow JSON from ZMQ string. Error: {}",

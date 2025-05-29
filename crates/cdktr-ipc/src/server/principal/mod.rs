@@ -3,8 +3,9 @@ use cdktr_core::{
     models::AgentMeta,
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
-use cdktr_workflow::{Workflow, Workflows};
+use cdktr_workflow::{Workflow, WorkflowStore};
 use chrono::Utc;
+use log::info;
 
 use crate::api::PrincipalAPI;
 
@@ -16,12 +17,13 @@ pub struct PrincipalServer {
     instance_id: String,
     live_agents: AgentPriorityQueue,
     task_queue: AsyncQueue<Workflow>,
-    workflows: Workflows<Workflow>,
+    workflows: WorkflowStore,
 }
 
 impl PrincipalServer {
     pub fn new(instance_id: String) -> Self {
-        let workflows = Workflows::from_dir("./example_cdktr_tasks").unwrap(); // TODO: remove hardcode
+        let workflows = WorkflowStore::from_dir("./example_cdktr_tasks").unwrap(); // TODO: remove hardcode
+        info!("Loaded {} workflows into store", workflows.count());
         Self {
             instance_id,
             live_agents: AgentPriorityQueue::new(),
@@ -55,7 +57,7 @@ impl Server<PrincipalAPI> for PrincipalServer {
     ) -> (ClientResponseMessage, usize) {
         match cli_msg {
             PrincipalAPI::Ping => (ClientResponseMessage::Pong, 0),
-            PrincipalAPI::ListWorkflows => helpers::handle_list_workflows(&self.workflows),
+            PrincipalAPI::ListWorkflowStore => helpers::handle_list_workflows(&self.workflows),
             PrincipalAPI::RunTask(task_id) => {
                 helpers::handle_run_task(&task_id, &self.workflows, &mut self.task_queue).await
             }

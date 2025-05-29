@@ -12,6 +12,8 @@ chrono = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 topological-sort = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

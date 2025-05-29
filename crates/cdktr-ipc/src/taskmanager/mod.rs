@@ -1,23 +1,19 @@
-use cdktr_workflow::{Workflow, Task};
+use crate::client::PrincipalClient;
+use cdktr_core::{
+    config::CDKTR_DEFAULT_TIMEOUT, exceptions::GenericError, models::traits::Executor,
+};
+use cdktr_workflow::{Task, Workflow};
 use log::{debug, error, info, warn};
 use rustyrs::EternalSlugGenerator;
-use task_tracker::TaskTracker;
-use task_tracker::ThreadSafeTaskTracker;
-use tokio::task::JoinSet;
 use std::sync::Arc;
 use std::time::Duration;
+use task_tracker::TaskTracker;
+use task_tracker::ThreadSafeTaskTracker;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tokio::task::JoinSet;
 use tokio::time::sleep;
-use cdktr_core::{
-    config::CDKTR_DEFAULT_TIMEOUT,
-    exceptions::GenericError,
-    models::traits::Executor,
-};
-use crate::{
-    client::PrincipalClient,
-};
 
 mod task_tracker;
 
@@ -101,7 +97,7 @@ impl TaskManager {
         task_execution_id: String,
     ) -> Result<TaskExecutionHandle, TaskManagerError> {
         let (handle, stdout_rx, stderr_rx) = {
-             let mut counter = self.thread_counter.lock().await;
+            let mut counter = self.thread_counter.lock().await;
             if *counter >= self.max_threads {
                 return Err(TaskManagerError::TooManyThreadsError);
             };
@@ -146,6 +142,8 @@ impl TaskManager {
         );
         let loop_res = self.workflow_execution_loop().await;
         if let Err(e) = loop_res {
+            //TODO: currently just aborts on errors - maybe split errors up into those that we should fully
+            // abort on and others that are fine to re-engage the loop on?
             error!("{}", e.to_string());
             while *self.thread_counter.lock().await > 0 {
                 warn!(
@@ -173,37 +171,46 @@ impl TaskManager {
                 }
             };
             let mut task_tracker = ThreadSafeTaskTracker::from_workflow(&workflow)?;
+            if task_tracker.is_empty() {
+                warn!(
+                    "Workflow {} doesn't have any tasks defined - skipping",
+                    workflow.name()
+                );
+                continue;
+            }
             let mut read_handles = JoinSet::new();
-            while ! task_tracker.is_empty() {
+            while !task_tracker.is_empty() {
                 let task_id = if let Some(task_id) = task_tracker.get_next_task() {
                     task_id
                 } else {
                     debug!("All tasks busy - sleeping");
                     sleep(WAIT_TASK_SLEEP_INTERVAL_MS).await;
-                    continue
+                    continue;
                 };
                 let task = (&workflow).get_task(&task_id).expect(
-                    "Passed an incorrect task id to the workflow from the task mgr - this is a bug"
+                    "Passed an incorrect task id to the workflow from the task mgr - this is a bug",
                 );
                 let task_execution_id = self.name_gen.next();
                 let task_name = task.name().to_string();
 
                 let mut task_exe = loop {
-                    let task_exe_result = self.run_in_executor(
-                        task_tracker.clone(),
-                        task_id.clone(),
-                        task.clone(),
-                        task_execution_id.clone()
-                    ).await;
+                    let task_exe_result = self
+                        .run_in_executor(
+                            task_tracker.clone(),
+                            task_id.clone(),
+                            task.clone(),
+                            task_execution_id.clone(),
+                        )
+                        .await;
                     match task_exe_result {
                         Ok(task_exe) => break task_exe,
                         Err(e) => match e {
                             TaskManagerError::TooManyThreadsError => {
                                 debug!("Max number of child threads reached - waiting..");
                                 sleep(Duration::from_millis(1000)).await;
-                                continue
+                                continue;
                             }
-                        }
+                        },
                     };
                 };
                 // need to spawn the reading of the logs of the run task in order to free this thread
@@ -217,8 +224,7 @@ impl TaskManager {
                     }
                     info!("Completed task {task_execution_id} ({task_name})");
                 });
-
-            };
+            }
             read_handles.join_all().await;
             info!("All tasks for workflow {} complete", workflow.name())
         }
@@ -232,5 +238,4 @@ mod tests {
     use tokio::time::{sleep, Duration};
 
     use super::TaskManager;
-
 }

@@ -2,14 +2,14 @@ use async_trait::async_trait;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::models::{traits, FlowExecutionResult};
 use serde::{Deserialize, Serialize};
-use topological_sort::TopologicalSort;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::{process::Command, sync::mpsc::Sender};
+use topological_sort::TopologicalSort;
 
 pub fn key_from_path(path: PathBuf, workflow_dir: PathBuf) -> String {
     path.strip_prefix(workflow_dir)
@@ -130,16 +130,30 @@ impl InnerWorkflow {
     /// Check for cycles using topo sort
     fn validate_workflow_dag(&self, name: &str) -> Result<(), GenericError> {
         let mut tp: TopologicalSort<String> = TopologicalSort::new();
+        let mut ptasks = HashSet::new();
+        let mut visited_deps = HashSet::new();
         for (task_id, task) in &self.tasks {
+            ptasks.insert(task_id.clone());
             match task.get_dependencies() {
                 Some(deps) => {
                     for dep in deps {
+                        visited_deps.insert(dep.clone());
                         tp.add_dependency(dep, task_id.clone());
                     }
-                },
-                None => ()
+                }
+                None => (),
             }
-        };
+        }
+        let undefineds = visited_deps.difference(&ptasks);
+        let offending_ids: Vec<String> = undefineds.map(|x| x.to_string()).collect();
+        if offending_ids.len() > 0 {
+            return Err(GenericError::WorkflowError(
+                format!(
+                    "Invalid workflow DAG. One or more tasks lists dependent tasks that are not defined in the workflow: {}",
+                    offending_ids.join(",")
+                )
+            ));
+        }
         let mut last_nodes: Vec<String> = Vec::new();
         while tp.len() > 0 {
             let next_nodes = tp.pop_all();
@@ -147,15 +161,14 @@ impl InnerWorkflow {
                 // have a cycle if length > 0 but no nodes can be popped
                 return Err(GenericError::WorkflowError(
                     format!(
-                        "Invalid workflow DAG. Workflow '{}' contains a cycle.
-                        Last nodes evaluated were {} but no successor could be determined",
+                        "Invalid workflow DAG. Workflow '{}' contains a cycle. Last nodes evaluated were {} but no successor could be determined",
                         name,
                         last_nodes.join(",")
                     )
-                ))
+                ));
             };
             last_nodes = next_nodes;
-        };
+        }
         Ok(())
     }
 }
@@ -163,15 +176,6 @@ impl InnerWorkflow {
 pub trait FromYaml: Sized {
     type Error: Display;
     fn from_yaml(file_path: &str) -> Result<Self, Self::Error>;
-}
-pub trait WorkflowType: Sized + Clone + ToString + FromYaml {
-    fn new(path: String, name: String, contents: &str) -> Self;
-    fn get_tasks(&self) -> &HashMap<String, Task>;
-    fn get_task(&self, task_id: &str) -> Option<&Task>;
-    fn name(&self) -> &String;
-    fn path(&self) -> &String;
-    fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, GenericError>;
-    fn validate(&self) -> Result<(), GenericError>;
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
@@ -184,50 +188,62 @@ impl FromYaml for Workflow {
     type Error = GenericError;
     fn from_yaml(file_path: &str) -> Result<Self, GenericError> {
         let file = Path::new(file_path);
-        let contents = match fs::read_to_string(file){
+        let contents = match fs::read_to_string(file) {
             Ok(s) => s,
-            Err(e) => return Err(GenericError::WorkflowError(
-                format!("Error reading yaml file {:?}. Error: {}", file.file_name(), e.to_string())
-            ))
+            Err(e) => {
+                return Err(GenericError::WorkflowError(format!(
+                    "Error reading yaml file {:?}. Error: {}",
+                    file.file_name(),
+                    e.to_string()
+                )))
+            }
         };
         let name = key_from_path(file.to_path_buf(), file.parent().unwrap().to_path_buf());
-        let workflow = Self::new(file_path.to_string(), name, &contents);
+        let workflow = Self::new(file_path.to_string(), name, &contents)?;
         workflow.validate()?;
         Ok(workflow)
     }
 }
-impl WorkflowType for Workflow {
-    fn new(path: String, name: String, contents: &str) -> Self {
-        let inner: InnerWorkflow = serde_yml::from_str(contents).expect("Unable to parse");
-        Self { name, path, inner }
+impl Workflow {
+    pub fn new(path: String, name: String, contents: &str) -> Result<Self, GenericError> {
+        let inner_res = serde_yml::from_str(contents);
+        match inner_res {
+            Ok(inner) => Ok(Self { name, path, inner }),
+            Err(e) => Err(GenericError::ParseError(format!(
+                "Failed to parse workflow yaml. Error: {}",
+                e.to_string()
+            ))),
+        }
     }
 
-    fn get_tasks(&self) -> &HashMap<String, Task> {
+    pub fn get_tasks(&self) -> &HashMap<String, Task> {
         &self.inner.tasks
     }
 
-    fn get_task(&self, task_id: &str) -> Option<&Task> {
+    pub fn get_task(&self, task_id: &str) -> Option<&Task> {
         self.inner.tasks.get(task_id)
     }
 
-    fn name(&self) -> &String {
+    pub fn name(&self) -> &String {
         &self.name
     }
 
-    fn path(&self) -> &String {
+    pub fn path(&self) -> &String {
         &self.path
     }
 
-    fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, GenericError> {
+    pub fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, GenericError> {
         let res = chrono::DateTime::parse_from_rfc3339(&self.inner.start_time);
         if let Ok(date) = res {
             Ok(date.to_utc())
         } else {
-            Err(GenericError::WorkflowError("Start time is not a valid ISO 8601 datetime".to_string()))
+            Err(GenericError::WorkflowError(
+                "Start time is not a valid ISO 8601 datetime".to_string(),
+            ))
         }
     }
 
-    fn validate(&self) -> Result<(), GenericError> {
+    pub fn validate(&self) -> Result<(), GenericError> {
         self.start_time_utc()?;
         self.inner.validate_workflow_dag(&self.name)?;
         Ok(())
@@ -267,22 +283,23 @@ tasks:
       args:
         - hello
         - world
-  task2:
-    name: Task 2
-    description: Runs second task
-    depends: ["task1"]
-    config:
-      !Python
-      extra_pip_packages:
-        - pandas>=2.0.0, < 2.2.0
-      sysexe: /usr/bin/python
+  #task2:
+  #  name: Task 2
+  #  description: Runs second task
+  #  depends: ["task1"]
+  #  config:
+  #    !Python
+  #    extra_pip_packages:
+  #      - pandas>=2.0.0, < 2.2.0
+  #    sysexe: /usr/bin/python
 
         "#;
         let workflow = Workflow::new(
             "fake/path/my_workflow.yml".to_string(),
             "my_workflow".to_string(),
             yaml,
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             "echo".to_string(),

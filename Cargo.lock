@@ -265,6 +265,8 @@ dependencies = [
  "async-trait",
  "cdktr-core",
  "chrono",
+ "env_logger",
+ "log",
  "serde",
  "serde_json",
  "serde_yml",

@@ -211,7 +211,7 @@ fn stv(v: Vec<&str>) -> Vec<String> {
 }
 create_actions!(
     "PING", Ping, "Ping the server to check if it is up", None;
-    "LSWORKFLOWS", ListWorkflows, "List all registered tasks on the server", None;
+    "LSWORKFLOWS", ListWorkflowStore, "List all registered tasks on the server", None;
     "CREATETASK", CreateTasks, "Create a new scheduled task", Some(stv(vec!["task_name", "task_type", "command", "args", "cron"]));
 );
 

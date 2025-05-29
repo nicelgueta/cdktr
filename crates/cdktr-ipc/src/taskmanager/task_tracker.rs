@@ -1,11 +1,15 @@
-use std::{collections::{HashSet, VecDeque}, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use cdktr_core::exceptions::GenericError;
 use cdktr_workflow::Workflow;
 use std::sync::Mutex;
 
 pub trait TaskTracker
-where Self: Sized
+where
+    Self: Sized,
 {
     fn from_workflow(workflow: &Workflow) -> Result<Self, GenericError>;
     fn get_next_task(&mut self) -> Option<String>;
@@ -30,18 +34,18 @@ where Self: Sized
 /// track of the individual dependencies in order for every task to run at the right time.
 struct BaseTaskTracker {
     dep_graph: VecDeque<(String, HashSet<String>)>,
-    ready_q: VecDeque<String>
+    ready_q: VecDeque<String>,
 }
-impl TaskTracker for BaseTaskTracker{
+impl TaskTracker for BaseTaskTracker {
     fn from_workflow(workflow: &Workflow) -> Result<Self, GenericError> {
         workflow.validate()?;
         let mut dep_graph = VecDeque::new();
         let mut ready_q = VecDeque::new();
         for (task_id, task) in workflow.get_tasks() {
             if let Some(prec_task_ids) = task.get_dependencies() {
-                if prec_task_ids.is_empty(){
+                if prec_task_ids.is_empty() {
                     ready_q.push_back(task_id.clone());
-                    continue
+                    continue;
                 };
                 let mut dep_set = HashSet::new();
                 for ptask_id in prec_task_ids {
@@ -51,10 +55,8 @@ impl TaskTracker for BaseTaskTracker{
             } else {
                 ready_q.push_back(task_id.clone());
             };
-        };
-        Ok(Self {
-            dep_graph, ready_q
-        })
+        }
+        Ok(Self { dep_graph, ready_q })
     }
 
     fn get_next_task(&mut self) -> Option<String> {
@@ -73,7 +75,7 @@ impl TaskTracker for BaseTaskTracker{
             } else {
                 new_dep_graph.push_back((asso_task_id, dep_set));
             }
-        };
+        }
         self.dep_graph = new_dep_graph;
     }
 
@@ -84,12 +86,12 @@ impl TaskTracker for BaseTaskTracker{
 
 #[derive(Clone)]
 pub struct ThreadSafeTaskTracker {
-    tt: Arc<Mutex<BaseTaskTracker>>
+    tt: Arc<Mutex<BaseTaskTracker>>,
 }
 impl TaskTracker for ThreadSafeTaskTracker {
     fn from_workflow(workflow: &Workflow) -> Result<Self, GenericError> {
         Ok(Self {
-            tt: Arc::new(Mutex::new(BaseTaskTracker::from_workflow(workflow)?))
+            tt: Arc::new(Mutex::new(BaseTaskTracker::from_workflow(workflow)?)),
         })
     }
 
