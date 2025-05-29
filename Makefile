@@ -16,7 +16,7 @@ push: test
 principal:
 	cargo run start -i principal
 agent:
-	cargo run start -i agent -m 6
+	cargo run start -i agent -m 2
 tui:
 	cargo run ui
 pycli:

@@ -11,6 +11,7 @@ serde_yml = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
+topological-sort = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

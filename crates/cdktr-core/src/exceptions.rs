@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, PartialEq)]
 pub enum ZMQParseError {
     ParseError(String),
@@ -21,6 +23,7 @@ pub enum GenericError {
     ZMQParseError(ZMQParseError),
     ParseError(String),
     RuntimeError(String),
+    WorkflowError(String),
     NoDataException(String), // APIError(String),
 }
 impl GenericError {
@@ -32,7 +35,13 @@ impl GenericError {
             Self::RuntimeError(s) => format!("Runtime Error: {}", s.clone()),
             Self::NoDataException(s) => format!("NoDataException: {}", s.clone()),
             Self::ParseError(s) => format!("ParseError: {}", s.clone()),
+            Self::WorkflowError(s) => format!("WorkflowError: {}", s.clone()),
             // Self::APIError(s) => s.clone(),
         }
+    }
+}
+impl fmt::Display for GenericError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
     }
 }

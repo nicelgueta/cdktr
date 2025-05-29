@@ -7,22 +7,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub use models::FromYaml;
-pub use models::{PythonTask, SubprocessTask, Task, Workflow};
-
-fn key_from_path(path: PathBuf, workflow_dir: PathBuf) -> String {
-    path.strip_prefix(workflow_dir)
-        .ok()
-        .map(|relative_path| {
-            relative_path
-                .with_extension("") // Remove extension
-                .components()
-                .map(|c| c.as_os_str().to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(".")
-        })
-        .unwrap()
-}
+use models::key_from_path;
+pub use models::{PythonTask, SubprocessTask, Task, Workflow, FromYaml, WorkflowType};
 
 /// BFS traversal of the workflow directory to find all workflows. Will result in error
 /// for any yaml files that were unsuccessfully parsed.
@@ -107,13 +93,17 @@ impl ToString for Workflows<Workflow> {
 
 pub mod testing {
     // make easy mocks available to other crates
-    use crate::models::FromYaml;
+    use crate::{models::FromYaml, Task, WorkflowType};
     use serde::{Deserialize, Serialize};
-    use std::{fs, io};
+    use serde_json::json;
+    use std::{collections::HashMap, fs, io};
 
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     pub struct MockWorkflow {
         pub name: String,
+        pub path: String,
+        pub contents: String,
+        task: Task
     }
     impl FromYaml for MockWorkflow {
         type Error = io::Error;
@@ -126,6 +116,33 @@ pub mod testing {
     impl ToString for MockWorkflow {
         fn to_string(&self) -> String {
             serde_json::to_string(self).expect("Workflow could not be serialised to JSON")
+        }
+    }
+    impl WorkflowType for MockWorkflow {
+        fn get_task(&self, task_id: &str) -> Option<&crate::Task> {
+
+        }
+        fn name(&self) -> &String {
+            &self.name
+        }
+        fn get_tasks(&self) -> &std::collections::HashMap<String, crate::Task> {
+            let mut hm = HashMap::new();
+            hm.insert("faketask", Task::)
+        }
+        fn new(path: String, name: String, contents: &str) -> Self {
+            Self {
+                name,
+                path
+            }
+        }
+        fn path(&self) -> &String {
+            &self.name
+        }
+        fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, cdktr_core::exceptions::GenericError> {
+            Ok(chrono::DateTime::parse_from_rfc2822("Tue, 1 Jul 2003 10:52:37 +0200").unwrap().to_utc())
+        }
+        fn validate(&self) -> Result<(), cdktr_core::exceptions::GenericError> {
+            Ok(())
         }
     }
 }

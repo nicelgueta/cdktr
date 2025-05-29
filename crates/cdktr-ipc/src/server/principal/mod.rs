@@ -94,67 +94,66 @@ mod tests {
         }
     }
 
-    // TODO: fix these tests
-    // #[tokio::test]
-    // async fn test_handle_cli_message_all_happy() {
-    //     // e2e integration test of db crudvia the server
-    //     let test_params: Vec<(&str, Box<dyn Fn(ClientResponseMessage) -> bool>, usize)> = vec![
-    //         // ("PING", Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Pong), 0),
-    //         (
-    //             "LSWORKFLOWS",
-    //             Box::new(|r: ClientResponseMessage| {
-    //                 r == ClientResponseMessage::SuccessWithPayload("[]".to_string())
-    //             }),
-    //             0,
-    //         ),
-    //         (
-    //             "RUNTASK|1",
-    //             Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
-    //             0,
-    //         ),
-    //         (
-    //             "REGISTERAGENT|localhost-8999|3",
-    //             Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
-    //             0,
-    //         ),
-    //     ];
+    #[tokio::test]
+    async fn test_handle_cli_message_all_happy() {
+        // e2e integration test of db crudvia the server
+        let test_params: Vec<(&str, Box<dyn Fn(ClientResponseMessage) -> bool>, usize)> = vec![
+            // ("PING", Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Pong), 0),
+            (
+                "LSWORKFLOWS",
+                Box::new(|r: ClientResponseMessage| {
+                    r == ClientResponseMessage::SuccessWithPayload("[]".to_string())
+                }),
+                0,
+            ),
+            (
+                "RUNTASK|1",
+                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
+                0,
+            ),
+            (
+                "REGISTERAGENT|localhost-8999|3",
+                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
+                0,
+            ),
+        ];
 
-    //     let mut server = PrincipalServer::new("fake_ins".to_string());
-    //     for (zmq_s, assertion_fn, exp_exit_code) in test_params {
-    //         println!("Testing {zmq_s}");
-    //         let zmq_msg = ZmqMessage::from(zmq_s);
-    //         let ar = PrincipalAPI::try_from(zmq_msg)
-    //             .expect("Should be able to unwrap the agent from ZMQ command");
-    //         let (resp, exit_code) = server.handle_client_message(ar).await;
-    //         dbg!(&resp);
-    //         assertion_fn(resp);
-    //         assert_eq!(exit_code, exp_exit_code);
-    //     }
-    // }
+        let mut server = PrincipalServer::new("fake_ins".to_string());
+        for (zmq_s, assertion_fn, exp_exit_code) in test_params {
+            println!("Testing {zmq_s}");
+            let zmq_msg = ZmqMessage::from(zmq_s);
+            let ar = PrincipalAPI::try_from(zmq_msg)
+                .expect("Should be able to unwrap the agent from ZMQ command");
+            let (resp, exit_code) = server.handle_client_message(ar).await;
+            dbg!(&resp);
+            assertion_fn(resp);
+            assert_eq!(exit_code, exp_exit_code);
+        }
+    }
 
-    // #[tokio::test]
-    // async fn test_register_agent_new() {
-    //     let mut server = PrincipalServer::new("fake_ins".to_string());
-    //     let agent_id = String::from("localhost-4567");
-    //     let (resp, exit_code) = server.register_agent(&agent_id).await;
-    //     {
-    //         server.live_agents.pop().await.unwrap();
-    //     }
-    //     assert!(resp == ClientResponseMessage::Success);
-    //     assert!(exit_code == 0)
-    // }
+    #[tokio::test]
+    async fn test_register_agent_new() {
+        let mut server = PrincipalServer::new("fake_ins".to_string());
+        let agent_id = String::from("localhost-4567");
+        let (resp, exit_code) = server.register_agent(&agent_id).await;
+        {
+            server.live_agents.pop().await.unwrap();
+        }
+        assert!(resp == ClientResponseMessage::Success);
+        assert!(exit_code == 0)
+    }
 
-    // #[tokio::test]
-    // async fn test_register_agent_already_exists() {
-    //     let mut server = PrincipalServer::new("fake_ins".to_string());
-    //     let agent_id = String::from("localhost-4567");
-    //     server.register_agent(&agent_id).await;
-    //     let old_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };
-    //     sleep(Duration::from_micros(10));
-    //     let (resp, exit_code) = server.register_agent(&agent_id).await;
-    //     let new_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };
-    //     assert!(new_timestamp > old_timestamp);
-    //     assert!(resp == ClientResponseMessage::Success);
-    //     assert!(exit_code == 0)
-    // }
+    #[tokio::test]
+    async fn test_register_agent_already_exists() {
+        let mut server = PrincipalServer::new("fake_ins".to_string());
+        let agent_id = String::from("localhost-4567");
+        server.register_agent(&agent_id).await;
+        let old_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };
+        sleep(Duration::from_micros(10));
+        let (resp, exit_code) = server.register_agent(&agent_id).await;
+        let new_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };
+        assert!(new_timestamp > old_timestamp);
+        assert!(resp == ClientResponseMessage::Success);
+        assert!(exit_code == 0)
+    }
 }

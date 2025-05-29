@@ -1,17 +1,25 @@
-use crate::client::PrincipalClient;
-use cdktr_core::{
-    config::CDKTR_DEFAULT_TIMEOUT, exceptions::GenericError, models::traits::Executor,
-};
-use cdktr_workflow::{Task, Workflow};
+use cdktr_workflow::{Workflow, Task};
 use log::{debug, error, info, warn};
 use rustyrs::EternalSlugGenerator;
+use task_tracker::TaskTracker;
+use task_tracker::ThreadSafeTaskTracker;
+use tokio::task::JoinSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
-use topological_sort::TopologicalSort;
+use cdktr_core::{
+    config::CDKTR_DEFAULT_TIMEOUT,
+    exceptions::GenericError,
+    models::traits::Executor,
+};
+use crate::{
+    client::PrincipalClient,
+};
+
+mod task_tracker;
 
 const WAIT_TASK_SLEEP_INTERVAL_MS: Duration = Duration::from_millis(500);
 
@@ -87,38 +95,36 @@ impl TaskManager {
     /// of member of the Task enum it pertains to.
     pub async fn run_in_executor(
         &mut self,
+        mut task_tracker: ThreadSafeTaskTracker,
+        task_id: String,
         task: Task,
         task_execution_id: String,
     ) -> Result<TaskExecutionHandle, TaskManagerError> {
-        {
-            if *self.thread_counter.lock().await >= self.max_threads {
+        let (handle, stdout_rx, stderr_rx) = {
+             let mut counter = self.thread_counter.lock().await;
+            if *counter >= self.max_threads {
                 return Err(TaskManagerError::TooManyThreadsError);
             };
-        }
-        let thread_counter: Arc<Mutex<usize>> = self.thread_counter.clone();
-        let (stdout_tx, stdout_rx) = mpsc::channel(32);
-        let (stderr_tx, stderr_rx) = mpsc::channel(32);
-        let executable_task = task.get_exe_task();
-        let task_id_clone = task_execution_id.clone();
-        let handle = tokio::spawn(async move {
-            // inform the TaskManager of another running process
-            {
-                // put in a scope to ensure the mutex lock is dropped
-                let mut counter = thread_counter.lock().await;
-                *counter += 1;
-            }
-            info!("Spawning task {task_id_clone}");
-            let _flow_result = executable_task.run(stdout_tx, stderr_tx).await;
-            info!("Exiting task {task_id_clone}");
-            // TODO: handle the result
+            *counter += 1;
+            let thread_counter: Arc<Mutex<usize>> = self.thread_counter.clone();
+            let (stdout_tx, stdout_rx) = mpsc::channel(32);
+            let (stderr_tx, stderr_rx) = mpsc::channel(32);
+            let executable_task = task.get_exe_task();
+            let task_exe_id_clone = task_execution_id.clone();
+            let handle = tokio::spawn(async move {
+                info!("Spawning task {task_exe_id_clone}");
+                let _flow_result = executable_task.run(stdout_tx, stderr_tx).await;
+                // TODO: handle the result
 
-            // inform TaskManager process has terminated
-            {
-                let mut counter = thread_counter.lock().await;
-                *counter -= 1;
-            }
-        });
-
+                // inform TaskManager process has terminated
+                {
+                    let mut counter = thread_counter.lock().await;
+                    *counter -= 1;
+                    task_tracker.mark_complete(&task_id);
+                }
+            });
+            (handle, stdout_rx, stderr_rx)
+        };
         // pass the join handle and receiver up to the calling function for control of
         // the spawned coroutine
         Ok(TaskExecutionHandle::new(handle, stdout_rx, stderr_rx))
@@ -166,37 +172,56 @@ impl TaskManager {
                     return Err(e);
                 }
             };
-            let mut task_tracker = self.create_task_tracker(&workflow);
-            while task_tracker.len() > 0 {
-                let next_tasks = task_tracker.pop_all();
-                if next_tasks.is_empty() {
-                    return Err(GenericError::RuntimeError(
-                        "Invalid workflow - DAG contains a cycle".to_string(),
-                    ));
+            let mut task_tracker = ThreadSafeTaskTracker::from_workflow(&workflow)?;
+            let mut read_handles = JoinSet::new();
+            while ! task_tracker.is_empty() {
+                let task_id = if let Some(task_id) = task_tracker.get_next_task() {
+                    task_id
+                } else {
+                    debug!("All tasks busy - sleeping");
+                    sleep(WAIT_TASK_SLEEP_INTERVAL_MS).await;
+                    continue
                 };
-                let task_map = workflow.get_tasks();
-                for task_id in next_tasks {
-                    let task = task_map.get(&task_id).unwrap();
-                    let task_exe_id = self.name_gen.next();
-                    self.run_in_executor(task.clone(), task_exe_id).await; // TODO: do something with result
-                }
-            }
-        }
-    }
+                let task = (&workflow).get_task(&task_id).expect(
+                    "Passed an incorrect task id to the workflow from the task mgr - this is a bug"
+                );
+                let task_execution_id = self.name_gen.next();
+                let task_name = task.name().to_string();
 
-    fn create_task_tracker(&self, workflow: &Workflow) -> TopologicalSort<String> {
-        let mut tp = TopologicalSort::new();
-        for (task_id, task) in workflow.get_tasks() {
-            match task.get_dependencies() {
-                Some(deps) => {
-                    for dep in deps {
-                        tp.add_dependency(dep, task_id.clone());
+                let mut task_exe = loop {
+                    let task_exe_result = self.run_in_executor(
+                        task_tracker.clone(),
+                        task_id.clone(),
+                        task.clone(),
+                        task_execution_id.clone()
+                    ).await;
+                    match task_exe_result {
+                        Ok(task_exe) => break task_exe,
+                        Err(e) => match e {
+                            TaskManagerError::TooManyThreadsError => {
+                                debug!("Max number of child threads reached - waiting..");
+                                sleep(Duration::from_millis(1000)).await;
+                                continue
+                            }
+                        }
+                    };
+                };
+                // need to spawn the reading of the logs of the run task in order to free this thread
+                // to go back to looking at the queue
+                read_handles.spawn(async move {
+                    while let Some(msg) = task_exe.wait_stdout().await {
+                        info!("{task_execution_id} | STDOUT | {msg}");
                     }
-                }
-                None => (),
-            }
+                    while let Some(msg) = task_exe.wait_stderr().await {
+                        error!("{task_execution_id} | STDERR | {msg}");
+                    }
+                    info!("Completed task {task_execution_id} ({task_name})");
+                });
+
+            };
+            read_handles.join_all().await;
+            info!("All tasks for workflow {} complete", workflow.name())
         }
-        tp
     }
 }
 
@@ -204,8 +229,8 @@ impl TaskManager {
 #[cfg(test)]
 mod tests {
     use crate::taskmanager::TaskManagerError;
-    use cdktr_core::models::ZMQArgs;
     use tokio::time::{sleep, Duration};
 
     use super::TaskManager;
+
 }

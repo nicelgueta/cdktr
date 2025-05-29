@@ -19,4 +19,3 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 zeromq = { workspace = true }
 rustyrs = { workspace = true }
-topological-sort = { workspace = true }

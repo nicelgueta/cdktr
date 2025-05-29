@@ -1,0 +1,57 @@
+cron: "*/2 * * * * *"
+start_time: 2025-01-20T12:30:00+00:00
+tasks:
+  task1:
+    name: Task 1
+    description: Runs first task - short
+    config:
+      !Subprocess
+      cmd: python
+      args:
+        - python-cdktr/s.py
+        - 2
+        - 5
+  task2:
+    name: Dummy Py v short
+    depends: ["task1"]
+    description: Dummy subprocess task to run a python script
+    config:
+      !Subprocess
+      cmd: python
+      args:
+        - python-cdktr/s.py
+        - 2
+        - 3
+  task3:
+    name: Dummy Py long
+    depends: ["task1"]
+    description: Dummy subprocess task to run a python script
+    config:
+      !Subprocess
+      cmd: python
+      args:
+        - python-cdktr/s.py
+        - 2
+        - 10
+
+  task4:
+    name: Dummy Py v short 2
+    depends: ["task2"]
+    description: Dummy subprocess task to run a python script
+    config:
+      !Subprocess
+      cmd: python
+      args:
+        - python-cdktr/s.py
+        - 2
+        - 3
+  # task2:
+  #   name: Task 2
+  #   description: Runs second task
+  #   depends: ["task1"]
+  #   config:
+  #     !Python
+  #     script_path: path/to/script.py
+  #     extra_pip_packages:
+  #       - pandas>=2.0.0, < 2.2.0
+  #     sysexe: /usr/bin/python

@@ -3,7 +3,7 @@ use cdktr_core::{
     models::TaskStatus,
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
-use cdktr_workflow::{FromYaml, Workflow, Workflows};
+use cdktr_workflow::{FromYaml, Workflow, Workflows, WorkflowType};
 /// API module to provide all of the principal message handling
 /// utilities
 ///
@@ -31,7 +31,7 @@ pub async fn handle_agent_task_status_update(
 }
 
 /// handler for the principal to place a workflow task on the queue ready for pick-up by a worker
-pub async fn handle_run_task<WF: FromYaml + Clone>(
+pub async fn handle_run_task<WF: WorkflowType>(
     workflow_id: &str,
     workflows: &Workflows<WF>,
     queue: &mut AsyncQueue<WF>,
@@ -54,7 +54,7 @@ pub async fn handle_run_task<WF: FromYaml + Clone>(
     }
 }
 
-pub async fn handle_fetch_task<WF: ToString>(
+pub async fn handle_fetch_task<WF: WorkflowType>(
     task_queue: &mut AsyncQueue<WF>,
     agent_id: String,
 ) -> (ClientResponseMessage, usize) {
@@ -63,8 +63,8 @@ pub async fn handle_fetch_task<WF: ToString>(
     let task_res = task_queue.get().await;
     if let Some(task) = task_res {
         info!(
-            "Agent {agent_id} requested task | Sending task -> {}",
-            task.to_string()
+            "Agent {agent_id} requested workflow | Sending workflow -> {}",
+            task.name(),
         );
         info!("Current task queue size: {}", task_queue.size().await);
         (
