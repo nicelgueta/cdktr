@@ -7,10 +7,10 @@
 pub static CDKTR_AGENT_MAX_CONCURRENCY: usize = 10;
 
 /// number of times to re-attempt a zmq request
-pub static CDKTR_RETRY_ATTEMPTS: usize = 10;
+pub static CDKTR_RETRY_ATTEMPTS: usize = 20;
 
 /// default timeout for a zmq request
-pub static CDKTR_DEFAULT_TIMEOUT_MS: usize = 30_000;
+pub static CDKTR_DEFAULT_TIMEOUT_MS: usize = 3_000;
 
 /// hostname of the principal instance
 pub static CDKTR_PRINCIPAL_HOST: &'static str = "0.0.0.0";
@@ -20,3 +20,8 @@ pub static CDKTR_PRINCIPAL_PORT: usize = 5561;
 
 /// Default workflow directory
 pub static CDKTR_WORKFLOW_DIR: &'static str = "workflows";
+
+/// Interval to refresh the workflow directory with any changes
+/// useful for CICD environments where new workflows are added without
+/// having to bounce any services
+pub static CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S: usize = 60;

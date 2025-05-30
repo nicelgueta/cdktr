@@ -21,9 +21,7 @@ pub struct PrincipalServer {
 }
 
 impl PrincipalServer {
-    pub fn new(instance_id: String) -> Self {
-        let workflows = WorkflowStore::from_dir("./example_cdktr_tasks").unwrap(); // TODO: remove hardcode
-        info!("Loaded {} workflows into store", workflows.count());
+    pub fn new(instance_id: String, workflows: WorkflowStore) -> Self {
         Self {
             instance_id,
             live_agents: AgentPriorityQueue::new(),
@@ -57,7 +55,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
     ) -> (ClientResponseMessage, usize) {
         match cli_msg {
             PrincipalAPI::Ping => (ClientResponseMessage::Pong, 0),
-            PrincipalAPI::ListWorkflowStore => helpers::handle_list_workflows(&self.workflows),
+            PrincipalAPI::ListWorkflowStore => {
+                helpers::handle_list_workflows(&self.workflows).await
+            }
             PrincipalAPI::RunTask(task_id) => {
                 helpers::handle_run_task(&task_id, &self.workflows, &mut self.task_queue).await
             }
@@ -84,6 +84,12 @@ mod tests {
     use zeromq::{Socket, ZmqMessage};
 
     use super::*;
+
+    async fn get_workflowstore() -> WorkflowStore {
+        WorkflowStore::from_dir("./test_artifacts/workflows")
+            .await
+            .unwrap()
+    }
 
     #[test]
     fn test_principal_request_from_zmq_str_all_happy() {
@@ -120,7 +126,7 @@ mod tests {
             ),
         ];
 
-        let mut server = PrincipalServer::new("fake_ins".to_string());
+        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await);
         for (zmq_s, assertion_fn, exp_exit_code) in test_params {
             println!("Testing {zmq_s}");
             let zmq_msg = ZmqMessage::from(zmq_s);
@@ -135,7 +141,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_new() {
-        let mut server = PrincipalServer::new("fake_ins".to_string());
+        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await);
         let agent_id = String::from("localhost-4567");
         let (resp, exit_code) = server.register_agent(&agent_id).await;
         {
@@ -147,7 +153,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_already_exists() {
-        let mut server = PrincipalServer::new("fake_ins".to_string());
+        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await);
         let agent_id = String::from("localhost-4567");
         server.register_agent(&agent_id).await;
         let old_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };

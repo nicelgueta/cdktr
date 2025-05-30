@@ -9,9 +9,9 @@ use cdktr_workflow::{Workflow, WorkflowStore};
 ///
 use log::{info, trace};
 
-pub fn handle_list_workflows(workflows: &WorkflowStore) -> (ClientResponseMessage, usize) {
+pub async fn handle_list_workflows(workflows: &WorkflowStore) -> (ClientResponseMessage, usize) {
     (
-        ClientResponseMessage::SuccessWithPayload(workflows.to_string()),
+        ClientResponseMessage::SuccessWithPayload(workflows.to_string().await),
         0,
     )
 }
@@ -38,9 +38,9 @@ pub async fn handle_run_task(
 ) -> (ClientResponseMessage, usize) {
     let task_id = workflow_id.to_string();
     info!("Staging task -> {}", &workflow_id);
-    let wf_res = workflows.get(&workflow_id);
+    let wf_res = workflows.get(&workflow_id).await;
     if let Some(wf) = wf_res {
-        queue.put((*wf).clone()).await;
+        queue.put(wf).await;
         info!("Current task queue size: {}", queue.size().await);
         (ClientResponseMessage::Success, 0)
     } else {

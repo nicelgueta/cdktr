@@ -17,7 +17,7 @@ pub mod prelude {
 // indefinite loops
 #[cfg(test)]
 mod tests {
-    use super::instance::start_agent;
+    use super::instance::{start_agent, start_principal};
 
     #[ignore]
     #[tokio::test]
@@ -29,5 +29,11 @@ mod tests {
             1,
         )
         .await
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_principal() {
+        start_principal("0.0.0.0".to_string(), 5561, "test_instance".to_string()).await
     }
 }

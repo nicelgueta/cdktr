@@ -1,19 +1,21 @@
 mod models;
 use cdktr_core::exceptions::GenericError;
-use log::{error, warn};
+use log::{debug, error, warn};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
-    fs,
     path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
 };
+use tokio::{fs, sync::Mutex, time::sleep};
 
 use models::key_from_path;
 pub use models::{FromYaml, PythonTask, SubprocessTask, Task, Workflow};
 
 /// BFS traversal of the workflow directory to find all workflows. Will log and skip
 /// any items that failed to parse. If none parse, this reutrns an empty hashmap
-pub fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> HashMap<String, T> {
+pub async fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> HashMap<String, T> {
     let dir = Path::new(workflow_dir).to_owned();
     let mut workflows = HashMap::new();
     let mut dirs_to_scan: VecDeque<PathBuf> = VecDeque::new();
@@ -21,39 +23,46 @@ pub fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> HashMap<String, T> {
 
     while dirs_to_scan.len() > 0 {
         let dir = dirs_to_scan.pop_front().unwrap();
-        match fs::read_dir(&dir) {
-            Ok(entries) => {
-                for entry_result in entries {
-                    if let Ok(entry) = entry_result {
-                        let path = entry.path();
-                        if path.is_file()
-                            && ["yaml", "yml"].contains(
-                                &path
-                                    .extension()
-                                    .expect("Unable to acquire file extension")
-                                    .to_str()
-                                    .expect("Extension to str yielded None"),
-                            )
-                        {
-                            let workflow = match T::from_yaml(
-                                path.to_str().expect("failed to get apth as str"),
-                            ) {
-                                Ok(workflow) => workflow,
-                                Err(e) => {
-                                    error!(
-                                        "Parsing failure for {}. Not a valid workflow definition. Original error: {}",
-                                        path.display(),
-                                        e.to_string()
-                                    );
-                                    warn!("Skipping workflow {}", path.display());
-                                    continue;
-                                }
-                            };
-                            workflows
-                                .insert(key_from_path(path, PathBuf::from(workflow_dir)), workflow);
-                        } else if path.is_dir() {
-                            dirs_to_scan.push_back(path);
-                        }
+        let read_dir = fs::read_dir(&dir).await;
+        match read_dir {
+            Ok(mut entries) => {
+                let mut valid_entries = Vec::new();
+                while let Ok(entry) = entries.next_entry().await {
+                    if let Some(valid_entry) = entry {
+                        valid_entries.push(valid_entry);
+                    } else {
+                        break; // None means no entries left
+                    }
+                }
+                for entry in valid_entries {
+                    let path = entry.path();
+                    if path.is_file()
+                        && ["yaml", "yml"].contains(
+                            &path
+                                .extension()
+                                .expect("Unable to acquire file extension")
+                                .to_str()
+                                .expect("Extension to str yielded None"),
+                        )
+                    {
+                        let workflow = match T::from_yaml(
+                            path.to_str().expect("failed to get apth as str"),
+                        ) {
+                            Ok(workflow) => workflow,
+                            Err(e) => {
+                                warn!(
+                                    "Parsing failure for {}. Not a valid workflow definition. Original error: {}",
+                                    path.display(),
+                                    e.to_string()
+                                );
+                                warn!("Skipping workflow {}", path.display());
+                                continue;
+                            }
+                        };
+                        workflows
+                            .insert(key_from_path(path, PathBuf::from(workflow_dir)), workflow);
+                    } else if path.is_dir() {
+                        dirs_to_scan.push_back(path);
                     }
                 }
             }
@@ -69,34 +78,46 @@ pub fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> HashMap<String, T> {
     workflows
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct WorkflowStore {
     dir: String,
-    inner: HashMap<String, Workflow>,
+    inner: Arc<Mutex<HashMap<String, Workflow>>>,
 }
 impl WorkflowStore {
-    pub fn from_dir(workflow_dir: &str) -> Result<Self, GenericError> {
+    pub async fn from_dir(workflow_dir: &str) -> Result<Self, GenericError> {
         Ok(Self {
             dir: workflow_dir.to_string(),
-            inner: get_yaml_map(workflow_dir),
+            inner: Arc::new(Mutex::new(get_yaml_map(workflow_dir).await)),
         })
     }
-    pub fn get(&self, workflow_id: &str) -> Option<&Workflow> {
-        self.inner.get(workflow_id)
+    pub async fn get(&self, workflow_id: &str) -> Option<Workflow> {
+        let inner_mutex = self.inner.lock().await;
+        match (*inner_mutex).get(workflow_id) {
+            Some(workflow) => Some(workflow.clone()),
+            None => None,
+        }
     }
 
     pub fn get_workflow_dir(&self) -> &str {
         self.dir.as_str()
     }
 
-    pub fn count(&self) -> usize {
-        self.inner.len()
+    pub async fn count(&self) -> usize {
+        self.inner.lock().await.len()
     }
-}
 
-impl ToString for WorkflowStore {
-    fn to_string(&self) -> String {
-        serde_json::to_string(self).expect("Workflow store could not be serialised to JSON")
+    pub async fn refresh_workflows(&mut self) {
+        let mut inner_mutex = self.inner.lock().await;
+        *inner_mutex = get_yaml_map(&self.dir).await;
+        debug!(
+            "Workflow store refreshed with {} workflows",
+            inner_mutex.len()
+        )
+    }
+    pub async fn to_string(&self) -> String {
+        let inner_mutex = self.inner.lock().await;
+        let workflows = inner_mutex.clone();
+        serde_json::to_string(&workflows).expect("Workflow store could not be serialised to JSON")
     }
 }
 
@@ -156,12 +177,12 @@ mod tests {
         (root_path, tmp_dir)
     }
 
-    #[test]
-    fn test_get_workflow_map_with_nested_yaml_files() {
+    #[tokio::test]
+    async fn test_get_workflow_map_with_nested_yaml_files() {
         let (wf_dir, tmp_dir) = get_tmp_dir();
 
         // Call function
-        let result = get_yaml_map::<MockYamlContent>(wf_dir.to_str().unwrap());
+        let result = get_yaml_map::<MockYamlContent>(wf_dir.to_str().unwrap()).await;
 
         let mut expected = HashMap::new();
         expected.insert(

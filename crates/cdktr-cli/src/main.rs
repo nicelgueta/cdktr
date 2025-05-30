@@ -62,14 +62,14 @@ async fn _main() {
     match cli_instance {
         CdktrCli::Start(args) => {
             let instance_type = args.instance_type;
-            let max_concurrent_workflows = args
-                .max_concurrent_workflows
-                .unwrap_or(get_cdktr_setting!(CDKTR_AGENT_MAX_CONCURRENCY, usize));
-            info!("Agent max concurrency: {}", max_concurrent_workflows);
             match instance_type {
                 InstanceType::AGENT => {
                     let instance_id = format!("{}/AG", utils::get_instance_id());
                     info!("Starting AGENT instance: {}", &instance_id);
+                    let max_concurrent_workflows = args
+                        .max_concurrent_workflows
+                        .unwrap_or(get_cdktr_setting!(CDKTR_AGENT_MAX_CONCURRENCY, usize));
+                    info!("Agent max concurrency: {}", max_concurrent_workflows);
                     start_agent(
                         instance_id,
                         principal_host,
