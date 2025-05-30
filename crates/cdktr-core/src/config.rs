@@ -10,7 +10,7 @@ pub static CDKTR_AGENT_MAX_CONCURRENCY: usize = 10;
 pub static CDKTR_RETRY_ATTEMPTS: usize = 10;
 
 /// default timeout for a zmq request
-pub static CDKTR_DEFAULT_TIMEOUT_MS: usize = 3000;
+pub static CDKTR_DEFAULT_TIMEOUT_MS: usize = 30_000;
 
 /// hostname of the principal instance
 pub static CDKTR_PRINCIPAL_HOST: &'static str = "0.0.0.0";

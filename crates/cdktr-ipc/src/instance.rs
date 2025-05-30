@@ -13,10 +13,11 @@ pub async fn start_agent(
     instance_id: String,
     principal_host: String,
     principal_port: usize,
-    max_tm_tasks: usize,
+    max_concurrent_workflows: usize,
 ) {
     let principal_uri = get_server_tcp_uri(&principal_host, principal_port);
-    let mut tm = taskmanager::TaskManager::new(instance_id, max_tm_tasks, principal_uri).await;
+    let mut tm =
+        taskmanager::TaskManager::new(instance_id, max_concurrent_workflows, principal_uri).await;
     let loop_res = tm.start().await;
     if let Err(e) = loop_res {
         error!("{}", e.to_string());
@@ -25,9 +26,7 @@ pub async fn start_agent(
 }
 
 /// Starts the main principal loop
-pub async fn start_principal(instance_host: String, instance_port: usize) {
-    let instance_id = get_instance_id(&instance_host, instance_port);
-
+pub async fn start_principal(instance_host: String, instance_port: usize, instance_id: String) {
     let mut principal_server = PrincipalServer::new(instance_id.clone());
 
     // start REP/REQ server loop for principal

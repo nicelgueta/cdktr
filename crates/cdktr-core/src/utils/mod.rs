@@ -61,13 +61,8 @@ pub fn vecd_to_arg_str(vecd: &VecDeque<String>) -> String {
     s
 }
 
-pub fn get_instance_id(host: &str, port: usize) -> String {
-    let mut id = String::new();
-    id.push_str(host);
-    id.push_str("-");
-    let port_s = port.to_string();
-    id.push_str(&port_s);
-    id
+pub fn get_instance_id() -> String {
+    format!("{}@{}", whoami::username(), whoami::devicename(),)
 }
 
 #[cfg(test)]

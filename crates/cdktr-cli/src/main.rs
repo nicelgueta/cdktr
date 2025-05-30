@@ -1,13 +1,12 @@
 use clap::Parser;
 use dotenv::dotenv;
-use log::{error, info};
+use log::{error, info, warn};
 use models::InstanceType;
 use std::env;
 
-use cdktr_core::get_cdktr_setting;
+use cdktr_core::{get_cdktr_setting, utils};
 use cdktr_ipc::instance::{start_agent, start_principal};
 use cdktr_tui::tui_main;
-use rustyrs::get_slug;
 
 mod api;
 mod models;
@@ -38,8 +37,8 @@ struct StartArgs {
     #[arg(long, short)]
     port: Option<usize>,
 
-    #[arg(long, short, default_value_t = 5)]
-    max_tasks: usize,
+    #[arg(long, short)]
+    max_concurrent_workflows: Option<usize>,
 
     #[arg(long, short)]
     config: Option<std::path::PathBuf>,
@@ -63,18 +62,28 @@ async fn _main() {
     match cli_instance {
         CdktrCli::Start(args) => {
             let instance_type = args.instance_type;
-            let max_tasks = args.max_tasks;
-            let instance_id = get_slug(2).unwrap();
-            info!(
-                "Starting {} instance: {}",
-                instance_type.to_string(),
-                &instance_id
-            );
+            let max_concurrent_workflows = args
+                .max_concurrent_workflows
+                .unwrap_or(get_cdktr_setting!(CDKTR_AGENT_MAX_CONCURRENCY, usize));
+            info!("Agent max concurrency: {}", max_concurrent_workflows);
             match instance_type {
                 InstanceType::AGENT => {
-                    start_agent(instance_id, principal_host, principal_port, max_tasks).await
+                    let instance_id = format!("{}/AG", utils::get_instance_id());
+                    info!("Starting AGENT instance: {}", &instance_id);
+                    start_agent(
+                        instance_id,
+                        principal_host,
+                        principal_port,
+                        max_concurrent_workflows,
+                    )
+                    .await
                 }
-                InstanceType::PRINCIPAL => start_principal(principal_host, principal_port).await,
+
+                InstanceType::PRINCIPAL => {
+                    let instance_id = format!("{}/PRIN", utils::get_instance_id());
+                    info!("Starting PRINCIPAL instance: {}", &instance_id);
+                    start_principal(principal_host, principal_port, instance_id).await
+                }
             }
         }
         CdktrCli::Ui => {

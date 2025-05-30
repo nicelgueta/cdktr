@@ -63,66 +63,32 @@ impl TaskManagerError {
 ///
 /// # Fields
 /// - `instance_id`: A `String` identifier for the instance of `TaskManager`. This can be used to differentiate between multiple instances.
-/// - `max_threads`: The maximum number of threads that can be used for executing tasks concurrently. This limit helps in controlling resource usage.
-/// - `thread_counter`: An `Arc<Mutex<usize>>` that safely counts the number of active threads. This is shared across tasks to ensure thread-safe updates.
+/// - `max_concurrency`: The maximum number of workflows that a single agent can handle simultaneously. Also applies to tasks within workflows
+///     where multpple tasks can be executed in parallel.
+/// - `workflow_counter`: An `Arc<Mutex<usize>>` that safely counts the number of active threads. This is shared across tasks to ensure thread-safe updates.
 ///
 pub struct TaskManager {
     instance_id: String,
-    max_threads: usize,
-    thread_counter: Arc<Mutex<usize>>,
+    max_concurrent_workflows: usize,
+    workflow_counter: Arc<Mutex<usize>>,
     principal_client: PrincipalClient,
-    name_gen: EternalSlugGenerator,
+    name_gen: Arc<Mutex<EternalSlugGenerator>>,
 }
 
 impl TaskManager {
-    pub async fn new(instance_id: String, max_threads: usize, principal_uri: String) -> Self {
+    pub async fn new(
+        instance_id: String,
+        max_concurrent_workflows: usize,
+        principal_uri: String,
+    ) -> Self {
         let principal_client = PrincipalClient::new(instance_id.clone(), principal_uri);
         Self {
             instance_id,
-            max_threads,
-            thread_counter: Arc::new(Mutex::new(0)),
+            max_concurrent_workflows,
+            workflow_counter: Arc::new(Mutex::new(0)),
             principal_client,
-            name_gen: EternalSlugGenerator::new(2).unwrap(),
+            name_gen: Arc::new(Mutex::new(EternalSlugGenerator::new(2).unwrap())),
         }
-    }
-
-    /// This function takes a given task and runs it in the relevant executor depending on the type
-    /// of member of the Task enum it pertains to.
-    pub async fn run_in_executor(
-        &mut self,
-        mut task_tracker: ThreadSafeTaskTracker,
-        task_id: String,
-        task: Task,
-        task_execution_id: String,
-    ) -> Result<TaskExecutionHandle, TaskManagerError> {
-        let (handle, stdout_rx, stderr_rx) = {
-            let mut counter = self.thread_counter.lock().await;
-            if *counter >= self.max_threads {
-                return Err(TaskManagerError::TooManyThreadsError);
-            };
-            *counter += 1;
-            let thread_counter: Arc<Mutex<usize>> = self.thread_counter.clone();
-            let (stdout_tx, stdout_rx) = mpsc::channel(32);
-            let (stderr_tx, stderr_rx) = mpsc::channel(32);
-            let executable_task = task.get_exe_task();
-            let task_exe_id_clone = task_execution_id.clone();
-            let handle = tokio::spawn(async move {
-                info!("Spawning task {task_exe_id_clone}");
-                let _flow_result = executable_task.run(stdout_tx, stderr_tx).await;
-                // TODO: handle the result
-
-                // inform TaskManager process has terminated
-                {
-                    let mut counter = thread_counter.lock().await;
-                    *counter -= 1;
-                    task_tracker.mark_complete(&task_id);
-                }
-            });
-            (handle, stdout_rx, stderr_rx)
-        };
-        // pass the join handle and receiver up to the calling function for control of
-        // the spawned coroutine
-        Ok(TaskExecutionHandle::new(handle, stdout_rx, stderr_rx))
     }
 
     pub async fn start(&mut self) -> Result<(), GenericError> {
@@ -144,7 +110,7 @@ impl TaskManager {
             //TODO: currently just aborts on errors - maybe split errors up into those that we should fully
             // abort on and others that are fine to re-engage the loop on?
             error!("{}", e.to_string());
-            while *self.thread_counter.lock().await > 0 {
+            while *self.workflow_counter.lock().await > 0 {
                 warn!(
                     "Tasks still running after principal loss- awaiting completion before aborting"
                 );
@@ -158,6 +124,15 @@ impl TaskManager {
 
     async fn workflow_execution_loop(&mut self) -> Result<(), GenericError> {
         loop {
+            {
+                let counter = self.workflow_counter.lock().await;
+                if *counter >= self.max_concurrent_workflows {
+                    debug!("Max workflows reached - waiting for free slot before requesting");
+                    sleep(WAIT_TASK_SLEEP_INTERVAL_MS).await;
+                    continue;
+                }
+            }
+            let workflow_counter = self.workflow_counter.clone();
             let workflow_result = self
                 .principal_client
                 .wait_next_workflow(
@@ -167,72 +142,118 @@ impl TaskManager {
                     ),
                 )
                 .await;
-            let workflow = match workflow_result {
-                Ok(workflow) => workflow,
-                Err(e) => {
-                    error!("{}", e.to_string());
-                    return Err(e);
+            let workflow = {
+                let mut counter = workflow_counter.lock().await;
+                match workflow_result {
+                    Ok(workflow) => {
+                        debug!("Incrementing workflow counter (currently {})", *counter);
+                        *counter += 1;
+                        workflow
+                    }
+                    Err(e) => {
+                        error!("{}", e.to_string());
+                        return Err(e);
+                    }
                 }
             };
-            let mut task_tracker = ThreadSafeTaskTracker::from_workflow(&workflow)?;
-            if task_tracker.is_empty() {
-                warn!(
-                    "Workflow {} doesn't have any tasks defined - skipping",
-                    workflow.name()
-                );
-                continue;
-            }
-            let mut read_handles = JoinSet::new();
-            while !task_tracker.is_empty() {
-                let task_id = if let Some(task_id) = task_tracker.get_next_task() {
-                    task_id
-                } else {
-                    debug!("All tasks busy - sleeping");
-                    sleep(WAIT_TASK_SLEEP_INTERVAL_MS).await;
-                    continue;
-                };
-                let task = (&workflow).get_task(&task_id).expect(
-                    "Passed an incorrect task id to the workflow from the task mgr - this is a bug",
-                );
-                let task_execution_id = self.name_gen.next();
-                let task_name = task.name().to_string();
+            debug!("MAX WF -> {}", self.max_concurrent_workflows);
+            let name_gen_cl = self.name_gen.clone();
+            let wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
+                let workflow_id = { name_gen_cl.lock().await.next() };
+                let mut task_tracker = ThreadSafeTaskTracker::from_workflow(&workflow)?;
+                if task_tracker.is_empty() {
+                    warn!(
+                        "Workflow {} doesn't have any tasks defined - skipping",
+                        workflow.name()
+                    );
+                    return Ok(());
+                }
+                let mut read_handles = JoinSet::new();
+                while !task_tracker.is_empty() {
+                    let task_id = if let Some(task_id) = task_tracker.get_next_task() {
+                        task_id
+                    } else {
+                        debug!("All tasks busy - sleeping");
+                        sleep(WAIT_TASK_SLEEP_INTERVAL_MS).await;
+                        continue;
+                    };
+                    let task = (&workflow).get_task(&task_id).expect(
+                        "Passed an incorrect task id to the workflow from the task mgr - this is a bug",
+                    );
+                    let task_execution_id = { name_gen_cl.lock().await.next() };
+                    let task_name = task.name().to_string();
 
-                let mut task_exe = loop {
-                    let task_exe_result = self
-                        .run_in_executor(
+                    let mut task_exe = loop {
+                        let task_exe_result = run_in_executor(
                             task_tracker.clone(),
                             task_id.clone(),
                             task.clone(),
                             task_execution_id.clone(),
                         )
                         .await;
-                    match task_exe_result {
-                        Ok(task_exe) => break task_exe,
-                        Err(e) => match e {
-                            TaskManagerError::TooManyThreadsError => {
-                                debug!("Max number of child threads reached - waiting..");
-                                sleep(Duration::from_millis(1000)).await;
-                                continue;
-                            }
-                        },
+                        match task_exe_result {
+                            Ok(task_exe) => break task_exe,
+                            Err(e) => match e {
+                                TaskManagerError::TooManyThreadsError => {
+                                    debug!("Max number of child threads reached - waiting..");
+                                    sleep(Duration::from_millis(1000)).await;
+                                    continue;
+                                }
+                            },
+                        };
                     };
-                };
-                // need to spawn the reading of the logs of the run task in order to free this thread
-                // to go back to looking at the queue
-                read_handles.spawn(async move {
-                    while let Some(msg) = task_exe.wait_stdout().await {
-                        info!("{task_execution_id} | STDOUT | {msg}");
-                    }
-                    while let Some(msg) = task_exe.wait_stderr().await {
-                        error!("{task_execution_id} | STDERR | {msg}");
-                    }
-                    info!("Completed task {task_execution_id} ({task_name})");
-                });
-            }
-            read_handles.join_all().await;
-            info!("All tasks for workflow {} complete", workflow.name())
+                    // need to spawn the reading of the logs of the run task in order to free this thread
+                    // to go back to looking at the queue
+                    read_handles.spawn(async move {
+                        while let Some(msg) = task_exe.wait_stdout().await {
+                            info!("{task_execution_id} | STDOUT | {msg}");
+                        }
+                        while let Some(msg) = task_exe.wait_stderr().await {
+                            error!("{task_execution_id} | STDERR | {msg}");
+                        }
+                        info!("Completed task {task_execution_id} ({task_name})");
+                    });
+                }
+                read_handles.join_all().await;
+                {
+                    let mut counter = workflow_counter.lock().await;
+                    debug!("Decrementing workflow counter (currently {})", *counter);
+                    *counter -= 1;
+                }
+                info!(
+                    "All tasks for workflow {} ({}) complete",
+                    workflow_id,
+                    workflow.name()
+                );
+                Ok(())
+            });
         }
     }
+}
+
+/// This function takes a given task and runs it in the relevant executor depending on the type
+/// of member of the Task enum it pertains to.
+async fn run_in_executor(
+    mut task_tracker: ThreadSafeTaskTracker,
+    task_id: String,
+    task: Task,
+    task_execution_id: String,
+) -> Result<TaskExecutionHandle, TaskManagerError> {
+    let (handle, stdout_rx, stderr_rx) = {
+        let (stdout_tx, stdout_rx) = mpsc::channel(32);
+        let (stderr_tx, stderr_rx) = mpsc::channel(32);
+        let executable_task = task.get_exe_task();
+        let task_exe_id_clone = task_execution_id.clone();
+        let handle = tokio::spawn(async move {
+            info!("Spawning task {task_exe_id_clone}");
+            let _flow_result = executable_task.run(stdout_tx, stderr_tx).await;
+            task_tracker.mark_complete(&task_id);
+        });
+        (handle, stdout_rx, stderr_rx)
+    };
+    // pass the join handle and receiver up to the calling function for control of
+    // the spawned coroutine
+    Ok(TaskExecutionHandle::new(handle, stdout_rx, stderr_rx))
 }
 
 // TODO: fix the broken pipe error

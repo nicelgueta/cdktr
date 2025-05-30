@@ -14,3 +14,4 @@ log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zeromq = { workspace = true }
+whoami = "1.6.0"
