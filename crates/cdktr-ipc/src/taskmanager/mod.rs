@@ -49,7 +49,7 @@ impl TaskExecutionHandle {
 #[derive(Debug, PartialEq)]
 pub enum TaskManagerError {
     TooManyThreadsError,
-    FailedTaskError(String)
+    FailedTaskError(String),
 }
 impl TaskManagerError {
     pub fn to_string(&self) -> String {
@@ -165,7 +165,7 @@ impl TaskManager {
             let wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
                 let workflow_id = { name_gen_cl.lock().await.next() };
                 let mut task_tracker = ThreadSafeTaskTracker::from_workflow(&workflow)?;
-                if task_tracker.is_empty() {
+                if task_tracker.is_finished() {
                     warn!(
                         "Workflow {} doesn't have any tasks defined - skipping",
                         workflow.name()
@@ -173,7 +173,7 @@ impl TaskManager {
                     return Ok(());
                 }
                 let mut read_handles = JoinSet::new();
-                while !task_tracker.is_empty() {
+                while !task_tracker.is_finished() {
                     let task_id = if let Some(task_id) = task_tracker.get_next_task() {
                         task_id
                     } else {
@@ -197,16 +197,30 @@ impl TaskManager {
                         .await;
                         match task_exe_result {
                             Ok(task_exe) => break task_exe,
-                            Err(e) => match e {
-                                TaskManagerError::TooManyThreadsError => {
-                                    debug!("Max number of child threads reached - waiting..");
-                                    sleep(Duration::from_millis(1000)).await;
-                                    continue;
+                            Err(e) => {
+                                match e {
+                                    TaskManagerError::TooManyThreadsError => {
+                                        debug!("Max number of child threads reached - waiting..");
+                                        sleep(Duration::from_millis(1000)).await;
+                                        continue;
+                                    }
+                                    TaskManagerError::FailedTaskError(e) => {
+                                        error!("{}", e);
+                                        match task_tracker.mark_failed(&task_id) {
+                                            Ok(_) => {
+                                                error!(
+                                                    "Marked {}->{} as failure",
+                                                    task_id, task_execution_id
+                                                );
+                                            }
+                                            Err(e) => {
+                                                error!("Error marking task as failure - aborting workflow");
+                                                return Err(e);
+                                            }
+                                        }
+                                    }
                                 }
-                                TaskManagerError::FailedTaskError(e) => {
-
-                                }
-                            },
+                            }
                         };
                     };
                     // need to spawn the reading of the logs of the run task in order to free this thread
@@ -228,9 +242,9 @@ impl TaskManager {
                     *counter -= 1;
                 }
                 info!(
-                    "All tasks for workflow {} ({}) complete",
+                    "All tasks for workflow {}->{} complete",
+                    workflow.name(),
                     workflow_id,
-                    workflow.name()
                 );
                 Ok(())
             });
@@ -255,14 +269,25 @@ async fn run_in_executor(
             info!("Spawning task {task_exe_id_clone}");
             let flow_result = executable_task.run(stdout_tx, stderr_tx).await;
             match flow_result {
-                FlowExecutionResult::SUCCESS => info!("Successfully started task {}", &task_id),
+                FlowExecutionResult::SUCCESS => info!(
+                    "Successfully completed task: {}->{}",
+                    &task_id, &task_execution_id
+                ),
                 FlowExecutionResult::CRASHED(err_msg) => {
-                    error!("Failed to start task {}. Error: {}", &task_id, err_msg);
-                    return Err(TaskManagerError::FailedTaskError(err_msg))
-                },
+                    error!(
+                        "Task {}->{} experienced a critical failure. Error: {}",
+                        &task_id, &task_execution_id, err_msg
+                    );
+                    return Err(TaskManagerError::FailedTaskError(err_msg));
+                }
             };
-            task_tracker.mark_complete(&task_id);
-            Ok(())
+            match task_tracker.mark_success(&task_id) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(TaskManagerError::FailedTaskError(format!(
+                    "Failed to mark task as success. Error: {}",
+                    e.to_string()
+                ))),
+            }
         });
         (handle, stdout_rx, stderr_rx)
     };

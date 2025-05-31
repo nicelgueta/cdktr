@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::models::{traits, FlowExecutionResult};
+use daggy::{self, Dag, NodeIndex, Walker};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -9,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::{process::Command, sync::mpsc::Sender};
-use topological_sort::TopologicalSort;
 
 pub fn key_from_path(path: PathBuf, workflow_dir: PathBuf) -> String {
     path.strip_prefix(workflow_dir)
@@ -100,7 +100,7 @@ impl traits::Executor for ExecutableTask {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Task {
     name: String,
-    description: String,
+    description: Option<String>,
     depends: Option<Vec<String>>,
     config: ExecutableTask,
 }
@@ -114,62 +114,120 @@ impl Task {
     pub fn name(&self) -> &str {
         &self.name
     }
-    pub fn description(&self) -> &str {
-        &self.description
+    pub fn description(&self) -> Option<String> {
+        self.description.clone()
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 struct InnerWorkflow {
-    cron: String,
+    cron: Option<String>,
     description: Option<String>,
-    start_time: String,
+    start_time: Option<String>,
     tasks: HashMap<String, Task>,
 }
 impl InnerWorkflow {
-    /// Check for cycles using topo sort
-    fn validate_workflow_dag(&self, name: &str) -> Result<(), GenericError> {
-        let mut tp: TopologicalSort<String> = TopologicalSort::new();
-        let mut ptasks = HashSet::new();
-        let mut visited_deps = HashSet::new();
-        for (task_id, task) in &self.tasks {
-            ptasks.insert(task_id.clone());
+    /// Checks for cycles and returns a WorkFlowDAG. Returns
+    /// error if dag cannot be constructed owing to cycles
+    fn gen_dag(&self, name: &str) -> Result<WorkFlowDAG, GenericError> {
+        WorkFlowDAG::from_tasks(name.to_string(), &self.tasks)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WorkFlowDAG {
+    name: String,
+    task_id_node_ix_map: HashMap<String, NodeIndex<u32>>,
+    task_map: HashMap<String, Task>,
+    inner: Dag<String, u32>,
+    first_tasks: HashSet<String>,
+}
+impl WorkFlowDAG {
+    fn from_tasks(name: String, tasks: &HashMap<String, Task>) -> Result<Self, GenericError> {
+        let mut task_id_node_ix_map = HashMap::new();
+        let mut inner: Dag<String, u32> = Dag::new();
+        let mut first_tasks = HashSet::new();
+        for (task_id, task) in tasks {
+            if !task_id_node_ix_map.contains_key(task_id) {
+                let node_index = inner.add_node(task_id.clone());
+                task_id_node_ix_map.insert(task_id.to_string(), node_index);
+            };
             match task.get_dependencies() {
                 Some(deps) => {
+                    if deps.is_empty() {
+                        // task has empty deps so is top
+                        first_tasks.insert(task_id.to_string());
+                    }
                     for dep in deps {
-                        visited_deps.insert(dep.clone());
-                        tp.add_dependency(dep, task_id.clone());
+                        let node_index = if !task_id_node_ix_map.contains_key(&dep) {
+                            let node_index = inner.add_node(dep.clone());
+                            task_id_node_ix_map.insert(dep.clone(), node_index);
+                            node_index
+                        } else {
+                            task_id_node_ix_map.get(&dep).unwrap().clone()
+                        };
+                        if let Err(e) = inner.add_edge(
+                            node_index,
+                            task_id_node_ix_map.get(task_id).unwrap().clone(),
+                            0,
+                        ) {
+                            return Err(GenericError::WorkflowError(format!(
+                                "Invalid Workflow. DAG edge '{}'->'{}' causes a cycle. Error: {}",
+                                dep,
+                                task_id,
+                                e.to_string()
+                            )));
+                        }
                     }
                 }
-                None => (),
+                None => {
+                    first_tasks.insert(task_id.to_string());
+                }
             }
         }
-        let undefineds = visited_deps.difference(&ptasks);
-        let offending_ids: Vec<String> = undefineds.map(|x| x.to_string()).collect();
-        if offending_ids.len() > 0 {
-            return Err(GenericError::WorkflowError(
-                format!(
-                    "Invalid workflow DAG. One or more tasks lists dependent tasks that are not defined in the workflow: {}",
-                    offending_ids.join(",")
-                )
-            ));
+        Ok(Self {
+            name,
+            task_id_node_ix_map,
+            task_map: tasks.clone(),
+            inner,
+            first_tasks,
+        })
+    }
+
+    pub fn get_first_tasks(&self) -> Vec<String> {
+        self.first_tasks
+            .iter()
+            .map(|x| x.clone())
+            .collect::<Vec<String>>()
+    }
+
+    pub fn get_task(&self, task_id: &str) -> Option<&Task> {
+        self.task_map.get(task_id)
+    }
+
+    pub fn get_dependents(&self, task_id: &str) -> Result<Vec<&String>, GenericError> {
+        let nix = if let Some(ix) = self.task_id_node_ix_map.get(task_id) {
+            ix
+        } else {
+            return Err(GenericError::RuntimeError(format!(
+                "task id {} does not exist",
+                task_id
+            )));
+        };
+        let mut deps = Vec::new();
+        let mut walker = self.inner.children(*nix);
+        while let Some((edge_i, node_i)) = walker.walk_next(&self.inner) {
+            deps.push(
+                self.inner
+                    .node_weight(node_i)
+                    .expect("Should have a node if iterating over dag"),
+            )
         }
-        let mut last_nodes: Vec<String> = Vec::new();
-        while tp.len() > 0 {
-            let next_nodes = tp.pop_all();
-            if next_nodes.is_empty() {
-                // have a cycle if length > 0 but no nodes can be popped
-                return Err(GenericError::WorkflowError(
-                    format!(
-                        "Invalid workflow DAG. Workflow '{}' contains a cycle. Last nodes evaluated were {} but no successor could be determined",
-                        name,
-                        last_nodes.join(",")
-                    )
-                ));
-            };
-            last_nodes = next_nodes;
-        }
-        Ok(())
+        Ok(deps)
+    }
+
+    pub fn node_count(&self) -> usize {
+        self.inner.node_count()
     }
 }
 
@@ -178,11 +236,13 @@ pub trait FromYaml: Sized {
     fn from_yaml(file_path: &str) -> Result<Self, Self::Error>;
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Workflow {
     name: String,
     path: String,
-    inner: InnerWorkflow,
+    dag: WorkFlowDAG,
+    cron: Option<String>,
+    start_time: Option<String>,
 }
 impl FromYaml for Workflow {
     type Error = GenericError;
@@ -193,7 +253,7 @@ impl FromYaml for Workflow {
             Err(e) => {
                 return Err(GenericError::WorkflowError(format!(
                     "Error reading yaml file {:?}. Error: {}",
-                    file.file_name(),
+                    file.to_str(),
                     e.to_string()
                 )))
             }
@@ -206,9 +266,18 @@ impl FromYaml for Workflow {
 }
 impl Workflow {
     pub fn new(path: String, name: String, contents: &str) -> Result<Self, GenericError> {
-        let inner_res = serde_yml::from_str(contents);
+        let inner_res = serde_yml::from_str::<InnerWorkflow>(contents);
         match inner_res {
-            Ok(inner) => Ok(Self { name, path, inner }),
+            Ok(inner) => {
+                let dag = inner.gen_dag(&name)?;
+                Ok(Self {
+                    name,
+                    path,
+                    dag,
+                    cron: inner.cron,
+                    start_time: inner.start_time,
+                })
+            }
             Err(e) => Err(GenericError::ParseError(format!(
                 "Failed to parse workflow yaml. Error: {}",
                 e.to_string()
@@ -216,12 +285,12 @@ impl Workflow {
         }
     }
 
-    pub fn get_tasks(&self) -> &HashMap<String, Task> {
-        &self.inner.tasks
+    pub fn get_dag(&self) -> &WorkFlowDAG {
+        &self.dag
     }
 
     pub fn get_task(&self, task_id: &str) -> Option<&Task> {
-        self.inner.tasks.get(task_id)
+        self.dag.get_task(task_id)
     }
 
     pub fn name(&self) -> &String {
@@ -233,7 +302,14 @@ impl Workflow {
     }
 
     pub fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, GenericError> {
-        let res = chrono::DateTime::parse_from_rfc3339(&self.inner.start_time);
+        let start_time = if let Some(t) = &self.start_time {
+            t
+        } else {
+            return Err(GenericError::ParseError(
+                "No start_time defined for workflow".to_string(),
+            ));
+        };
+        let res = chrono::DateTime::parse_from_rfc3339(start_time);
         if let Ok(date) = res {
             Ok(date.to_utc())
         } else {
@@ -245,7 +321,6 @@ impl Workflow {
 
     pub fn validate(&self) -> Result<(), GenericError> {
         self.start_time_utc()?;
-        self.inner.validate_workflow_dag(&self.name)?;
         Ok(())
     }
 }
@@ -266,6 +341,8 @@ impl ToString for Workflow {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use super::*;
 
     #[test]
@@ -303,7 +380,7 @@ tasks:
 
         assert_eq!(
             "echo".to_string(),
-            match &workflow.get_tasks().get("task1").unwrap().config {
+            match &workflow.get_task("task1").unwrap().config {
                 ExecutableTask::Subprocess(cfg) => cfg.cmd.clone(),
                 _ => panic!("Wrong enum type"),
             }
@@ -311,7 +388,7 @@ tasks:
 
         assert_eq!(
             vec!["hello", "world"],
-            match &workflow.get_tasks().get("task1").unwrap().config {
+            match &workflow.get_task("task1").unwrap().config {
                 ExecutableTask::Subprocess(cfg) => cfg.args.clone(),
                 _ => panic!("Wrong enum type"),
             }
@@ -339,5 +416,20 @@ tasks:
                 .to_utc(),
             workflow.start_time_utc().unwrap()
         )
+    }
+
+    #[test]
+    fn test_get_dependents() {
+        let dir = env::current_dir().unwrap();
+        println!("{:?}", dir.to_string_lossy());
+        let wf = Workflow::from_yaml("./test_artifacts/workflows/multi-cmd.yml").unwrap();
+        let deps = wf.dag.get_dependents("task1").unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0], "task2");
+
+        let mut deps = wf.dag.get_dependents("task2").unwrap();
+        deps.sort();
+        assert_eq!(deps.len(), 2);
+        assert_eq!(deps, vec!["task3", "task4"]);
     }
 }

@@ -6,12 +6,11 @@ use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
 };
-use tokio::{fs, sync::Mutex, time::sleep};
+use tokio::{fs, sync::Mutex};
 
 use models::key_from_path;
-pub use models::{FromYaml, PythonTask, SubprocessTask, Task, Workflow};
+pub use models::{FromYaml, PythonTask, SubprocessTask, Task, WorkFlowDAG, Workflow};
 
 /// BFS traversal of the workflow directory to find all workflows. Will log and skip
 /// any items that failed to parse. If none parse, this reutrns an empty hashmap
