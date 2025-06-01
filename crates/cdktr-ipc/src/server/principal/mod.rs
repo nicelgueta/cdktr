@@ -62,7 +62,15 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 helpers::handle_run_task(&task_id, &self.workflows, &mut self.task_queue).await
             }
             PrincipalAPI::RegisterAgent(agent_id) => self.register_agent(&agent_id).await,
-            PrincipalAPI::AgentTaskStatusUpdate(agent_id, task_id, status) => {
+            PrincipalAPI::AgentWorkflowStatusUpdate(agent_id, task_id, task_exe_id, status) => {
+                helpers::handle_agent_workflow_status_update(
+                    self.live_agents.clone(),
+                    &task_id,
+                    &status,
+                )
+                .await
+            }
+            PrincipalAPI::AgentTaskStatusUpdate(agent_id, task_id, task_exe_id, status) => {
                 helpers::handle_agent_task_status_update(
                     self.live_agents.clone(),
                     &task_id,

@@ -19,9 +19,16 @@ pub static CDKTR_PRINCIPAL_HOST: &'static str = "0.0.0.0";
 pub static CDKTR_PRINCIPAL_PORT: usize = 5561;
 
 /// Default workflow directory
-pub static CDKTR_WORKFLOW_DIR: &str = "workflows";
+pub static CDKTR_WORKFLOW_DIR: &'static str = "workflows";
 
 /// Interval to refresh the workflow directory with any changes
 /// useful for CICD environments where new workflows are added without
 /// having to bounce any services
 pub static CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S: usize = 60;
+
+/// Task queue persistence interval. Used in case of failure of the principal
+/// so it can pick up where it left off. Stored in APP DATA directory.
+pub static CDKTR_Q_PERSISTENCE_INTERVAL_MS: usize = 1000;
+
+/// App data directory for cdktr instances
+pub static CDKTR_APP_DATA_DIRECTORY: &'static str = "$HOME/.cdktr";

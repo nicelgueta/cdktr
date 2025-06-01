@@ -30,6 +30,20 @@ pub async fn handle_agent_task_status_update(
     )
 }
 
+pub async fn handle_agent_workflow_status_update(
+    live_agents: AgentPriorityQueue,
+    task_id: &str,
+    status: &TaskStatus,
+) -> (ClientResponseMessage, usize) {
+    // TODO: do something with the task id.
+    //
+    // TODO
+    (
+        ClientResponseMessage::SuccessWithPayload("TBD".to_string()),
+        0,
+    )
+}
+
 /// handler for the principal to place a workflow task on the queue ready for pick-up by a worker
 pub async fn handle_run_task(
     workflow_id: &str,

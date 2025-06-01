@@ -35,7 +35,7 @@ pub async fn start_principal(instance_host: String, instance_port: usize, instan
     let mut principal_server = PrincipalServer::new(instance_id.clone(), workflows.clone());
 
     // start workflow refresh loop
-    tokio::spawn(async move { workflowstore_refresh_loop(workflows).await });
+    tokio::spawn(async move { admin_refresh_loop(workflows).await });
 
     // start REP/REQ server loop for principal
     principal_server
@@ -46,10 +46,9 @@ pub async fn start_principal(instance_host: String, instance_port: usize, instan
     std::process::exit(1); // loop has broken
 }
 
-/// refreshes the principal instance with the latest workflows
-/// from the main directory. Controlled with the
-/// CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S setting
-async fn workflowstore_refresh_loop(mut workflows: WorkflowStore) {
+/// Runs regular refresh tasks within the principal like persisting the task queue
+/// and refreshing workflows from the main directory.
+async fn admin_refresh_loop(mut workflows: WorkflowStore) {
     let interval = Duration::from_secs(get_cdktr_setting!(
         CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S,
         usize

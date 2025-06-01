@@ -26,10 +26,15 @@ pub enum PrincipalAPI {
     ///     agent_id
     RegisterAgent(String),
     /// Allows an agent to update the principal with the status of a specific
+    /// workflow
+    /// Args:
+    ///     agent_id, task_id, task_execution_id, status
+    AgentWorkflowStatusUpdate(String, String, String, TaskStatus),
+    /// Allows an agent to update the principal with the status of a specific
     /// task
     /// Args:
-    ///     agent_id, task_id, status
-    AgentTaskStatusUpdate(String, String, TaskStatus),
+    ///     agent_id, task_id, task_execution_id, status
+    AgentTaskStatusUpdate(String, String, String, TaskStatus),
     /// An endpoint that can be polled for work by Agents. Agents provide their
     /// instance id token (agent_id) and if there is work available on the task queue
     /// then the principal will pop a task from the global queue and provide it to the agent
@@ -48,7 +53,6 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
             return Err(GenericError::ParseError(format!("Empty message")));
         };
         match msg_type.as_str() {
-            // "GET_TASKS" => Ok(Self::GetTasks),
             "PING" => Ok(Self::Ping),
             "LSWORKFLOWS" => Ok(Self::ListWorkflowStore),
             "RUNTASK" => Ok(Self::RunTask(helpers::create_run_task_payload(args)?)),
@@ -56,15 +60,50 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                 Some(agent_id) => Ok(Self::RegisterAgent(agent_id)),
                 None => Err(GenericError::ParseError("Missing arg AGENT_ID".to_string())),
             },
+            "AGENTWORKFLOWSTATUS" => match args.next() {
+                Some(agent_id) => match args.next() {
+                    Some(task_id) => match args.next() {
+                        Some(task_exe_id) => match args.next() {
+                            Some(status) => {
+                                let status = TaskStatus::try_from(status)?;
+                                Ok(Self::AgentWorkflowStatusUpdate(
+                                    agent_id,
+                                    task_id,
+                                    task_exe_id,
+                                    status,
+                                ))
+                            }
+                            None => Err(GenericError::ParseError(
+                                "Missing arg TASK_STATUS".to_string(),
+                            )),
+                        },
+                        None => Err(GenericError::ParseError(
+                            "Missing arg TASK_EXECUTION_ID".to_string(),
+                        )),
+                    },
+                    None => Err(GenericError::ParseError("Missing arg TASK_ID".to_string())),
+                },
+                None => Err(GenericError::ParseError("Missing arg AGENT_ID".to_string())),
+            },
             "AGENTTASKSTATUS" => match args.next() {
                 Some(agent_id) => match args.next() {
                     Some(task_id) => match args.next() {
-                        Some(status) => {
-                            let status = TaskStatus::try_from(status)?;
-                            Ok(Self::AgentTaskStatusUpdate(agent_id, task_id, status))
-                        }
+                        Some(task_exe_id) => match args.next() {
+                            Some(status) => {
+                                let status = TaskStatus::try_from(status)?;
+                                Ok(Self::AgentTaskStatusUpdate(
+                                    agent_id,
+                                    task_id,
+                                    task_exe_id,
+                                    status,
+                                ))
+                            }
+                            None => Err(GenericError::ParseError(
+                                "Missing arg TASK_STATUS".to_string(),
+                            )),
+                        },
                         None => Err(GenericError::ParseError(
-                            "Missing arg TASK_STATUS".to_string(),
+                            "Missing arg TASK_EXECUTION_ID".to_string(),
                         )),
                     },
                     None => Err(GenericError::ParseError("Missing arg TASK_ID".to_string())),
@@ -85,7 +124,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
 
 impl API for PrincipalAPI {
     fn get_meta(&self) -> Vec<APIMeta> {
-        const META: [(&'static str, &'static str); 5] = [
+        const META: [(&'static str, &'static str); 6] = [
             ("PING", "Check server is online"),
             (
                 "LSWORKFLOWS",
@@ -94,6 +133,10 @@ impl API for PrincipalAPI {
             (
                 "REGISTERAGENT",
                 "Allows an agent to register itself with the principal",
+            ),
+            (
+                "AGENTWORKFLOWSTATUS",
+                "Allows an agent to update the principal with the status of a specific workflow",
             ),
             (
                 "AGENTTASKSTATUS",
@@ -116,9 +159,13 @@ impl API for PrincipalAPI {
             Self::RegisterAgent(agent_id) => {
                 format!("REGISTERAGENT|{agent_id}")
             }
-            Self::AgentTaskStatusUpdate(agent_id, task_id, status) => {
+            Self::AgentWorkflowStatusUpdate(agent_id, task_id, task_exe_id, status) => {
                 let status = status.to_string();
-                format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{status}")
+                format!("AGENTWORKFLOWSTATUS|{agent_id}|{task_id}|{task_exe_id}|{status}")
+            }
+            Self::AgentTaskStatusUpdate(agent_id, task_id, task_exe_id, status) => {
+                let status = status.to_string();
+                format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{task_exe_id}|{status}")
             }
             Self::FetchWorkflow(agent_id) => {
                 format!("FETCHWORKFLOW|{agent_id}")
