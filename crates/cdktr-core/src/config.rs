@@ -19,7 +19,7 @@ pub static CDKTR_PRINCIPAL_HOST: &'static str = "0.0.0.0";
 pub static CDKTR_PRINCIPAL_PORT: usize = 5561;
 
 /// Default workflow directory
-pub static CDKTR_WORKFLOW_DIR: &'static str = "workflows";
+pub static CDKTR_WORKFLOW_DIR: &str = "workflows";
 
 /// Interval to refresh the workflow directory with any changes
 /// useful for CICD environments where new workflows are added without

@@ -10,14 +10,15 @@ pub mod traits;
 pub enum FlowExecutionResult {
     SUCCESS,
     CRASHED(String),
+    FAILURE(String),
     // ABORTED(String),
-    // FAILURE(String),
 }
 
 impl FlowExecutionResult {
     pub fn _to_string(self) -> String {
         match self {
             Self::CRASHED(v) => v,
+            Self::FAILURE(v) => v,
             _ => "".to_string(), // Self::ABORTED(v) => v,
                                  // Self::FAILURE(v) => v,
         }

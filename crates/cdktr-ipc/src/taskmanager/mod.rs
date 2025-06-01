@@ -269,24 +269,51 @@ async fn run_in_executor(
             info!("Spawning task {task_exe_id_clone}");
             let flow_result = executable_task.run(stdout_tx, stderr_tx).await;
             match flow_result {
-                FlowExecutionResult::SUCCESS => info!(
-                    "Successfully completed task: {}->{}",
-                    &task_id, &task_execution_id
-                ),
-                FlowExecutionResult::CRASHED(err_msg) => {
+                FlowExecutionResult::SUCCESS => {
+                    info!(
+                        "Successfully completed task: {}->{}",
+                        &task_id, &task_execution_id
+                    );
+                    match task_tracker.mark_success(&task_id) {
+                        Ok(_) => Ok(()),
+                        Err(e) => Err(TaskManagerError::FailedTaskError(format!(
+                            "Failed to mark task as success. Error: {}",
+                            e.to_string()
+                        ))),
+                    }
+                }
+                FlowExecutionResult::FAILURE(err_msg) => {
                     error!(
                         "Task {}->{} experienced a critical failure. Error: {}",
                         &task_id, &task_execution_id, err_msg
                     );
-                    return Err(TaskManagerError::FailedTaskError(err_msg));
+                    match task_tracker.mark_failed(&task_id) {
+                        Ok(_) => {
+                            warn!("Marked {}->{} as failure", &task_id, &task_execution_id);
+                            Ok(())
+                        }
+                        Err(e) => Err(TaskManagerError::FailedTaskError(format!(
+                            "Failed to mark task as success. Error: {}",
+                            e.to_string()
+                        ))),
+                    }
                 }
-            };
-            match task_tracker.mark_success(&task_id) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(TaskManagerError::FailedTaskError(format!(
-                    "Failed to mark task as success. Error: {}",
-                    e.to_string()
-                ))),
+                FlowExecutionResult::CRASHED(err_msg) => {
+                    error!(
+                        "Task {}->{} crashed. Error: {}",
+                        &task_id, &task_execution_id, err_msg
+                    );
+                    match task_tracker.mark_failed(&task_id) {
+                        Ok(_) => {
+                            warn!("Marked {}->{} as failure", &task_id, &task_execution_id);
+                            Ok(())
+                        }
+                        Err(e) => Err(TaskManagerError::FailedTaskError(format!(
+                            "Failed to mark task as success. Error: {}",
+                            e.to_string()
+                        ))),
+                    }
+                }
             }
         });
         (handle, stdout_rx, stderr_rx)

@@ -46,10 +46,10 @@ impl traits::Executor for SubprocessTask {
         let child_process = cmd.spawn();
 
         match child_process {
-            Ok(child) => {
+            Ok(mut child) => {
                 // handle process
-                let stdout = child.stdout.expect("unable to acquire stdout");
-                let stderr = child.stderr.expect("unable to acquire stderr");
+                let stdout = child.stdout.take().expect("unable to acquire stdout");
+                let stderr = child.stderr.take().expect("unable to acquire stderr");
                 let mut stdout_reader = BufReader::new(stdout).lines();
                 let mut stderr_reader = BufReader::new(stderr).lines();
 
@@ -59,7 +59,16 @@ impl traits::Executor for SubprocessTask {
                 while let Some(line) = stderr_reader.next_line().await.unwrap() {
                     stderr_tx.send(line).await.unwrap()
                 }
-                FlowExecutionResult::SUCCESS
+                match child.wait().await {
+                    Ok(exit_status) => match exit_status.success() {
+                        true => FlowExecutionResult::SUCCESS,
+                        false => FlowExecutionResult::FAILURE("Process failed".to_string()),
+                    },
+                    Err(e) => FlowExecutionResult::CRASHED(format!(
+                        "Process failed to exit cleanly - {}",
+                        e.to_string()
+                    )),
+                }
             }
             Err(e) => {
                 // check for errors starting up the process

@@ -28,9 +28,9 @@ pub async fn start_agent(
 
 /// Starts the main principal loop
 pub async fn start_principal(instance_host: String, instance_port: usize, instance_id: String) {
-    let workflows = WorkflowStore::from_dir("./example_cdktr_tasks")
+    let workflows = WorkflowStore::from_dir(get_cdktr_setting!(CDKTR_WORKFLOW_DIR).as_str())
         .await
-        .expect("Failed to load workflow store on load"); // TODO: remove hardcode
+        .expect("Failed to load workflow store on load");
     info!("Loaded {} workflows into store", workflows.count().await);
     let mut principal_server = PrincipalServer::new(instance_id.clone(), workflows.clone());
 

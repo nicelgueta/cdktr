@@ -6,8 +6,10 @@ tasks:
     description: Runs first task - short
     config:
       !Subprocess
-      cmd: python
+      cmd: uv
       args:
+        - run
+        - python
         - python-cdktr/s.py
         - 2
         - 5
@@ -17,8 +19,10 @@ tasks:
     description: Dummy subprocess task to run a python script
     config:
       !Subprocess
-      cmd: python
+      cmd: uv
       args:
+        - run
+        - python
         - python-cdktr/s.py
         - 2
         - 3
@@ -28,8 +32,10 @@ tasks:
     description: Dummy subprocess task to run a python script
     config:
       !Subprocess
-      cmd: python
+      cmd: uv
       args:
+        - run
+        - python
         - python-cdktr/s.py
         - 2
         - 10
@@ -40,8 +46,10 @@ tasks:
     description: Dummy subprocess task to run a python script
     config:
       !Subprocess
-      cmd: python
+      cmd: uv
       args:
+        - run
+        - python
         - python-cdktr/s.py
         - 2
         - 3

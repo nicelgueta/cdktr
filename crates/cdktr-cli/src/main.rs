@@ -55,9 +55,7 @@ async fn _main() {
     let cli_instance = CdktrCli::parse();
 
     let principal_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
-    let principal_port: usize = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT)
-        .parse()
-        .expect("CDKTR_PRINCIPAL_PORT must be a valid number");
+    let principal_port: usize = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize);
 
     match cli_instance {
         CdktrCli::Start(args) => {
