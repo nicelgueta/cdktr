@@ -21,7 +21,6 @@ log = "0.4.22"
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "io-std", "process", "io-util", "sync", "time"] }
-ratatui = { version = "0.27.0", features = ["all-widgets"] }
 zeromq = "0.4.1"
 rustyrs = "0.5.5"
 serde_yml = "0.0.12"

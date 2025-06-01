@@ -119,7 +119,7 @@ impl WorkflowStore {
         serde_json::to_string(&workflows).expect("Workflow store could not be serialised to JSON")
     }
 
-    pub async fn to_json(&self) -> Vec<HashMap<&'static str, String>> {
+    pub async fn to_json_array(&self) -> Vec<HashMap<&'static str, String>> {
         let mut v = Vec::new();
         for (task_id, wf) in &*self.inner.lock().await {
             let mut wf_hm = wf.to_hashmap();

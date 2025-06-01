@@ -36,7 +36,7 @@ pub trait APIAction {
             Ok(msg) => msg,
             Err(e) => return e,
         };
-        let cdkr_principal_host = env::var("CDKTR_PRINCIPAL_HOST").unwrap_or("0.0.0.0".to_string());
+        let cdkr_principal_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
         let cdkr_principal_port = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize);
         let uri = get_server_tcp_uri(&cdkr_principal_host, cdkr_principal_port);
         let result = msg

@@ -10,6 +10,7 @@ use ratatui::{
 };
 use std::io;
 
+mod common;
 mod config;
 mod control_panel;
 mod dashboard;
@@ -148,6 +149,7 @@ impl Widget for &App {
 
 pub async fn tui_main() -> io::Result<()> {
     let mut terminal = tui::init()?;
+    color_eyre::install().unwrap();
     let app_config = config::AppConfig::new();
     let app_result = App::new(app_config).run(&mut terminal).await;
     tui::restore()?;

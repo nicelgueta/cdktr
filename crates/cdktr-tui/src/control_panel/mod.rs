@@ -1,17 +1,35 @@
 use action_factory::{ActionHandler, ACTIONS};
 use ratatui::{
     buffer::Buffer,
-    crossterm::event::{KeyCode, KeyEvent},
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     widgets::{Block, List, ListState, Paragraph, StatefulWidget, Widget},
 };
 
-use crate::config::Component;
+use crate::{
+    common::{DataTable, TableRow},
+    config::Component,
+};
 
 mod action_factory;
 
 const PANELS: [&'static str; 3] = ["Actions", "Agents", "Flows"];
+
+#[derive(Debug, Clone)]
+struct FakeData {
+    pub name: String,
+    pub age: String,
+}
+
+impl TableRow<2> for FakeData {
+    fn ref_array(&self) -> [&String; 2] {
+        [&self.name, &self.age]
+    }
+    fn column_headers() -> [&'static str; 2] {
+        ["name", "age"]
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ControlPanel {
@@ -19,6 +37,7 @@ pub struct ControlPanel {
     panel_focussed: usize,
     action_modal_open: bool,
     action_handler: ActionHandler,
+    data_table: DataTable<2, FakeData>,
 }
 
 impl Component for ControlPanel {
@@ -31,7 +50,7 @@ impl Component for ControlPanel {
             for action in vec![("<C>", "Close"), ("<S>", "Send msg"), ("<E>", "Edit param")] {
                 base_controls.push(action)
             }
-        };
+        }
         base_controls
     }
     async fn handle_key_event(&mut self, ke: KeyEvent) {
@@ -43,7 +62,11 @@ impl Component for ControlPanel {
             KeyCode::Char('c') => self.action_modal_open = false,
             KeyCode::Char('s') => self.execute_action().await,
             KeyCode::Char('e') => self.action_handler.toggle_param(),
-            _ => (),
+            _other_key => {
+                if !self.action_modal_open {
+                    self.data_table.handle_key_event(ke);
+                }
+            }
         }
     }
 }
@@ -55,6 +78,16 @@ impl ControlPanel {
             panel_focussed: 0,
             action_modal_open: false,
             action_handler: ActionHandler::default(),
+            data_table: DataTable::new(vec![
+                FakeData {
+                    name: "Gary".to_string(),
+                    age: "22".to_string(),
+                },
+                FakeData {
+                    name: "John".to_string(),
+                    age: "32".to_string(),
+                },
+            ]),
         };
         instance.focus_panel();
         instance
@@ -158,6 +191,7 @@ impl ControlPanel {
         )
     }
 }
+
 impl Widget for ControlPanel {
     fn render(mut self, area: Rect, buf: &mut Buffer)
     where
@@ -175,19 +209,15 @@ impl Widget for ControlPanel {
             .split(main_layout[0]);
 
         let action_section = self.get_actions_section();
-        StatefulWidget::render(
-            action_section,
-            left_sections[0],
-            buf,
-            &mut self.action_state,
-        );
+        action_section.render(left_sections[0], buf, &mut self.action_state);
         self.get_agents_section().render(left_sections[1], buf);
 
         // use the flows section for the action modal to avoid an uneat popup and mount either or
         if self.action_modal_open {
             self.action_handler.render(main_layout[1], buf)
         } else {
-            self.get_flows_section().render(main_layout[1], buf);
+            // self.get_flows_section().render(main_layout[1], buf);
+            self.data_table.render(main_layout[1], buf);
         };
     }
 }
