@@ -118,6 +118,16 @@ impl WorkflowStore {
         let workflows = inner_mutex.clone();
         serde_json::to_string(&workflows).expect("Workflow store could not be serialised to JSON")
     }
+
+    pub async fn to_json(&self) -> Vec<HashMap<&'static str, String>> {
+        let mut v = Vec::new();
+        for (task_id, wf) in &*self.inner.lock().await {
+            let mut wf_hm = wf.to_hashmap();
+            wf_hm.insert("task_id", task_id.clone());
+            v.push(wf_hm);
+        }
+        v
+    }
 }
 
 #[cfg(test)]

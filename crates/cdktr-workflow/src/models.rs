@@ -328,6 +328,21 @@ impl Workflow {
         }
     }
 
+    pub fn to_hashmap(&self) -> HashMap<&'static str, String> {
+        let mut hm = HashMap::new();
+        hm.insert("name", self.name.clone());
+        hm.insert("path", self.path.clone());
+        hm.insert(
+            "cron",
+            self.cron.clone().unwrap_or("NO SCHEDULE".to_string()),
+        );
+        hm.insert(
+            "start_time",
+            self.start_time.clone().unwrap_or("NO SCHEDULE".to_string()),
+        );
+        hm
+    }
+
     pub fn validate(&self) -> Result<(), GenericError> {
         self.start_time_utc()?;
         Ok(())
