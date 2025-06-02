@@ -17,6 +17,7 @@ use ratatui::widgets::{
 };
 use ratatui::{DefaultTerminal, Frame};
 use style::palette::tailwind;
+use tokio::task::coop;
 use unicode_width::UnicodeWidthStr;
 
 const PALETTES: [tailwind::Palette; 4] = [
@@ -84,7 +85,7 @@ impl<const N: usize, T: TableRow<N>> DataTable<N, T> {
     pub fn new(data_vec: Vec<T>) -> Self {
         Self {
             state: TableState::default().with_selected(0),
-            scroll_state: ScrollbarState::new((data_vec.len() - 1) * ITEM_HEIGHT),
+            scroll_state: ScrollbarState::new((data_vec.len().max(1) - 1) * ITEM_HEIGHT),
             colors: TableColors::new(&PALETTES[0]),
             color_index: 0,
             items: data_vec,
@@ -189,15 +190,19 @@ impl<const N: usize, T: TableRow<N>> DataTable<N, T> {
                 .height(2)
         });
         let bar = " █ ";
+        let constraints = constraint_len_calculator(&self.items)
+            .iter()
+            .map(|x| Constraint::Min(*x))
+            .collect::<Vec<Constraint>>();
         StatefulWidget::render(
             Table::new(
                 rows,
-                constraint_len_calculator(&self.items), // [
-                                                        //     // + 1 is for padding.
-                                                        //     Constraint::Length(self.longest_item_lens.0 + 1),
-                                                        //     Constraint::Min(self.longest_item_lens.1 + 1),
-                                                        //     Constraint::Min(self.longest_item_lens.2),
-                                                        // ],
+                constraints, // [
+                             //     // + 1 is for padding.
+                             //     Constraint::Length(self.longest_item_lens.0 + 1),
+                             //     Constraint::Min(self.longest_item_lens.1 + 1),
+                             //     Constraint::Min(self.longest_item_lens.2),
+                             // ],
             )
             .header(header)
             .row_highlight_style(selected_row_style)

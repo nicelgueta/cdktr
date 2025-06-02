@@ -18,7 +18,7 @@ principal:
 	cargo run start -i principal
 agent:
 	cargo run start -i agent
-tui:
+ui:
 	cargo run ui
 pycli:
 	python python-cdktr/cli_zmq.py

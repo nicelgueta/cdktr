@@ -11,7 +11,9 @@ use log::{info, trace};
 
 pub async fn handle_list_workflows(workflows: &WorkflowStore) -> (ClientResponseMessage, usize) {
     (
-        ClientResponseMessage::SuccessWithPayload(workflows.to_string().await),
+        ClientResponseMessage::SuccessWithPayload(
+            serde_json::to_string(&workflows.to_json_array().await).unwrap(),
+        ),
         0,
     )
 }

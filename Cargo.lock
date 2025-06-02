@@ -260,6 +260,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "ratatui",
+ "serde_json",
  "tokio",
  "unicode-width 0.2.0",
  "zeromq",

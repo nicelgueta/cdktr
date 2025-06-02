@@ -1,4 +1,8 @@
+use std::{collections::HashMap, time::Duration};
+
 use action_factory::{ActionHandler, ACTIONS};
+use cdktr_core::{self, get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
+use cdktr_ipc::prelude::{PrincipalAPI, API};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
@@ -11,23 +15,47 @@ use crate::{
     common::{DataTable, TableRow},
     config::Component,
 };
+use std::env;
+
+use log::warn;
 
 mod action_factory;
 
-const PANELS: [&'static str; 3] = ["Actions", "Agents", "Flows"];
+const PANELS: [&'static str; 3] = ["Actions", "Agents", "WorkFlows"];
 
 #[derive(Debug, Clone)]
-struct FakeData {
-    pub name: String,
-    pub age: String,
+struct WorkFlowTableRow {
+    id: String,
+    name: String,
+    description: String,
+    path: String,
 }
 
-impl TableRow<2> for FakeData {
-    fn ref_array(&self) -> [&String; 2] {
-        [&self.name, &self.age]
+impl TableRow<4> for WorkFlowTableRow {
+    fn ref_array(&self) -> [&String; 4] {
+        [&self.id, &self.name, &self.description, &self.path]
     }
-    fn column_headers() -> [&'static str; 2] {
-        ["name", "age"]
+    fn column_headers() -> [&'static str; 4] {
+        ["ID", "Name", "Description", "Path"]
+    }
+}
+
+impl Into<DataTable<4, WorkFlowTableRow>> for Vec<HashMap<String, String>> {
+    fn into(self) -> DataTable<4, WorkFlowTableRow> {
+        let mut rows = Vec::new();
+        for map in self {
+            let id = map.get("task_id").cloned().unwrap_or_default();
+            let name = map.get("name").cloned().unwrap_or_default();
+            let description = map.get("description").cloned().unwrap_or_default();
+            let path = map.get("path").cloned().unwrap_or_default();
+            rows.push(WorkFlowTableRow {
+                id,
+                name,
+                description,
+                path,
+            });
+        }
+        DataTable::new(rows)
     }
 }
 
@@ -37,7 +65,7 @@ pub struct ControlPanel {
     panel_focussed: usize,
     action_modal_open: bool,
     action_handler: ActionHandler,
-    data_table: DataTable<2, FakeData>,
+    data_table: DataTable<4, WorkFlowTableRow>,
 }
 
 impl Component for ControlPanel {
@@ -62,6 +90,9 @@ impl Component for ControlPanel {
             KeyCode::Char('c') => self.action_modal_open = false,
             KeyCode::Char('s') => self.execute_action().await,
             KeyCode::Char('e') => self.action_handler.toggle_param(),
+            KeyCode::Char('l') => {
+                self.data_table = Self::get_workflow_data().await;
+            }
             _other_key => {
                 if !self.action_modal_open {
                     self.data_table.handle_key_event(ke);
@@ -78,16 +109,7 @@ impl ControlPanel {
             panel_focussed: 0,
             action_modal_open: false,
             action_handler: ActionHandler::default(),
-            data_table: DataTable::new(vec![
-                FakeData {
-                    name: "Gary".to_string(),
-                    age: "22".to_string(),
-                },
-                FakeData {
-                    name: "John".to_string(),
-                    age: "32".to_string(),
-                },
-            ]),
+            data_table: DataTable::new(Vec::new()),
         };
         instance.focus_panel();
         instance
@@ -183,12 +205,29 @@ impl ControlPanel {
                 .fg(self.panel_highlighted_color("Agents")),
         )
     }
-    fn get_flows_section(&self) -> impl Widget {
-        Paragraph::new("space").block(
-            Block::bordered()
-                .title(" Flows ")
-                .fg(self.panel_highlighted_color("Flows")),
-        )
+    async fn get_workflow_data() -> DataTable<4, WorkFlowTableRow> {
+        let resp = PrincipalAPI::try_from("LSWORKFLOWS".to_string())
+            .unwrap()
+            .send(
+                &get_server_tcp_uri(
+                    &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
+                    get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
+                ),
+                Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64),
+            )
+            .await;
+        match resp {
+            Ok(msg) => {
+                let data = serde_json::from_str::<Vec<HashMap<String, String>>>(&msg.payload())
+                    .expect(
+                        "Data is not valid json", // TODO handle properly
+                    );
+                data.into()
+            }
+            Err(e) => {
+                panic!("Data is not valid json")
+            } // TODO handle properly
+        }
     }
 }
 

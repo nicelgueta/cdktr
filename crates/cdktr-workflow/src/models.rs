@@ -130,6 +130,7 @@ impl Task {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 struct InnerWorkflow {
+    name: String,
     cron: Option<String>,
     description: Option<String>,
     start_time: Option<String>,
@@ -248,6 +249,7 @@ pub trait FromYaml: Sized {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Workflow {
     name: String,
+    description: Option<String>,
     path: String,
     dag: WorkFlowDAG,
     cron: Option<String>,
@@ -267,20 +269,22 @@ impl FromYaml for Workflow {
                 )))
             }
         };
-        let name = key_from_path(file.to_path_buf(), file.parent().unwrap().to_path_buf());
-        let workflow = Self::new(file_path.to_string(), name, &contents)?;
+        // let name = key_from_path(file.to_path_buf(), file.parent().unwrap().to_path_buf());
+
+        let workflow = Self::new(file_path.to_string(), &contents)?;
         workflow.validate()?;
         Ok(workflow)
     }
 }
 impl Workflow {
-    pub fn new(path: String, name: String, contents: &str) -> Result<Self, GenericError> {
+    pub fn new(path: String, contents: &str) -> Result<Self, GenericError> {
         let inner_res = serde_yml::from_str::<InnerWorkflow>(contents);
         match inner_res {
             Ok(inner) => {
-                let dag = inner.gen_dag(&name)?;
+                let dag = inner.gen_dag(&inner.name)?;
                 Ok(Self {
-                    name,
+                    name: inner.name,
+                    description: inner.description,
                     path,
                     dag,
                     cron: inner.cron,
@@ -331,6 +335,10 @@ impl Workflow {
     pub fn to_hashmap(&self) -> HashMap<&'static str, String> {
         let mut hm = HashMap::new();
         hm.insert("name", self.name.clone());
+        hm.insert(
+            "description",
+            self.description.clone().unwrap_or(String::new()),
+        );
         hm.insert("path", self.path.clone());
         hm.insert(
             "cron",
@@ -395,12 +403,7 @@ tasks:
   #    sysexe: /usr/bin/python
 
         "#;
-        let workflow = Workflow::new(
-            "fake/path/my_workflow.yml".to_string(),
-            "my_workflow".to_string(),
-            yaml,
-        )
-        .unwrap();
+        let workflow = Workflow::new("fake/path/my_workflow.yml".to_string(), yaml).unwrap();
 
         assert_eq!(
             "echo".to_string(),
