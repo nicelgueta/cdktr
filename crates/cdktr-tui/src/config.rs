@@ -1,5 +1,8 @@
-use crate::control_panel::ControlPanel;
+use crate::control_panel;
 use crate::dashboard::Dashboard;
+use crate::{control_panel::ControlPanel, dashboard};
+use crossterm::event::Event;
+use ratatui::layout::Position;
 use ratatui::{buffer::Buffer, crossterm::event::KeyEvent, layout::Rect, widgets::Widget};
 
 pub struct AppConfig {
@@ -21,6 +24,9 @@ pub trait Component: Widget {
     fn name(&self) -> &'static str;
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)>;
     async fn handle_key_event(&mut self, ke: KeyEvent);
+    fn is_editing(&self) -> bool;
+    fn handle_editing(&mut self, ke: KeyEvent);
+    fn get_cursor_position(&self) -> Option<Position>;
 }
 
 /// Enum to house the main components that will comprise each page
@@ -61,6 +67,27 @@ impl Component for PageComponent {
         match self {
             Self::Dashboard(dashboard) => dashboard.handle_key_event(ke).await,
             Self::ControlPanel(control_panel) => control_panel.handle_key_event(ke).await,
+        }
+    }
+
+    fn is_editing(&self) -> bool {
+        match self {
+            Self::Dashboard(dashboard) => dashboard.is_editing(),
+            Self::ControlPanel(control_panel) => control_panel.is_editing(),
+        }
+    }
+
+    fn handle_editing(&mut self, ke: KeyEvent) {
+        match self {
+            Self::Dashboard(dashboard) => dashboard.handle_editing(ke),
+            Self::ControlPanel(control_panel) => control_panel.handle_editing(ke),
+        }
+    }
+
+    fn get_cursor_position(&self) -> Option<Position> {
+        match self {
+            Self::Dashboard(dashboard) => dashboard.get_cursor_position(),
+            Self::ControlPanel(control_panel) => control_panel.get_cursor_position(),
         }
     }
 }

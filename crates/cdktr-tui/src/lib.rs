@@ -3,9 +3,9 @@ use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{palette::tailwind, Color, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, Paragraph, Tabs, Widget},
+    widgets::{Block, BorderType, Paragraph, Tabs, Widget},
     Frame,
 };
 use std::io;
@@ -25,6 +25,17 @@ struct App {
     exit: bool,
 }
 
+fn render_frame(frame: &mut Frame, app: &App) {
+    frame.render_widget(app, frame.size());
+}
+fn set_cursor_position(tab: &impl Component, frame: &mut Frame) {
+    let pos = tab.get_cursor_position();
+    if let Some(position) = pos {
+        // set the cursor position in the terminal
+        frame.set_cursor_position(position);
+    };
+}
+
 impl App {
     pub fn new(ac: config::AppConfig) -> Self {
         Self {
@@ -36,7 +47,10 @@ impl App {
     /// runs the application's main loop until the user quits
     pub async fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
         while !self.exit {
-            terminal.draw(|frame| self.render_frame(frame))?;
+            terminal.draw(|frame| {
+                render_frame(frame, self);
+                set_cursor_position(&self.tabs[self.tab], frame);
+            })?;
             match self.handle_events().await {
                 Ok(_) => {}
                 Err(e) => return Err(e),
@@ -59,17 +73,21 @@ impl App {
 
     async fn handle_key_event(&mut self, key_event: KeyEvent) {
         // check
-        match key_event.code {
-            KeyCode::Char('q') => self.exit(),
-            KeyCode::Char('Q') => self.exit(),
-            KeyCode::Char('1') => self.change_tab(0),
-            KeyCode::Char('2') => self.change_tab(1),
-            KeyCode::Char('3') => self.change_tab(2),
-            _ => {
-                if self.tab >= self.tabs.len() {
-                    panic!("Somehow managed to get to an out of scope tab")
-                } else {
-                    self.tabs[self.tab].handle_key_event(key_event).await
+        if self.tabs[self.tab].is_editing() {
+            self.tabs[self.tab].handle_editing(key_event);
+        } else {
+            match key_event.code {
+                KeyCode::Char('q') => self.exit(),
+                KeyCode::Char('Q') => self.exit(),
+                KeyCode::Char('1') => self.change_tab(0),
+                KeyCode::Char('2') => self.change_tab(1),
+                KeyCode::Char('3') => self.change_tab(2),
+                _ => {
+                    if self.tab >= self.tabs.len() {
+                        panic!("Somehow managed to get to an out of scope tab")
+                    } else {
+                        self.tabs[self.tab].handle_key_event(key_event).await
+                    }
                 }
             }
         }
@@ -86,10 +104,6 @@ impl App {
         };
         Ok(())
     }
-
-    fn render_frame(&self, frame: &mut Frame) {
-        frame.render_widget(self, frame.size());
-    }
 }
 
 impl Widget for &App {
@@ -99,7 +113,7 @@ impl Widget for &App {
             .constraints(vec![
                 Constraint::Max(3),
                 Constraint::Min(1),
-                Constraint::Length(2),
+                Constraint::Length(3),
             ])
             .split(area);
 
@@ -143,6 +157,11 @@ impl Widget for &App {
         let controls_text = Text::from(control_line);
         Paragraph::new(controls_text)
             .style(Style::default().white().fg(Color::DarkGray))
+            .block(
+                Block::bordered()
+                    .border_type(BorderType::Double)
+                    .border_style(Style::default()),
+            )
             .render(vertical_chunks[2], buf);
     }
 }

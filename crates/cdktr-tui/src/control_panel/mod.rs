@@ -55,7 +55,7 @@ impl Into<DataTable<4, WorkFlowTableRow>> for Vec<HashMap<String, String>> {
                 path,
             });
         }
-        DataTable::new(rows)
+        DataTable::new(rows, "Workflow Viewer")
     }
 }
 
@@ -73,7 +73,11 @@ impl Component for ControlPanel {
         "Control Panel"
     }
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
-        let mut base_controls = vec![("<↓↑>", "Select"), ("<TAB>", "Change focus")];
+        let mut base_controls = vec![
+            ("<↓↑>", "Select"),
+            ("<TAB>", "Change focus"),
+            ("<R>", "Refresh"),
+        ];
         if self.action_modal_open {
             for action in vec![("<C>", "Close"), ("<S>", "Send msg"), ("<E>", "Edit param")] {
                 base_controls.push(action)
@@ -82,23 +86,31 @@ impl Component for ControlPanel {
         base_controls
     }
     async fn handle_key_event(&mut self, ke: KeyEvent) {
-        match ke.code {
-            KeyCode::Up => self.select_action(false),
-            KeyCode::Down => self.select_action(true),
-            KeyCode::Tab => self.change_panel(),
-            KeyCode::Enter => self.action_enter(),
-            KeyCode::Char('c') => self.action_modal_open = false,
-            KeyCode::Char('s') => self.execute_action().await,
-            KeyCode::Char('e') => self.action_handler.toggle_param(),
-            KeyCode::Char('l') => {
-                self.data_table = Self::get_workflow_data().await;
-            }
-            _other_key => {
-                if !self.action_modal_open {
-                    self.data_table.handle_key_event(ke);
-                }
+        // global keys
+        if self.is_editing() {
+            self.handle_editing(ke)
+        } else {
+            match ke.code {
+                KeyCode::Tab => self.change_panel(),
+                KeyCode::Char('r') => self.refresh_workflows().await,
+                KeyCode::Enter => self.action_enter(),
+                other_key => match PANELS[self.panel_focussed] {
+                    "Actions" => self.handle_action_keys(other_key).await,
+                    "WorkFlows" => self.handle_workflow_keys(ke),
+                    _other_panel => (),
+                },
             }
         }
+    }
+    fn is_editing(&self) -> bool {
+        self.data_table.is_editing()
+    }
+    fn handle_editing(&mut self, ke: KeyEvent) {
+        self.data_table.handle_editing(ke);
+    }
+
+    fn get_cursor_position(&self) -> Option<ratatui::layout::Position> {
+        self.data_table.get_cursor_position()
     }
 }
 
@@ -109,10 +121,29 @@ impl ControlPanel {
             panel_focussed: 0,
             action_modal_open: false,
             action_handler: ActionHandler::default(),
-            data_table: DataTable::new(Vec::new()),
+            data_table: DataTable::new(Vec::new(), "Workflow Viewer"),
         };
         instance.focus_panel();
         instance
+    }
+    async fn handle_action_keys(&mut self, key_code: KeyCode) {
+        match key_code {
+            KeyCode::Up => self.select_action(false),
+            KeyCode::Down => self.select_action(true),
+            other => {
+                if self.action_modal_open {
+                    match other {
+                        KeyCode::Char('c') => self.action_modal_open = false,
+                        KeyCode::Char('s') => self.execute_action().await,
+                        KeyCode::Char('e') => self.action_handler.toggle_param(),
+                        _ => (),
+                    }
+                }
+            }
+        }
+    }
+    fn handle_workflow_keys(&mut self, ke: KeyEvent) {
+        self.data_table.handle_key_event(ke);
     }
     fn panel_highlighted_color(&self, tab_name: &str) -> Color {
         if PANELS[self.panel_focussed] == tab_name {
@@ -121,7 +152,6 @@ impl ControlPanel {
             Color::White
         }
     }
-    // async fn toggle_param(&mut self) {}
     async fn execute_action(&mut self) {
         let msg = self.action_handler.act().await;
         self.action_handler.update_resp(msg);
@@ -163,6 +193,7 @@ impl ControlPanel {
     fn focus_panel(&mut self) {
         match PANELS[self.panel_focussed] {
             "Actions" => self.action_state.select_first(),
+            "WorkFlows" => self.data_table.set_focus(true),
             _ => (),
         }
     }
@@ -172,6 +203,7 @@ impl ControlPanel {
                 self.action_state.select(None);
                 self.action_modal_open = false
             }
+            "WorkFlows" => self.data_table.set_focus(false),
             _ => (),
         }
     }
@@ -187,6 +219,11 @@ impl ControlPanel {
 
         // focus new one
         self.focus_panel();
+    }
+    async fn refresh_workflows(&mut self) {
+        self.data_table = Self::get_workflow_data().await;
+        self.data_table
+            .set_focus(PANELS[self.panel_focussed] == "WorkFlows");
     }
     fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> {
         List::new(ACTIONS)

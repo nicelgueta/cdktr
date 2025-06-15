@@ -1,6 +1,7 @@
 use ratatui::{
     buffer::Buffer,
-    layout::Rect,
+    crossterm::event::KeyEvent,
+    layout::{Position, Rect},
     widgets::{Block, Paragraph, Widget},
 };
 
@@ -16,7 +17,14 @@ impl Component for Dashboard {
     fn get_control_labels(&self) -> Vec<(&'static str, &'static str)> {
         Vec::new()
     }
-    async fn handle_key_event(&mut self, _ke: ratatui::crossterm::event::KeyEvent) {}
+    async fn handle_key_event(&mut self, _ke: KeyEvent) {}
+    fn handle_editing(&mut self, ke: KeyEvent) {}
+    fn is_editing(&self) -> bool {
+        false
+    }
+    fn get_cursor_position(&self) -> Option<Position> {
+        None
+    }
 }
 
 impl Dashboard {

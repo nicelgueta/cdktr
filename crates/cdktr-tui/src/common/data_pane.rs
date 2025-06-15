@@ -5,30 +5,26 @@
 /// release.
 ///
 /// [`latest`]: https://github.com/ratatui/ratatui/tree/latest
-use color_eyre::Result;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::layout::{Constraint, Layout, Margin, Rect};
+use ratatui::layout::{Constraint, Layout, Margin, Position, Rect};
 use ratatui::style::{self, Color, Modifier, Style, Stylize};
 use ratatui::text::Text;
 use ratatui::widgets::{
-    Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-    ScrollbarState, StatefulWidget, Table, TableState, Widget,
+    Block, Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    StatefulWidget, Table, TableState, Widget,
 };
-use ratatui::{DefaultTerminal, Frame};
 use style::palette::tailwind;
-use tokio::task::coop;
 use unicode_width::UnicodeWidthStr;
+
+use crate::common;
+use crate::common::input::InputBox;
 
 const PALETTES: [tailwind::Palette; 4] = [
     tailwind::BLUE,
     tailwind::EMERALD,
     tailwind::INDIGO,
     tailwind::RED,
-];
-const INFO_TEXT: [&str; 2] = [
-    "(↑) up | (↓) down | (←/→) left/right | (Sht ←/→) toggle colors",
-    "",
 ];
 
 const ITEM_HEIGHT: usize = 4;
@@ -79,34 +75,59 @@ pub struct DataTable<const N: usize, T: TableRow<{ N }>> {
     scroll_state: ScrollbarState,
     colors: TableColors,
     color_index: usize,
+    is_focussed: bool,
+    title: &'static str,
+    search_content: Option<String>,
+    input: InputBox,
 }
 
 impl<const N: usize, T: TableRow<N>> DataTable<N, T> {
-    pub fn new(data_vec: Vec<T>) -> Self {
+    pub fn new(data_vec: Vec<T>, title: &'static str) -> Self {
         Self {
             state: TableState::default().with_selected(0),
             scroll_state: ScrollbarState::new((data_vec.len().max(1) - 1) * ITEM_HEIGHT),
             colors: TableColors::new(&PALETTES[0]),
             color_index: 0,
             items: data_vec,
+            is_focussed: false,
+            title,
+            search_content: None,
+            input: InputBox::new("Search"),
         }
     }
 
     pub fn handle_key_event(&mut self, ke: KeyEvent) {
         let shift_pressed = ke.modifiers.contains(KeyModifiers::SHIFT);
-        match ke.code {
-            KeyCode::Char('j') | KeyCode::Down => self.next_row(),
-            KeyCode::Char('k') | KeyCode::Up => self.previous_row(),
-            KeyCode::Char('l') | KeyCode::Right if shift_pressed => self.next_color(),
-            KeyCode::Char('h') | KeyCode::Left if shift_pressed => {
-                self.previous_color();
+        if self.input.is_editing() {
+            self.handle_editing(ke)
+        } else {
+            match ke.code {
+                KeyCode::Char('s') => self.input.enter_edit_mode(),
+                KeyCode::Down => self.next_row(),
+                KeyCode::Up => self.previous_row(),
+                KeyCode::Right if shift_pressed => self.next_color(),
+                KeyCode::Left if shift_pressed => {
+                    self.previous_color();
+                }
+                KeyCode::Right => self.next_column(),
+                KeyCode::Left => self.previous_column(),
+                _ => {}
             }
-            KeyCode::Char('l') | KeyCode::Right => self.next_column(),
-            KeyCode::Char('h') | KeyCode::Left => self.previous_column(),
-            _ => {}
         }
     }
+    pub fn is_editing(&self) -> bool {
+        self.input.is_editing()
+    }
+    pub fn handle_editing(&mut self, ke: KeyEvent) {
+        self.input.handle_key_event(ke);
+    }
+    pub fn get_cursor_position(&self) -> Option<Position> {
+        self.input.get_cursor_position()
+    }
     pub fn next_row(&mut self) {
+        if self.items.len() == 0 {
+            return;
+        };
         let i = match self.state.selected() {
             Some(i) => {
                 if i >= self.items.len() - 1 {
@@ -122,6 +143,9 @@ impl<const N: usize, T: TableRow<N>> DataTable<N, T> {
     }
 
     pub fn previous_row(&mut self) {
+        if self.items.len() == 0 {
+            return;
+        };
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
@@ -159,6 +183,17 @@ impl<const N: usize, T: TableRow<N>> DataTable<N, T> {
         self.colors = TableColors::new(&PALETTES[self.color_index]);
     }
 
+    fn panel_highlighted_color(&self) -> Color {
+        if self.is_focussed {
+            Color::Rgb(123, 201, 227)
+        } else {
+            Color::White
+        }
+    }
+    pub fn set_focus(&mut self, focus: bool) {
+        self.is_focussed = focus;
+    }
+
     fn render_table(&mut self, area: Rect, buf: &mut Buffer) {
         let header_style = Style::default()
             .fg(self.colors.header_fg)
@@ -187,9 +222,9 @@ impl<const N: usize, T: TableRow<N>> DataTable<N, T> {
                 .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
                 .collect::<Row>()
                 .style(Style::new().fg(self.colors.row_fg).bg(color))
-                .height(2)
+                .height(3)
         });
-        let bar = " █ ";
+        let bar = " > ";
         let constraints = constraint_len_calculator(&self.items)
             .iter()
             .map(|x| Constraint::Min(*x))
@@ -208,19 +243,22 @@ impl<const N: usize, T: TableRow<N>> DataTable<N, T> {
             .row_highlight_style(selected_row_style)
             .column_highlight_style(selected_col_style)
             .cell_highlight_style(selected_cell_style)
-            .highlight_symbol(Text::from(vec![
-                "".into(),
-                bar.into(),
-                bar.into(),
-                "".into(),
-            ]))
+            .highlight_symbol(Text::from(vec!["".into(), bar.into(), "".into()]))
             .bg(self.colors.buffer_bg)
             .highlight_spacing(HighlightSpacing::Always)
-            .block(Block::bordered().title(" Workflows ")),
+            .block(
+                Block::bordered()
+                    .title(format!(" {} ", self.title))
+                    .fg(self.panel_highlighted_color()),
+            ),
             area,
             buf,
             &mut self.state,
         )
+    }
+
+    fn render_search(&mut self, area: Rect, buf: &mut Buffer) {
+        self.input.render(area, buf);
     }
 
     fn render_scrollbar(&mut self, area: Rect, buf: &mut Buffer) {
@@ -238,33 +276,33 @@ impl<const N: usize, T: TableRow<N>> DataTable<N, T> {
             );
     }
 
-    fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(
-                Style::new()
-                    .fg(self.colors.row_fg)
-                    .bg(self.colors.buffer_bg),
-            )
-            .centered()
-            .block(
-                Block::bordered()
-                    .border_type(BorderType::Double)
-                    .border_style(Style::new().fg(self.colors.footer_border_color)),
-            )
-            .render(area, buf);
-    }
+    // fn render_footer(&self, area: Rect, buf: &mut Buffer) {
+    //     Paragraph::new(Text::from_iter(INFO_TEXT))
+    //         .style(
+    //             Style::new()
+    //                 .fg(self.colors.row_fg)
+    //                 .bg(self.colors.buffer_bg),
+    //         )
+    //         .centered()
+    //         .block(
+    //             Block::bordered()
+    //                 .border_type(BorderType::Double)
+    //                 .border_style(Style::new().fg(self.colors.footer_border_color)),
+    //         )
+    //         .render(area, buf);
+    // }
 }
 
 impl<const N: usize, T: TableRow<N>> Widget for DataTable<N, T> {
     fn render(mut self, area: Rect, buf: &mut Buffer) {
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(3)]);
+        let vertical = &Layout::vertical([Constraint::Length(3), Constraint::Min(5)]);
         let rects = vertical.split(area);
-
         self.set_colors();
 
-        self.render_table(rects[0], buf);
-        self.render_scrollbar(rects[0], buf);
-        self.render_footer(rects[1], buf);
+        self.render_search(rects[0], buf);
+        self.render_table(rects[1], buf);
+        self.render_scrollbar(rects[1], buf);
+        // self.render_footer(rects[1], buf);
     }
 }
 
