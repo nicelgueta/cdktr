@@ -8,7 +8,6 @@ cdktr-core = { path = "crates/cdktr-core" }
 cdktr-tui = { path = "crates/cdktr-tui" }
 cdktr-workflow = { path = "crates/cdktr-workflow" }
 cdktr-ipc = { path = "crates/cdktr-ipc" }
-cdktr-executors = { path = "crates/cdktr-executors" }
 
 async-trait = "0.1.80"
 chrono = "0.4.38"

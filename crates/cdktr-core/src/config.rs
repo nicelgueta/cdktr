@@ -18,6 +18,12 @@ pub static CDKTR_PRINCIPAL_HOST: &'static str = "0.0.0.0";
 /// default port of the principal instance
 pub static CDKTR_PRINCIPAL_PORT: usize = 5561;
 
+/// listening port for the principal log manager
+pub static CDKTR_LOGS_LISTENING_PORT: usize = 5562;
+
+/// publishing port for the principal log manager
+pub static CDKTR_LOGS_PUBLISHING_PORT: usize = 5563;
+
 /// Default workflow directory
 pub static CDKTR_WORKFLOW_DIR: &'static str = "workflows";
 

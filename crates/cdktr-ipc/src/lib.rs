@@ -1,6 +1,7 @@
 mod api;
 mod client;
 // mod events; TODO: reinclude once the main runner is working
+mod log_manager;
 mod server;
 mod taskmanager;
 

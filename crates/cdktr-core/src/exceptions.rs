@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, num::ParseIntError};
 
 #[derive(Debug, PartialEq)]
 pub enum ZMQParseError {
@@ -21,6 +21,7 @@ pub enum GenericError {
     MissingAgents,
     TimeoutError,
     ZMQParseError(ZMQParseError),
+    ZMQError(String),
     ParseError(String),
     RuntimeError(String),
     WorkflowError(String),
@@ -36,6 +37,7 @@ impl GenericError {
             Self::NoDataException(s) => format!("NoDataException: {}", s.clone()),
             Self::ParseError(s) => format!("ParseError: {}", s.clone()),
             Self::WorkflowError(s) => format!("WorkflowError: {}", s.clone()),
+            Self::ZMQError(s) => format!("ZMQError: {}", s.clone()),
             // Self::APIError(s) => s.clone(),
         }
     }
@@ -43,5 +45,27 @@ impl GenericError {
 impl fmt::Display for GenericError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_string())
+    }
+}
+
+impl Into<GenericError> for zeromq::ZmqError {
+    fn into(self) -> GenericError {
+        GenericError::ZMQError(self.to_string())
+    }
+}
+
+impl Into<GenericError> for ParseIntError {
+    fn into(self) -> GenericError {
+        GenericError::ParseError(format!(
+            "Value is not a valid integer. Original error: {}",
+            self.to_string()
+        ))
+    }
+}
+
+pub fn cdktr_result<T, E: Into<GenericError>>(r: Result<T, E>) -> Result<T, GenericError> {
+    match r {
+        Ok(t) => Ok(t),
+        Err(e) => Err(e.into()),
     }
 }

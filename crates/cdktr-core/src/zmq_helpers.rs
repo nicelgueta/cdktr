@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use crate::exceptions::{GenericError, ZMQParseError};
 use tokio::time::timeout;
-use zeromq::{RepSocket, ReqSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
+use zeromq::{
+    PubSocket, PullSocket, PushSocket, RepSocket, ReqSocket, Socket, SocketRecv, SocketSend,
+    SubSocket, ZmqMessage,
+};
 
 ///
 pub async fn get_zmq_req(endpoint_uri: &str) -> ReqSocket {
@@ -19,6 +22,46 @@ pub async fn get_zmq_rep(endpoint_uri: &str) -> RepSocket {
         .await
         .expect("Failed to connect to REQ socket");
     rep
+}
+
+pub async fn get_zmq_pub(endpoint_uri: &str) -> PubSocket {
+    let mut pub_socket = PubSocket::new();
+    pub_socket
+        .bind(endpoint_uri)
+        .await
+        .expect("Failed to bind to PUB socket");
+    pub_socket
+}
+
+pub async fn get_zmq_sub(endpoint_uri: &str, topic: &str) -> SubSocket {
+    let mut sub_socket = SubSocket::new();
+    sub_socket
+        .connect(endpoint_uri)
+        .await
+        .expect("Failed to connect to SUB socket");
+    sub_socket
+        .subscribe(topic)
+        .await
+        .expect("Failed to subscribe to topic");
+    sub_socket
+}
+
+pub async fn get_zmq_pull(endpoint_uri: &str) -> PullSocket {
+    let mut pull_socket = PullSocket::new();
+    pull_socket
+        .bind(endpoint_uri)
+        .await
+        .expect("Failed to bind to PULL socket");
+    pull_socket
+}
+
+pub async fn get_zmq_push(endpoint_uri: &str) -> PushSocket {
+    let mut push_socket = PushSocket::new();
+    push_socket
+        .connect(endpoint_uri)
+        .await
+        .expect("Failed to connect to PUSH socket");
+    push_socket
 }
 
 pub fn get_server_tcp_uri(host: &str, port: usize) -> String {
