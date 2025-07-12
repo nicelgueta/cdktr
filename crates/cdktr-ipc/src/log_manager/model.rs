@@ -17,7 +17,7 @@ use zeromq::{PubSocket, PullSocket, PushSocket, SocketRecv, SocketSend, SubSocke
 /// Each agent will publish log messages to the log manager rep socket,
 /// and the log manager will consolidate these messages by worflow ID topics
 /// and publish them to the pub socket.
-struct LogManager {
+pub struct LogManager {
     pub_socket: PubSocket,
     pull_socket: PullSocket,
 }
@@ -69,15 +69,17 @@ impl LogManager {
 }
 
 pub struct LogsPublisher {
+    workflow_name: String,
     workflow_instance_id: String,
     push_socket: PushSocket,
 }
 
 impl LogsPublisher {
-    pub async fn new(workflow_instance_id: String) -> Self {
+    pub async fn new(workflow_name: String, workflow_instance_id: String) -> Self {
         let logs_listen_port = get_cdktr_setting!(CDKTR_LOGS_LISTENING_PORT, usize);
         let prin_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
         LogsPublisher {
+            workflow_name,
             workflow_instance_id,
             push_socket: get_zmq_push(&get_server_tcp_uri(&prin_host, logs_listen_port)).await,
         }
@@ -88,7 +90,13 @@ impl LogsPublisher {
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("Failed to get system time")
             .as_millis();
-        let msg = LogMessage::new(self.workflow_instance_id.clone(), timestamp_ms, level, msg);
+        let msg = LogMessage::new(
+            self.workflow_name.clone(),
+            self.workflow_instance_id.clone(),
+            timestamp_ms,
+            level,
+            msg,
+        );
         cdktr_result(self.push_socket.send(msg.into()).await)
     }
 }
@@ -139,6 +147,7 @@ impl LogsClient {
     }
 }
 pub struct LogMessage {
+    workflow_name: String,
     workflow_instance_id: String,
     timestamp_ms: u128,
     level: String,
@@ -147,12 +156,14 @@ pub struct LogMessage {
 
 impl LogMessage {
     pub fn new(
+        workflow_name: String,
         workflow_instance_id: String,
         timestamp_ms: u128,
         level: String,
         payload: String,
     ) -> Self {
         LogMessage {
+            workflow_name,
             workflow_instance_id,
             timestamp_ms,
             level,
@@ -164,8 +175,18 @@ impl LogMessage {
             .unwrap()
             .to_rfc3339();
         format!(
-            "{} [{} {}] {}",
-            self.workflow_instance_id, timestring, self.level, self.payload
+            "[{} {}] [{}] {}",
+            timestring, self.level, self.workflow_instance_id, self.payload
+        )
+    }
+    /// format the message including the workflow id
+    pub fn format_full(&self) -> String {
+        let timestring = chrono::DateTime::from_timestamp_millis(self.timestamp_ms as i64)
+            .unwrap()
+            .to_rfc3339();
+        format!(
+            "[{} {}] [{}/{}] {}",
+            timestring, self.level, self.workflow_name, self.workflow_instance_id, self.payload
         )
     }
 }
@@ -181,6 +202,7 @@ impl TryFrom<ZmqMessage> for LogMessage {
             )));
         }
         Ok(LogMessage {
+            workflow_name: zmq_args.next().unwrap(),
             workflow_instance_id: zmq_args.next().unwrap(),
             timestamp_ms: cdktr_result(zmq_args.next().unwrap().parse())?,
             level: zmq_args.next().unwrap(),
@@ -192,8 +214,12 @@ impl TryFrom<ZmqMessage> for LogMessage {
 impl Into<ZmqMessage> for LogMessage {
     fn into(self) -> ZmqMessage {
         ZmqMessage::from(format!(
-            "{}|{}|{}|{}",
-            self.workflow_instance_id, self.timestamp_ms, self.level, self.payload
+            "{}|{}|{}|{}|{}",
+            self.workflow_name,
+            self.workflow_instance_id,
+            self.timestamp_ms,
+            self.level,
+            self.payload
         ))
     }
 }
@@ -219,19 +245,37 @@ mod tests {
         let timestamp = get_time();
         let log_msg = LogMessage::new(
             "test_workflow".to_string(),
+            "jumping-monkey-0".to_string(),
             timestamp,
             "INFO".to_string(),
             "This is a test log message".to_string(),
         );
         let formatted = log_msg.format();
-        assert!(formatted.contains("test_workflow"));
+        assert!(formatted.contains("jumping-monkey-0"));
+        assert!(formatted.contains("INFO"));
+        assert!(formatted.contains("This is a test log message"));
+    }
+
+    #[tokio::test]
+    async fn test_log_message_format_full() {
+        let timestamp = get_time();
+        let log_msg = LogMessage::new(
+            "Test Workflow".to_string(),
+            "jumping-monkey-0".to_string(),
+            timestamp,
+            "INFO".to_string(),
+            "This is a test log message".to_string(),
+        );
+        let formatted = log_msg.format_full();
+        assert!(formatted.contains("Test Workflow/jumping-monkey-0"));
         assert!(formatted.contains("INFO"));
         assert!(formatted.contains("This is a test log message"));
     }
 
     #[tokio::test]
     async fn test_log_manager_start_e2e() {
-        let test_topic = "test_workflow";
+        let test_workflow_name = "Test Workflow";
+        let test_workflow_instance_id = "jumping-monkey-0";
 
         let mut join_set = JoinSet::new();
 
@@ -243,7 +287,8 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::channel(32);
         // spawn process to listen to messages from the log manager
         join_set.spawn(async move {
-            let mut logs_client = LogsClient::new("test_client".to_string(), test_topic).await;
+            let mut logs_client =
+                LogsClient::new("test_client".to_string(), test_workflow_name).await;
             let _ = logs_client
                 .listen(tx, Some(Duration::from_millis(4000)))
                 .await
@@ -252,7 +297,11 @@ mod tests {
 
         join_set.spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
-            let mut logs_publisher = LogsPublisher::new(test_topic.to_string()).await;
+            let mut logs_publisher = LogsPublisher::new(
+                test_workflow_name.to_string(),
+                test_workflow_instance_id.to_string(),
+            )
+            .await;
             let _ = logs_publisher
                 .pub_msg("INFO".to_string(), "test message 1".to_string())
                 .await
@@ -265,15 +314,16 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(3)).await;
         let mut msgs = Vec::new();
         while let Some(msg) = rx.recv().await {
-            msgs.push(msg.format());
+            msgs.push(msg.format_full());
         }
 
         let regs = vec![
-            Regex::new(r"^test_workflow \[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} INFO\] test message 1$").unwrap(),
-            Regex::new(r"^test_workflow \[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} DEBUG\] test message 2$").unwrap(),
+            Regex::new(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} INFO\] \[Test Workflow/jumping-monkey-0\] test message 1$").unwrap(),
+            Regex::new(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} DEBUG\] \[Test Workflow/jumping-monkey-0\] test message 2$").unwrap(),
         ];
         for (i, reg) in regs.iter().enumerate() {
-            assert!(reg.is_match(msgs[i].as_str()));
+            let res = msgs[i].as_str();
+            assert!(reg.is_match(res));
         }
     }
 }

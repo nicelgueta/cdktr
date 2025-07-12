@@ -1,6 +1,7 @@
 use std::{env, time::Duration};
 
 use crate::{
+    log_manager::model::LogManager,
     server::{principal::PrincipalServer, traits::Server},
     taskmanager,
 };
@@ -36,6 +37,9 @@ pub async fn start_principal(instance_host: String, instance_port: usize, instan
 
     // start workflow refresh loop
     tokio::spawn(async move { admin_refresh_loop(workflows).await });
+
+    // start logs manager
+    tokio::spawn(async move { LogManager::new().await.start().await });
 
     // start REP/REQ server loop for principal
     principal_server

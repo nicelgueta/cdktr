@@ -7,74 +7,38 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'tui'",
+            "name": "Debug Agent",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=tui",
-                    "--package=tui"
+                    "--bin=cdktr-cli"
                 ],
                 "filter": {
-                    "name": "tui",
                     "kind": "bin"
                 }
             },
-            "args": [],
-            "cwd": "${workspaceFolder}"
+            "args": [
+                "start",
+                "-i", "agent"
+            ]
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'tui'",
+            "name": "Debug Principal",
             "cargo": {
                 "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=tui",
-                    "--package=tui"
+                    "build",
+                    "--bin=cdktr-cli"
                 ],
                 "filter": {
-                    "name": "tui",
                     "kind": "bin"
                 }
             },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug cdktr agent",
-            "cargo": {
-                "args": [
-                    "run"
-                ],
-                "filter": {
-                    "name": "cdktr",
-                    "kind": "bin"
-                }
-            },
-            "args": ["start", "-i", "agent", "-m", "1"],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'cdktr'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=cdktr",
-                    "--package=cdktr"
-                ],
-                "filter": {
-                    "name": "cdktr",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
+            "args": [
+                "start",
+                "-i", "principal"
+            ]
         }
     ]
 }

@@ -53,13 +53,14 @@ pub async fn handle_run_task(
     queue: &mut AsyncQueue<Workflow>,
 ) -> (ClientResponseMessage, usize) {
     let task_id = workflow_id.to_string();
-    info!("Staging task -> {}", &workflow_id);
     let wf_res = workflows.get(&workflow_id).await;
     if let Some(wf) = wf_res {
+        info!("Staging task -> {}", &workflow_id);
         queue.put(wf).await;
         info!("Current task queue size: {}", queue.size().await);
         (ClientResponseMessage::Success, 0)
     } else {
+        info!("No workflow found with id {}. Cannot stage task", task_id);
         (
             ClientResponseMessage::ClientError(format!("No workflow exists with id {}", task_id)),
             0,

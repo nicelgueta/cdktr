@@ -21,6 +21,6 @@ agent:
 ui:
 	cargo run ui
 pycli:
-	python python-cdktr/cli_zmq.py
+	cd python-cdktr && uv run cli_zmq.py
 run-migration:
 	diesel migration run

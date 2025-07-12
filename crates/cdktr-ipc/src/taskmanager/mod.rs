@@ -1,4 +1,3 @@
-use crate::client::PrincipalClient;
 use cdktr_core::get_cdktr_setting;
 use cdktr_core::models::FlowExecutionResult;
 use cdktr_core::{exceptions::GenericError, models::traits::Executor};
@@ -15,6 +14,8 @@ use tokio::task::JoinHandle;
 use tokio::task::JoinSet;
 use tokio::time::sleep;
 
+use crate::client::PrincipalClient;
+use crate::log_manager::model::LogsPublisher;
 mod task_tracker;
 
 const WAIT_TASK_SLEEP_INTERVAL_MS: Duration = Duration::from_millis(500);
@@ -145,7 +146,7 @@ impl TaskManager {
                     ),
                 )
                 .await;
-            let workflow = {
+            let workflow: cdktr_workflow::Workflow = {
                 let mut counter = workflow_counter.lock().await;
                 match workflow_result {
                     Ok(workflow) => {
@@ -163,7 +164,7 @@ impl TaskManager {
             let name_gen_cl = self.name_gen.clone();
             // spawn workflow thread so we can return to request another workflow
             let wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
-                let workflow_id = { name_gen_cl.lock().await.next() };
+                let workflow_instance_id = { name_gen_cl.lock().await.next() };
                 let mut task_tracker = ThreadSafeTaskTracker::from_workflow(&workflow)?;
                 if task_tracker.is_finished() {
                     warn!(
@@ -225,12 +226,23 @@ impl TaskManager {
                     };
                     // need to spawn the reading of the logs of the run task in order to free this thread
                     // to go back to looking at the queue
+                    let mut logs_pub =
+                        LogsPublisher::new(workflow.name().clone(), workflow_instance_id.clone())
+                            .await;
                     read_handles.spawn(async move {
                         while let Some(msg) = task_exe.wait_stdout().await {
-                            info!("{task_execution_id} | STDOUT | {msg}");
+                            let log_msg = format!("[{task_name}={task_execution_id}] STDOUT {msg}");
+                            info!("{}", &log_msg);
+                            logs_pub.pub_msg("INFO".to_string(), log_msg).await.unwrap();
+                            // TODO handle unwrap
                         }
                         while let Some(msg) = task_exe.wait_stderr().await {
-                            error!("{task_execution_id} | STDERR | {msg}");
+                            let log_msg = format!("[{task_name}={task_execution_id}] STDERR {msg}");
+                            error!("{}", &log_msg);
+                            logs_pub
+                                .pub_msg("ERROR".to_string(), log_msg)
+                                .await
+                                .unwrap(); // TODO handle unwrap
                         }
                         info!("Ended task {task_execution_id} ({task_name})");
                     });
@@ -244,7 +256,7 @@ impl TaskManager {
                 info!(
                     "All tasks for workflow {}->{} complete",
                     workflow.name(),
-                    workflow_id,
+                    workflow_instance_id,
                 );
                 Ok(())
             });

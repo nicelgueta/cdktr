@@ -1,12 +1,14 @@
+use cdktr_core::{get_cdktr_setting, utils};
+use cdktr_ipc::{
+    instance::{start_agent, start_principal},
+    log_manager::model::{LogMessage, LogsClient},
+};
+use cdktr_tui::tui_main;
 use clap::Parser;
 use dotenv::dotenv;
 use log::{error, info, warn};
 use models::InstanceType;
-use std::env;
-
-use cdktr_core::{get_cdktr_setting, utils};
-use cdktr_ipc::instance::{start_agent, start_principal};
-use cdktr_tui::tui_main;
+use std::{env, time::Duration};
 
 mod api;
 mod models;
@@ -26,6 +28,9 @@ enum CdktrCli {
 
     /// Start a principal or agent node
     Start(StartArgs),
+
+    /// Log management CLI
+    Logs(LogArgs),
 }
 
 #[derive(clap::Args)]
@@ -42,6 +47,26 @@ struct StartArgs {
 
     #[arg(long, short)]
     config: Option<std::path::PathBuf>,
+}
+
+/// Log management CLI
+/// This allows you to tail logs from the principal log manager
+/// and filter them by workflow ID
+#[derive(clap::Args)]
+#[command(version, about, long_about = None)]
+struct LogArgs {
+    /// The log level to set for the application
+    #[arg(long, short, default_value = "info")]
+    log_level: String,
+
+    // /// Tail the log file
+    // #[arg(long, short)]
+    // tail: bool,
+    /// The workflow ID to filter logs by
+    /// if not provided, all logs will be shown
+    /// that are received by the principal log manager
+    #[arg(long, short)]
+    workflow_id: Option<String>,
 }
 
 #[tokio::main]
@@ -89,5 +114,23 @@ async fn _main() {
             ()
         }
         CdktrCli::Task(args) => (),
+        CdktrCli::Logs(args) => {
+            // let log_level = args.log_level.to_lowercase();
+            let print_func = if let Some(wf_id) = &args.workflow_id {
+                |msg: LogMessage| println!("{}", msg.format())
+            } else {
+                |msg: LogMessage| println!("{}", msg.format_full())
+            };
+            let mut logs_client = LogsClient::new(
+                "cdktr-cli".to_string(),
+                &args.workflow_id.unwrap_or("".to_string()),
+            )
+            .await;
+            let (tx, mut rx) = tokio::sync::mpsc::channel::<LogMessage>(100);
+            tokio::spawn(async move { logs_client.listen(tx, None).await });
+            while let Some(msg) = rx.recv().await {
+                print_func(msg);
+            }
+        }
     }
 }

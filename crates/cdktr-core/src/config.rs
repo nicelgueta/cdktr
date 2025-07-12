@@ -3,8 +3,8 @@
 /// from the command line. These should only be primitive typess
 ///
 
-/// default max number of concurrent tasks an agent can handle
-pub static CDKTR_AGENT_MAX_CONCURRENCY: usize = 10;
+/// default max number of concurrent workflows an agent can handle
+pub static CDKTR_AGENT_MAX_CONCURRENCY: usize = 2;
 
 /// number of times to re-attempt a zmq request
 pub static CDKTR_RETRY_ATTEMPTS: usize = 20;
