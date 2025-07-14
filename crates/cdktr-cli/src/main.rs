@@ -1,7 +1,7 @@
 use cdktr_core::{get_cdktr_setting, utils};
 use cdktr_ipc::{
     instance::{start_agent, start_principal},
-    log_manager::model::{LogMessage, LogsClient},
+    log_manager::{client::LogsClient, model::LogMessage},
 };
 use cdktr_tui::tui_main;
 use clap::Parser;

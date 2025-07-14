@@ -15,7 +15,7 @@ use tokio::task::JoinSet;
 use tokio::time::sleep;
 
 use crate::client::PrincipalClient;
-use crate::log_manager::model::LogsPublisher;
+use crate::log_manager::publisher::LogsPublisher;
 mod task_tracker;
 
 const WAIT_TASK_SLEEP_INTERVAL_MS: Duration = Duration::from_millis(500);

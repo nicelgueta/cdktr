@@ -1,7 +1,7 @@
 use std::{env, time::Duration};
 
 use crate::{
-    log_manager::model::LogManager,
+    log_manager::manager::LogManager,
     server::{principal::PrincipalServer, traits::Server},
     taskmanager,
 };
