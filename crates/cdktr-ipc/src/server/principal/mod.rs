@@ -5,7 +5,6 @@ use cdktr_core::{
 };
 use cdktr_workflow::{Workflow, WorkflowStore};
 use chrono::Utc;
-use log::info;
 
 use crate::api::PrincipalAPI;
 

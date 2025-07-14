@@ -7,7 +7,7 @@ use crate::{
 };
 use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 use cdktr_workflow::WorkflowStore;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use tokio::time::sleep;
 
 /// Starts the main agent loop

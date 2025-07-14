@@ -1,7 +1,6 @@
 mod models;
 use cdktr_core::exceptions::GenericError;
 use log::{debug, error, warn};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
@@ -133,6 +132,7 @@ impl WorkflowStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::{Deserialize, Serialize};
     use std::fs::{self, File};
     use std::io::Write;
     use tempfile::{tempdir, TempDir};

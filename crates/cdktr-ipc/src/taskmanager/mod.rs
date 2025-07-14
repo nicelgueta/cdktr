@@ -337,9 +337,4 @@ async fn run_in_executor(
 
 // TODO: fix the broken pipe error
 #[cfg(test)]
-mod tests {
-    use crate::taskmanager::TaskManagerError;
-    use tokio::time::{sleep, Duration};
-
-    use super::TaskManager;
-}
+mod tests {}

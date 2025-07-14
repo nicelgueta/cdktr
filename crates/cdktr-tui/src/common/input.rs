@@ -1,11 +1,9 @@
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent, KeyEventKind},
-    layout::{Constraint, Layout, Position, Rect},
-    style::{Color, Modifier, Style, Stylize},
-    text::{Line, Span, Text},
-    widgets::{Block, List, ListItem, Paragraph, Widget},
-    Frame,
+    layout::{Position, Rect},
+    style::{Color, Style, Stylize},
+    widgets::{Block, Paragraph, Widget},
 };
 
 #[derive(Debug, Clone)]

@@ -6,9 +6,9 @@ use cdktr_ipc::{
 use cdktr_tui::tui_main;
 use clap::Parser;
 use dotenv::dotenv;
-use log::{error, info, warn};
+use log::{info, warn};
 use models::InstanceType;
-use std::{env, time::Duration};
+use std::env;
 
 mod api;
 mod models;

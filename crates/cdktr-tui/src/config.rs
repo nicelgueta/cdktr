@@ -1,7 +1,5 @@
-use crate::control_panel;
+use crate::control_panel::ControlPanel;
 use crate::dashboard::Dashboard;
-use crate::{control_panel::ControlPanel, dashboard};
-use crossterm::event::Event;
 use ratatui::layout::Position;
 use ratatui::{buffer::Buffer, crossterm::event::KeyEvent, layout::Rect, widgets::Widget};
 

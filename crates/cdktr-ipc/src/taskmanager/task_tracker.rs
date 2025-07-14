@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashSet, VecDeque},
-    sync::Arc,
-};
+use std::{collections::VecDeque, sync::Arc};
 
 use cdktr_core::exceptions::GenericError;
 use cdktr_workflow::{WorkFlowDAG, Workflow};

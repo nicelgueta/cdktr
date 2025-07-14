@@ -5,7 +5,7 @@ use cdktr_core::{self, get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 use cdktr_ipc::prelude::{PrincipalAPI, API};
 use ratatui::{
     buffer::Buffer,
-    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
+    crossterm::event::{KeyCode, KeyEvent},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     widgets::{Block, List, ListState, Paragraph, StatefulWidget, Widget},

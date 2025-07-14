@@ -17,7 +17,6 @@ use ratatui::widgets::{
 use style::palette::tailwind;
 use unicode_width::UnicodeWidthStr;
 
-use crate::common;
 use crate::common::input::InputBox;
 
 const PALETTES: [tailwind::Palette; 4] = [

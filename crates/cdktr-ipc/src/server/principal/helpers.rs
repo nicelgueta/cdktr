@@ -95,7 +95,6 @@ pub async fn handle_fetch_task(
 mod tests {
 
     use cdktr_core::utils::data_structures::AsyncQueue;
-    use serde_json::json;
 
     use super::*;
 
