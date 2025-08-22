@@ -18,13 +18,13 @@ pub struct LogsClient {
 }
 
 impl LogsClient {
-    pub async fn new(client_name: String, topic: &str) -> Self {
+    pub async fn new(client_name: String, topic: &str) -> Result<Self, GenericError> {
         let logs_pub_port = get_cdktr_setting!(CDKTR_LOGS_PUBLISHING_PORT, usize);
         let prin_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
-        LogsClient {
+        Ok(LogsClient {
             client_name,
-            sub_socket: get_zmq_sub(&get_server_tcp_uri(&prin_host, logs_pub_port), topic).await,
-        }
+            sub_socket: get_zmq_sub(&get_server_tcp_uri(&prin_host, logs_pub_port), topic).await?,
+        })
     }
 
     pub async fn listen(

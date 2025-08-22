@@ -34,7 +34,7 @@ mod tests {
 
     #[ignore]
     #[tokio::test]
-    async fn test_principal() {
+    async fn test_principal() -> Result<(), cdktr_core::exceptions::GenericError> {
         start_principal("0.0.0.0".to_string(), 5561, "test_instance".to_string()).await
     }
 }

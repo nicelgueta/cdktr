@@ -105,7 +105,11 @@ async fn _main() {
                 InstanceType::PRINCIPAL => {
                     let instance_id = format!("{}/PRIN", utils::get_instance_id());
                     info!("Starting PRINCIPAL instance: {}", &instance_id);
-                    start_principal(principal_host, principal_port, instance_id).await
+                    if let Err(e) =
+                        start_principal(principal_host, principal_port, instance_id).await
+                    {
+                        println!("{}", e.to_string())
+                    }
                 }
             }
         }
@@ -121,11 +125,18 @@ async fn _main() {
             } else {
                 |msg: LogMessage| println!("{}", msg.format_full())
             };
-            let mut logs_client = LogsClient::new(
+            let mut logs_client = match LogsClient::new(
                 "cdktr-cli".to_string(),
                 &args.workflow_id.unwrap_or("".to_string()),
             )
-            .await;
+            .await
+            {
+                Ok(client) => client,
+                Err(e) => {
+                    println!("{}", e.to_string());
+                    return;
+                }
+            };
             let (tx, mut rx) = tokio::sync::mpsc::channel::<LogMessage>(100);
             tokio::spawn(async move { logs_client.listen(tx, None).await });
             while let Some(msg) = rx.recv().await {

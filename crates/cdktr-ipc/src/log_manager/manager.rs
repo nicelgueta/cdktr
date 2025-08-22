@@ -1,4 +1,5 @@
 use cdktr_core::{
+    exceptions::GenericError,
     get_cdktr_setting,
     zmq_helpers::{get_server_tcp_uri, get_zmq_pub, get_zmq_pull},
 };
@@ -10,8 +11,8 @@ use crate::log_manager::model::LogMessage;
 
 /// This module provides the LogManager which is responsible for managing
 /// the logging system of the CDKTR application.
-/// Each agent will publish log messages to the log manager rep socket,
-/// and the log manager will consolidate these messages by worflow ID topics
+/// Each agent will publish log messages to the log manager pull socket,
+/// and the log manager will consolidate these messages by workflow ID topics
 /// and publish them to the pub socket.
 pub struct LogManager {
     pub_socket: PubSocket,
@@ -19,19 +20,19 @@ pub struct LogManager {
 }
 
 impl LogManager {
-    pub async fn new() -> Self {
-        LogManager {
+    pub async fn new() -> Result<Self, GenericError> {
+        Ok(LogManager {
             pull_socket: get_zmq_pull(&get_server_tcp_uri(
                 get_cdktr_setting!(CDKTR_PRINCIPAL_HOST).as_str(),
                 get_cdktr_setting!(CDKTR_LOGS_LISTENING_PORT, usize),
             ))
-            .await,
+            .await?,
             pub_socket: get_zmq_pub(&get_server_tcp_uri(
                 get_cdktr_setting!(CDKTR_PRINCIPAL_HOST).as_str(),
                 get_cdktr_setting!(CDKTR_LOGS_PUBLISHING_PORT, usize),
             ))
-            .await,
-        }
+            .await?,
+        })
     }
 
     pub async fn start(&mut self) {

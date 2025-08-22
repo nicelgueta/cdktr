@@ -7,68 +7,67 @@ use zeromq::{
     SubSocket, ZmqMessage,
 };
 
-///
-pub async fn get_zmq_req(endpoint_uri: &str) -> ReqSocket {
+pub async fn get_zmq_req(endpoint_uri: &str) -> Result<ReqSocket, GenericError> {
     let mut req = ReqSocket::new();
     req.connect(endpoint_uri)
         .await
-        .expect("Failed to connect to REQ socket");
-    req
+        .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
+    Ok(req)
 }
 
-pub async fn get_zmq_rep(endpoint_uri: &str) -> RepSocket {
+pub async fn get_zmq_rep(endpoint_uri: &str) -> Result<RepSocket, GenericError> {
     let mut rep = RepSocket::new();
     rep.bind(endpoint_uri)
         .await
-        .expect("Failed to connect to REQ socket");
-    rep
+        .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
+    Ok(rep)
 }
 
-pub async fn get_zmq_pub(endpoint_uri: &str) -> PubSocket {
+pub async fn get_zmq_pub(endpoint_uri: &str) -> Result<PubSocket, GenericError> {
     let mut pub_socket = PubSocket::new();
     pub_socket
         .bind(endpoint_uri)
         .await
-        .expect("Failed to bind to PUB socket");
-    pub_socket
+        .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
+    Ok(pub_socket)
 }
 
-pub async fn get_zmq_sub(endpoint_uri: &str, topic: &str) -> SubSocket {
+pub async fn get_zmq_sub(endpoint_uri: &str, topic: &str) -> Result<SubSocket, GenericError> {
     let mut sub_socket = SubSocket::new();
     sub_socket
         .connect(endpoint_uri)
         .await
-        .expect("Failed to connect to SUB socket");
+        .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
     sub_socket
         .subscribe(topic)
         .await
-        .expect("Failed to subscribe to topic");
-    sub_socket
+        .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
+    Ok(sub_socket)
 }
 
-pub async fn get_zmq_pull(endpoint_uri: &str) -> PullSocket {
+pub async fn get_zmq_pull(endpoint_uri: &str) -> Result<PullSocket, GenericError> {
     let mut pull_socket = PullSocket::new();
     pull_socket
         .bind(endpoint_uri)
         .await
-        .expect("Failed to bind to PULL socket");
-    pull_socket
+        .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
+    Ok(pull_socket)
 }
 
-pub async fn get_zmq_push(endpoint_uri: &str) -> PushSocket {
+pub async fn get_zmq_push(endpoint_uri: &str) -> Result<PushSocket, GenericError> {
     let mut push_socket = PushSocket::new();
     push_socket
         .connect(endpoint_uri)
         .await
-        .expect("Failed to connect to PUSH socket");
-    push_socket
+        .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
+    Ok(push_socket)
 }
 
 pub fn get_server_tcp_uri(host: &str, port: usize) -> String {
     return format!("tcp://{host}:{port}");
 }
 
-/// calling .await on a ReqSocket.recv() or RerSocket.send() could hang if the message receiver has died
+/// calling .await on a ReqSocket.recv() or ReqSocket.send() could hang if the message receiver has died
 /// so this function spawns the recv in a separate coroutine and
 /// the calling process waits on a responds from the join handle. Given a certain
 /// duration if no response is received it kills the spawned coroutine and
@@ -80,7 +79,7 @@ pub async fn send_recv_with_timeout(
 ) -> Result<ZmqMessage, GenericError> {
     // spawn the timeout coroutine
     let join_res = tokio::spawn(timeout(duration, async move {
-        let mut req = get_zmq_req(&tcp_uri).await;
+        let mut req = get_zmq_req(&tcp_uri).await?;
         let send_res = req.send(zmq_msg).await;
         match send_res {
             Ok(_) => {
@@ -126,9 +125,11 @@ mod tests {
         duration: Duration,
     ) -> Result<ReqSocket, GenericError> {
         let uri = get_server_tcp_uri(host, port);
-        let res = tokio::spawn(timeout(duration, async move { get_zmq_req(&uri).await }))
-            .await
-            .expect("Encountered join error");
+        let res = tokio::spawn(timeout(duration, async move {
+            get_zmq_req(&uri).await.unwrap()
+        }))
+        .await
+        .expect("Encountered join error");
         match res {
             Ok(req) => Ok(req),
             Err(_e) => Err(GenericError::TimeoutError),
@@ -144,7 +145,7 @@ mod tests {
         let host = String::from("0.0.0.0");
         let port = 9999;
         let endpoint = get_server_tcp_uri(&host, port);
-        let mut rep = get_zmq_rep(&endpoint).await;
+        let mut rep = get_zmq_rep(&endpoint).await.unwrap();
         tokio::spawn(async move {
             rep.recv().await.unwrap();
             rep.send("OK".into()).await.unwrap()
@@ -164,7 +165,7 @@ mod tests {
         let host = String::from("0.0.0.0");
         let port = 9997;
         let endpoint = get_server_tcp_uri(&host, port);
-        let mut rep = get_zmq_rep(&endpoint).await;
+        let mut rep = get_zmq_rep(&endpoint).await.unwrap();
         tokio::spawn(async move {
             rep.recv().await.unwrap();
             rep.send("OK".into()).await.unwrap()
@@ -181,7 +182,7 @@ mod tests {
         let host = String::from("0.0.0.0");
         let port = 9996;
         let endpoint = get_server_tcp_uri(&host, port);
-        let mut rep = get_zmq_rep(&endpoint).await;
+        let mut rep = get_zmq_rep(&endpoint).await.unwrap();
         tokio::spawn(async move {
             rep.recv().await.unwrap();
             sleep(Duration::from_millis(500)).await;

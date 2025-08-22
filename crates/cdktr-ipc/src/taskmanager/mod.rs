@@ -116,7 +116,7 @@ impl TaskManager {
             error!("{}", e.to_string());
             while *self.workflow_counter.lock().await > 0 {
                 warn!(
-                    "Tasks still running after principal loss- awaiting completion before aborting"
+                    "Tasks still running after principal loss - awaiting completion before aborting"
                 );
                 sleep(Duration::from_secs(10)).await;
             }
@@ -228,21 +228,17 @@ impl TaskManager {
                     // to go back to looking at the queue
                     let mut logs_pub =
                         LogsPublisher::new(workflow.name().clone(), workflow_instance_id.clone())
-                            .await;
+                            .await?;
                     read_handles.spawn(async move {
                         while let Some(msg) = task_exe.wait_stdout().await {
                             let log_msg = format!("[{task_name}={task_execution_id}] STDOUT {msg}");
                             info!("{}", &log_msg);
-                            logs_pub.pub_msg("INFO".to_string(), log_msg).await.unwrap();
-                            // TODO handle unwrap
+                            logs_pub.pub_msg("INFO".to_string(), log_msg).await
                         }
                         while let Some(msg) = task_exe.wait_stderr().await {
                             let log_msg = format!("[{task_name}={task_execution_id}] STDERR {msg}");
                             error!("{}", &log_msg);
-                            logs_pub
-                                .pub_msg("ERROR".to_string(), log_msg)
-                                .await
-                                .unwrap(); // TODO handle unwrap
+                            logs_pub.pub_msg("ERROR".to_string(), log_msg).await
                         }
                         info!("Ended task {task_execution_id} ({task_name})");
                     });

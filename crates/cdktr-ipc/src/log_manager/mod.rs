@@ -5,6 +5,7 @@ pub mod publisher;
 
 #[cfg(test)]
 mod tests {
+    use cdktr_core::exceptions::GenericError;
     use regex::Regex;
     use std::time::{Duration, SystemTime};
     use tokio::task::JoinSet;
@@ -52,26 +53,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_log_manager_start_e2e() {
+    async fn test_log_manager_start_e2e() -> Result<(), GenericError> {
         let test_workflow_name = "Test Workflow";
         let test_workflow_instance_id = "jumping-monkey-0";
 
-        let mut join_set = JoinSet::new();
+        let mut join_set: JoinSet<Result<(), GenericError>> = JoinSet::new();
 
         join_set.spawn(async move {
-            let mut log_manager = LogManager::new().await;
+            let mut log_manager = LogManager::new().await?;
             log_manager.start().await;
+            Ok(())
         });
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(32);
         // spawn process to listen to messages from the log manager
         join_set.spawn(async move {
             let mut logs_client =
-                LogsClient::new("test_client".to_string(), test_workflow_name).await;
+                LogsClient::new("test_client".to_string(), test_workflow_name).await?;
             let _ = logs_client
                 .listen(tx, Some(Duration::from_millis(4000)))
                 .await
                 .is_err();
+            Ok(())
         });
 
         join_set.spawn(async move {
@@ -80,15 +83,15 @@ mod tests {
                 test_workflow_name.to_string(),
                 test_workflow_instance_id.to_string(),
             )
-            .await;
+            .await
+            .unwrap();
             let _ = logs_publisher
                 .pub_msg("INFO".to_string(), "test message 1".to_string())
-                .await
-                .unwrap();
+                .await;
             let _ = logs_publisher
                 .pub_msg("DEBUG".to_string(), "test message 2".to_string())
-                .await
-                .unwrap();
+                .await;
+            Ok(())
         });
         tokio::time::sleep(Duration::from_secs(3)).await;
         let mut msgs = Vec::new();
@@ -104,5 +107,6 @@ mod tests {
             let res = msgs[i].as_str();
             assert!(reg.is_match(res));
         }
+        Ok(())
     }
 }

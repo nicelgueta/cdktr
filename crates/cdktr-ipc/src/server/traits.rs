@@ -23,25 +23,24 @@ where
     /// implementation and is exactly the same for both the Agent
     /// and Principal instances so it is not needed to override this
     /// implmentation.
-    async fn start(
-        &mut self,
-        current_host: &str,
-        rep_port: usize,
-    ) -> Result<usize, Box<dyn Error>> {
+    async fn start(&mut self, current_host: &str, rep_port: usize) -> Result<usize, GenericError> {
         info!(
             "SERVER: Starting REP Server on tcp://{}:{}",
             current_host, rep_port
         );
-        let mut rep_socket = get_zmq_rep(&get_server_tcp_uri(current_host, rep_port)).await;
+        let mut rep_socket = get_zmq_rep(&get_server_tcp_uri(current_host, rep_port)).await?;
         info!("SERVER: Successfully connected");
 
         let exit_code = loop {
-            let zmq_recv = rep_socket.recv().await?;
+            let zmq_recv = rep_socket
+                .recv()
+                .await
+                .map_err(|e| GenericError::ZMQError(e.to_string()))?;
             let msg_res: Result<RT, GenericError> = RT::try_from(zmq_recv.clone());
             match msg_res {
                 Ok(cli_msg) => {
                     let (response, exit_code) = self.handle_client_message(cli_msg).await;
-                    rep_socket.send(response.into()).await?;
+                    rep_socket.send(response.into()).await;
                     if exit_code > 0 {
                         // received a non-zero exit code from the message handling function
                         // which means the server should perform some other kind of action
@@ -52,7 +51,10 @@ where
                 Err(e) => {
                     let error_msg = e.to_string();
                     let response = ClientResponseMessage::ClientError(error_msg);
-                    rep_socket.send(response.into()).await?;
+                    rep_socket
+                        .send(response.into())
+                        .await
+                        .map_err(|e| GenericError::ZMQError(e.to_string()))?;
                 }
             }
         };

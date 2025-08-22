@@ -19,7 +19,7 @@ pub enum PrincipalAPI {
     ///     task_id: i64
     RunTask(String),
     /// Allows an agent to register itself with the principal
-    /// so that the principal can set a heartbeat for it. If the agent
+    /// can register its presence. If the agent
     /// is already registered then this behaves in a similar way to
     /// a PING/PONG
     /// Args:

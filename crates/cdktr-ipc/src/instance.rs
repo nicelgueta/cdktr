@@ -5,7 +5,7 @@ use crate::{
     server::{principal::PrincipalServer, traits::Server},
     taskmanager,
 };
-use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
+use cdktr_core::{exceptions::GenericError, get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 use cdktr_workflow::WorkflowStore;
 use log::{error, info, warn};
 use tokio::time::sleep;
@@ -28,7 +28,11 @@ pub async fn start_agent(
 }
 
 /// Starts the main principal loop
-pub async fn start_principal(instance_host: String, instance_port: usize, instance_id: String) {
+pub async fn start_principal(
+    instance_host: String,
+    instance_port: usize,
+    instance_id: String,
+) -> Result<(), GenericError> {
     let workflows = WorkflowStore::from_dir(get_cdktr_setting!(CDKTR_WORKFLOW_DIR).as_str())
         .await
         .expect("Failed to load workflow store on load");
@@ -36,10 +40,16 @@ pub async fn start_principal(instance_host: String, instance_port: usize, instan
     let mut principal_server = PrincipalServer::new(instance_id.clone(), workflows.clone());
 
     // start workflow refresh loop
-    tokio::spawn(async move { admin_refresh_loop(workflows).await });
+    tokio::spawn(async move {
+        admin_refresh_loop(workflows).await;
+        Ok::<(), GenericError>(())
+    });
 
     // start logs manager
-    tokio::spawn(async move { LogManager::new().await.start().await });
+    tokio::spawn(async move {
+        LogManager::new().await?.start().await;
+        Ok::<(), GenericError>(())
+    });
 
     // start REP/REQ server loop for principal
     principal_server
