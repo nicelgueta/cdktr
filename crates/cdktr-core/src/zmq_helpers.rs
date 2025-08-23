@@ -1,6 +1,10 @@
-use std::time::Duration;
+use std::{env, time::Duration};
 
-use crate::exceptions::{GenericError, ZMQParseError};
+use crate::{
+    exceptions::{GenericError, ZMQParseError},
+    macros,
+};
+use log::warn;
 use tokio::time::timeout;
 use zeromq::{
     PubSocket, PullSocket, PushSocket, RepSocket, ReqSocket, Socket, SocketRecv, SocketSend,
@@ -55,12 +59,18 @@ pub async fn get_zmq_pull(endpoint_uri: &str) -> Result<PullSocket, GenericError
 }
 
 pub async fn get_zmq_push(endpoint_uri: &str) -> Result<PushSocket, GenericError> {
-    let mut push_socket = PushSocket::new();
-    push_socket
-        .connect(endpoint_uri)
-        .await
-        .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
-    Ok(push_socket)
+    let cnxn_timeout = macros::internal_get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize);
+    let push_socket_res = timeout(Duration::from_millis(cnxn_timeout as u64), async {
+        let mut push_socket = PushSocket::new();
+        push_socket
+            .connect(endpoint_uri)
+            .await
+            .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
+        Ok(push_socket)
+    })
+    .await
+    .map_err(|_e| GenericError::TimeoutError)?;
+    push_socket_res
 }
 
 pub fn get_server_tcp_uri(host: &str, port: usize) -> String {
@@ -110,6 +120,24 @@ pub async fn send_recv_with_timeout(
             Err(_e) => Err(GenericError::TimeoutError),
         },
         Err(e) => Err(GenericError::RuntimeError(e.to_string())),
+    }
+}
+
+pub async fn push_with_timeout(
+    push_socket: &mut PushSocket,
+    duration: Duration,
+    msg: ZmqMessage,
+) -> Result<(), GenericError> {
+    println!("hello");
+    let push_res = timeout(duration, push_socket.send(msg)).await;
+    match push_res {
+        Ok(r) => match r {
+            Ok(()) => Ok(()),
+            Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
+                e.to_string(),
+            ))),
+        },
+        Err(_e) => Err(GenericError::TimeoutError),
     }
 }
 
@@ -202,5 +230,32 @@ mod tests {
         let host = "localhost";
         let port = 1234 as usize;
         assert_eq!(get_server_tcp_uri(host, port), "tcp://localhost:1234")
+    }
+
+    #[tokio::test]
+    async fn test_push_with_timeout_good() {
+        let host = String::from("0.0.0.0");
+        let port = 9995;
+        let endpoint = get_server_tcp_uri(&host, port);
+        let mut pull = get_zmq_pull(&endpoint).await.unwrap();
+        let mut push = get_zmq_push(&endpoint).await.unwrap();
+        tokio::spawn(async move {
+            let msg = pull.recv().await.unwrap();
+            assert_eq!(String::try_from(msg).unwrap(), "OK")
+        });
+        assert!(
+            push_with_timeout(&mut push, Duration::from_secs(1), "OK".into())
+                .await
+                .is_ok()
+        )
+    }
+
+    #[tokio::test]
+    async fn test_create_push_with_timeout_bad() {
+        let host = String::from("0.0.0.0");
+        let port = 9995;
+        let endpoint = get_server_tcp_uri(&host, port);
+        // push created before pull so won't connect properly to pull-bound port
+        assert!(get_zmq_push(&endpoint).await.is_err())
     }
 }

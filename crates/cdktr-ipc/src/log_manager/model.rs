@@ -4,6 +4,7 @@ use cdktr_core::{
 };
 use zeromq::ZmqMessage;
 
+#[derive(Clone)]
 pub struct LogMessage {
     pub workflow_name: String,
     pub workflow_instance_id: String,
