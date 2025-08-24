@@ -8,7 +8,7 @@ use clap::Parser;
 use dotenv::dotenv;
 use log::{info, warn};
 use models::InstanceType;
-use std::env;
+use std::{env, time::SystemTime};
 
 mod api;
 mod models;
@@ -59,14 +59,35 @@ struct LogArgs {
     #[arg(long, short, default_value = "info")]
     log_level: String,
 
-    // /// Tail the log file
-    // #[arg(long, short)]
-    // tail: bool,
+    /// Tail the log stream instead of reading
+    /// stored logs
+    #[arg(long, short)]
+    tail: bool,
+
     /// The workflow ID to filter logs by
     /// if not provided, all logs will be shown
     /// that are received by the principal log manager
     #[arg(long, short)]
     workflow_id: Option<String>,
+
+    /// Filter logs by a specific workflow instance
+    /// id
+    #[arg(long, short)]
+    workflow_instance_id: Option<String>,
+
+    /// The number of log lines to return. Returns all
+    /// if not provided
+    #[arg(long, short)]
+    number: Option<usize>,
+
+    /// Lower bound tiemstamp for which logs should be read. Inclusive.
+    #[arg(long, short, value_parser = humantime::parse_rfc3339_weak)]
+    start_datetime_utc: Option<SystemTime>,
+
+    /// Upper bound timestamp for which logs
+    /// should be retrieved. Non-inclusive. 
+    #[arg(long, short, value_parser = humantime::parse_rfc3339_weak)]
+    end_datetime_utc: Option<SystemTime>,
 }
 
 #[tokio::main]

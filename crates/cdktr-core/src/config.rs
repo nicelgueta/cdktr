@@ -38,3 +38,6 @@ pub static CDKTR_Q_PERSISTENCE_INTERVAL_MS: usize = 1000;
 
 /// App data directory for cdktr instances
 pub static CDKTR_APP_DATA_DIRECTORY: &'static str = "$HOME/.cdktr";
+
+/// App data directory for cdktr instances
+pub static CDKTR_DB_PATH: &'static str = "$HOME/.cdktr/app.db";

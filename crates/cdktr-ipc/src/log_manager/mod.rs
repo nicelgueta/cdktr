@@ -2,6 +2,7 @@ pub mod client;
 pub mod manager;
 pub mod model;
 pub mod publisher;
+mod persister;
 
 #[cfg(test)]
 mod tests {
