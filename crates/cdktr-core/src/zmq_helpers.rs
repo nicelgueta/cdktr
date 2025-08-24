@@ -11,6 +11,8 @@ use zeromq::{
     SubSocket, ZmqMessage,
 };
 
+pub static ZMQ_MESSAGE_DELIMITER: u8 = b'\x01';
+
 pub async fn get_zmq_req(endpoint_uri: &str) -> Result<ReqSocket, GenericError> {
     let mut req = ReqSocket::new();
     req.connect(endpoint_uri)
@@ -141,6 +143,25 @@ pub async fn push_with_timeout(
     }
 }
 
+pub fn format_zmq_msg_str(args: Vec<&str>) -> String {
+    let mut zmq_str = String::new();
+    match args.len() {
+        0 => zmq_str,
+        1 => {
+            zmq_str.push_str(args[0]);
+            zmq_str
+        }
+        _ => {
+            zmq_str.push_str(args[0]);
+            for arg in &args[1..] {
+                zmq_str.push(ZMQ_MESSAGE_DELIMITER as char);
+                zmq_str.push_str(arg);
+            }
+            zmq_str
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +278,13 @@ mod tests {
         let endpoint = get_server_tcp_uri(&host, port);
         // push created before pull so won't connect properly to pull-bound port
         assert!(get_zmq_push(&endpoint).await.is_err())
+    }
+
+    #[test]
+    fn test_format_zmq_msg() {
+        assert_eq!(
+            format_zmq_msg_str(vec!["abc1", "de1f"]),
+            String::from_utf8(b"abc1\x01de1f".to_vec()).unwrap()
+        )
     }
 }

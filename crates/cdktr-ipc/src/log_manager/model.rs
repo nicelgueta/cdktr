@@ -1,11 +1,14 @@
 use cdktr_core::{
     exceptions::{cdktr_result, GenericError, ZMQParseError},
     models::ZMQArgs,
+    zmq_helpers::format_zmq_msg_str,
+    ZMQ_MESSAGE_DELIMITER,
 };
 use zeromq::ZmqMessage;
 
 #[derive(Clone)]
 pub struct LogMessage {
+    pub workflow_id: String,
     pub workflow_name: String,
     pub workflow_instance_id: String,
     pub timestamp_ms: u128,
@@ -15,6 +18,7 @@ pub struct LogMessage {
 
 impl LogMessage {
     pub fn new(
+        workflow_id: String,
         workflow_name: String,
         workflow_instance_id: String,
         timestamp_ms: u128,
@@ -22,6 +26,7 @@ impl LogMessage {
         payload: String,
     ) -> Self {
         LogMessage {
+            workflow_id,
             workflow_name,
             workflow_instance_id,
             timestamp_ms,
@@ -61,6 +66,7 @@ impl TryFrom<ZmqMessage> for LogMessage {
             )));
         }
         Ok(LogMessage {
+            workflow_id: zmq_args.next().unwrap(),
             workflow_name: zmq_args.next().unwrap(),
             workflow_instance_id: zmq_args.next().unwrap(),
             timestamp_ms: cdktr_result(zmq_args.next().unwrap().parse())?,
@@ -72,13 +78,13 @@ impl TryFrom<ZmqMessage> for LogMessage {
 
 impl Into<ZmqMessage> for LogMessage {
     fn into(self) -> ZmqMessage {
-        ZmqMessage::from(format!(
-            "{}|{}|{}|{}|{}",
-            self.workflow_name,
-            self.workflow_instance_id,
-            self.timestamp_ms,
-            self.level,
-            self.payload
-        ))
+        ZmqMessage::from(format_zmq_msg_str(vec![
+            &self.workflow_id,
+            &self.workflow_name,
+            &self.workflow_instance_id,
+            &self.timestamp_ms.to_string(),
+            &self.level,
+            &self.payload,
+        ]))
     }
 }

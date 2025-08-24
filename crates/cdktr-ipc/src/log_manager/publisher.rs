@@ -14,6 +14,7 @@ use crate::log_manager::model::LogMessage;
 pub struct LogsPublisher {
     prin_host: String,
     logs_listen_port: usize,
+    workflow_id: String,
     workflow_name: String,
     workflow_instance_id: String,
     push_socket: PushSocket,
@@ -22,6 +23,7 @@ pub struct LogsPublisher {
 
 impl LogsPublisher {
     pub async fn new(
+        workflow_id: String,
         workflow_name: String,
         workflow_instance_id: String,
     ) -> Result<Self, GenericError> {
@@ -31,6 +33,7 @@ impl LogsPublisher {
         Ok(LogsPublisher {
             prin_host,
             logs_listen_port,
+            workflow_id,
             workflow_name,
             workflow_instance_id,
             push_socket: get_zmq_push(url).await?,
@@ -48,6 +51,7 @@ impl LogsPublisher {
             .expect("Failed to get system time")
             .as_millis();
         let log_msg: LogMessage = LogMessage::new(
+            self.workflow_id.clone(),
             self.workflow_name.clone(),
             self.workflow_instance_id.clone(),
             timestamp_ms,
@@ -58,6 +62,7 @@ impl LogsPublisher {
             // failed to push to socket so log internally
             // needs to create msg again
             Err(e) => self.log_queue.push_back(LogMessage::new(
+                self.workflow_id.clone(),
                 self.workflow_name.clone(),
                 self.workflow_instance_id.clone(),
                 timestamp_ms,

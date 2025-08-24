@@ -24,6 +24,7 @@ mod tests {
     async fn test_log_message_format() {
         let timestamp = get_time();
         let log_msg = LogMessage::new(
+            "test_workflow_id".to_string(),
             "test_workflow".to_string(),
             "jumping-monkey-0".to_string(),
             timestamp,
@@ -40,6 +41,7 @@ mod tests {
     async fn test_log_message_format_full() {
         let timestamp = get_time();
         let log_msg = LogMessage::new(
+            "test_workflow_id".to_string(),
             "Test Workflow".to_string(),
             "jumping-monkey-0".to_string(),
             timestamp,
@@ -54,6 +56,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_log_manager_start_e2e() -> Result<(), GenericError> {
+        let test_workflow_id = "test_workflow_id";
         let test_workflow_name = "Test Workflow";
         let test_workflow_instance_id = "jumping-monkey-0";
 
@@ -69,7 +72,7 @@ mod tests {
         // spawn process to listen to messages from the log manager
         join_set.spawn(async move {
             let mut logs_client =
-                LogsClient::new("test_client".to_string(), test_workflow_name).await?;
+                LogsClient::new("test_client".to_string(), test_workflow_id).await?;
             let _ = logs_client
                 .listen(tx, Some(Duration::from_millis(4000)))
                 .await
@@ -80,6 +83,7 @@ mod tests {
         join_set.spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
             let mut logs_publisher = LogsPublisher::new(
+                test_workflow_id.to_string(),
                 test_workflow_name.to_string(),
                 test_workflow_instance_id.to_string(),
             )
@@ -98,7 +102,7 @@ mod tests {
         while let Some(msg) = rx.recv().await {
             msgs.push(msg.format_full());
         }
-
+        dbg!(&msgs);
         let regs = vec![
             Regex::new(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} INFO\] \[Test Workflow/jumping-monkey-0\] test message 1$").unwrap(),
             Regex::new(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} DEBUG\] \[Test Workflow/jumping-monkey-0\] test message 2$").unwrap(),

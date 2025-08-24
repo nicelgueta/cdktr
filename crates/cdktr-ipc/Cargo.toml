@@ -21,4 +21,4 @@ zeromq = { workspace = true }
 rustyrs = { workspace = true }
 
 [dev-dependencies]
-regex = "1.11.1"
+regex = { workspace = true }

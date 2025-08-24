@@ -18,6 +18,12 @@ pub struct LogsClient {
 }
 
 impl LogsClient {
+    /// Creates a new instance of the logs client
+    /// Args:
+    ///     client_name: name of the client instance
+    ///     topic: id of the workflow to subscribe to.
+    ///         This should be the file stem of the workflow yml, eg: <my_workflow.yml> (my_workflow)
+    ///         Will subscribe to all running instances of the same workflow
     pub async fn new(client_name: String, topic: &str) -> Result<Self, GenericError> {
         let logs_pub_port = get_cdktr_setting!(CDKTR_LOGS_PUBLISHING_PORT, usize);
         let prin_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);

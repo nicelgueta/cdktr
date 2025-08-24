@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::models::{traits, FlowExecutionResult};
 use daggy::{self, Dag, NodeIndex, Walker};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -248,6 +249,7 @@ pub trait FromYaml: Sized {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Workflow {
+    id: String,
     name: String,
     description: Option<String>,
     path: String,
@@ -283,6 +285,7 @@ impl Workflow {
             Ok(inner) => {
                 let dag = inner.gen_dag(&inner.name)?;
                 Ok(Self {
+                    id: path_to_workflow_id(&path)?,
                     name: inner.name,
                     description: inner.description,
                     path,
@@ -308,6 +311,10 @@ impl Workflow {
 
     pub fn name(&self) -> &String {
         &self.name
+    }
+
+    pub fn id(&self) -> &String {
+        &self.id
     }
 
     pub fn path(&self) -> &String {
@@ -368,6 +375,23 @@ impl TryFrom<String> for Workflow {
 impl ToString for Workflow {
     fn to_string(&self) -> String {
         serde_json::to_string(self).expect("Workflow could not be serialised to JSON")
+    }
+}
+
+fn path_to_workflow_id(path: &str) -> Result<String, GenericError> {
+    let re = Regex::new(r"^(.+)\.[^.]+$").unwrap();
+    match re.captures(&path).map(|caps| {
+        let mut stem = caps[1].to_string();
+        if stem.starts_with('/') {
+            stem.remove(0);
+        }
+        stem.replace(['/', '\\'], ".")
+    }) {
+        Some(id) => Ok(id),
+        None => Err(GenericError::ParseError(format!(
+            "Failed to create a workflow id for the path: {}. Invalid file path or name.",
+            &path
+        ))),
     }
 }
 
@@ -459,5 +483,23 @@ tasks:
         deps.sort();
         assert_eq!(deps.len(), 2);
         assert_eq!(deps, vec!["task3", "task4"]);
+    }
+
+    #[test]
+    fn test_path_to_workflow_id() {
+        let cases = vec![
+            ("myworkflow.draft.yml", Ok("myworkflow.draft")),
+            ("multiple_char-s.yaml", Ok("multiple_char-s")),
+            ("photo-processing.yml", Ok("photo-processing")),
+            ("/home/user/data_flow.yml", Ok("home.user.data_flow")),
+            (r"C:\Users\me\notes.final.yml", Ok("C:.Users.me.notes.final")),
+            ("no_extension_file", Err(GenericError::ParseError("Failed to create a workflow id for the path: no_extension_file. Invalid file path or name.".to_string()))),
+        ];
+
+        for (input, expected) in cases {
+            let result = path_to_workflow_id(input);
+            let expected = expected.map(|s| s.to_string());
+            assert_eq!(result, expected, "Failed on input: {}", input);
+        }
     }
 }

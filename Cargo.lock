@@ -277,6 +277,7 @@ dependencies = [
  "daggy",
  "env_logger",
  "log",
+ "regex",
  "serde",
  "serde_json",
  "serde_yml",

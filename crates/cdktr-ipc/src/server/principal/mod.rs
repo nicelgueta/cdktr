@@ -88,6 +88,7 @@ impl Server<PrincipalAPI> for PrincipalServer {
 mod tests {
     use std::{thread::sleep, time::Duration};
 
+    use cdktr_core::zmq_helpers::format_zmq_msg_str;
     use zeromq::{Socket, ZmqMessage};
 
     use super::*;
@@ -100,7 +101,8 @@ mod tests {
 
     #[test]
     fn test_principal_request_from_zmq_str_all_happy() {
-        let all_happies = vec!["PING", "LSWORKFLOWS", "RUNTASK|1", "REGISTERAGENT|8999|2"];
+        let regis_str = format_zmq_msg_str(vec!["REGISTERAGENT", "8999", "2"]);
+        let all_happies = vec!["PING", "LSWORKFLOWS", &regis_str];
         for zmq_s in all_happies {
             let zmq_msg = ZmqMessage::from(zmq_s);
             let res = PrincipalAPI::try_from(zmq_msg);
@@ -122,12 +124,7 @@ mod tests {
                 0,
             ),
             (
-                "RUNTASK|1",
-                Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
-                0,
-            ),
-            (
-                "REGISTERAGENT|localhost-8999|3",
+                "REGISTERAGENT\x01localhost-8999\x013",
                 Box::new(|r: ClientResponseMessage| r == ClientResponseMessage::Success),
                 0,
             ),

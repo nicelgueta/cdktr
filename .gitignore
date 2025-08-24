@@ -4,3 +4,4 @@ target/
 *:Zone.Identifier
 __pycache__/
 .venv/
+logs/

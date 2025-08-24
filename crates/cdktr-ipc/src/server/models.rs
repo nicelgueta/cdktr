@@ -35,12 +35,12 @@ impl ClientResponseMessage {
         match self {
             Self::Pong => "PONG".to_string(),
             Self::Success => "OK".to_string(),
-            Self::SuccessWithPayload(payload) => format!("SUCCESS|{payload}"),
+            Self::SuccessWithPayload(payload) => format!("SUCCESS\x01{payload}"),
 
-            Self::ClientError(payload) => format!("CLIENTERROR|{payload}"),
-            Self::ServerError(payload) => format!("SERVERERROR|{payload}"),
-            Self::Unprocessable(payload) => format!("UNPROC|{payload}"),
-            Self::NetworkError(payload) => format!("NETWORKERROR|{payload}"),
+            Self::ClientError(payload) => format!("CLIENTERROR\x01{payload}"),
+            Self::ServerError(payload) => format!("SERVERERROR\x01{payload}"),
+            Self::Unprocessable(payload) => format!("UNPROC\x01{payload}"),
+            Self::NetworkError(payload) => format!("NETWORKERROR\x01{payload}"),
         }
     }
 
@@ -102,21 +102,21 @@ mod tests {
 
     #[test]
     fn test_client_message_success_payload() {
-        let zmq_m = ZmqMessage::from("SUCCESS|SOME random payload|with|other_args");
+        let zmq_m = ZmqMessage::from("SUCCESS\x01SOME random payload\x01with\x01other_args");
         let cli_msg = ClientResponseMessage::from(zmq_m);
         assert_eq!(
             cli_msg.payload(),
-            "SOME random payload|with|other_args".to_string()
+            "SOME random payload\x01with\x01other_args".to_string()
         )
     }
 
     #[test]
     fn test_client_message_success_payload_direct_match() {
-        let zmq_m = ZmqMessage::from("SUCCESS|SOME random payload|with|other_args");
+        let zmq_m = ZmqMessage::from("SUCCESS\x01SOME random payload\x01with\x01other_args");
         let cli_msg = ClientResponseMessage::from(zmq_m);
         match cli_msg {
             ClientResponseMessage::SuccessWithPayload(pl) => {
-                assert_eq!(pl, "SOME random payload|with|other_args".to_string())
+                assert_eq!(pl, "SOME random payload\x01with\x01other_args".to_string())
             }
             _ => panic!("Expected only success payload for this test"),
         }

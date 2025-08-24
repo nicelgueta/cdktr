@@ -226,9 +226,12 @@ impl TaskManager {
                     };
                     // need to spawn the reading of the logs of the run task in order to free this thread
                     // to go back to looking at the queue
-                    let mut logs_pub =
-                        LogsPublisher::new(workflow.name().clone(), workflow_instance_id.clone())
-                            .await?;
+                    let mut logs_pub = LogsPublisher::new(
+                        workflow.id().clone(),
+                        workflow.name().clone(),
+                        workflow_instance_id.clone(),
+                    )
+                    .await?;
                     read_handles.spawn(async move {
                         while let Some(msg) = task_exe.wait_stdout().await {
                             let log_msg = format!("[{task_name}={task_execution_id}] STDOUT {msg}");

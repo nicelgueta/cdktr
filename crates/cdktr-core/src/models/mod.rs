@@ -217,31 +217,22 @@ mod tests {
 
     #[test]
     fn test_zmqargs_from_string() {
-        let zmq_args = ZMQArgs::from("arg1|arg2".to_string());
+        let zmq_args = ZMQArgs::from("arg1\x01arg2".to_string());
         assert_eq!(zmq_args.len(), 2);
     }
 
     #[test]
-    fn test_zmqargs_from_string_with_pipes_escaped() {
-        let zmq_args = ZMQArgs::from("arg1|arg\\|2|arg3".to_string());
-        assert_eq!(zmq_args.len(), 3);
-    }
-    #[test]
-    fn test_zmqargs_from_string_badly_escaped() {
-        let zmq_args = ZMQArgs::from("arg1|arg|2|arg3".to_string());
-        assert_eq!(zmq_args.len(), 4);
-    }
-    #[test]
     fn test_zmqargs_from_string_with_backslashes() {
-        let zmq_args = ZMQArgs::from("arg\\1|ar\\g2|\\\\".to_string());
+        let zmq_args = ZMQArgs::from("arg\\1\x01ar\\g2\x01\\\\".to_string());
         assert_eq!(zmq_args.len(), 3);
     }
 
     #[test]
     fn test_zmqargs_to_string() {
-        let zmq_args = ZMQArgs::from("arg1|arg2|arg3 and space|arg4".to_string());
+        let exp = "arg1\x01arg2\x01arg3 and space\x01arg4";
+        let zmq_args = ZMQArgs::from(exp.to_string());
         assert_eq!(zmq_args.len(), 4);
         let st = zmq_args.to_string();
-        assert_eq!(st, "arg1|arg2|arg3 and space|arg4".to_string())
+        assert_eq!(st, exp)
     }
 }

@@ -154,21 +154,23 @@ impl API for PrincipalAPI {
     fn to_string(&self) -> String {
         match self {
             Self::Ping => "PING".to_string(),
-            Self::RunTask(task_id) => format!("RUNTASK|{task_id}"),
+            Self::RunTask(task_id) => format!("RUNTASK\x01{task_id}"),
             Self::ListWorkflowStore => "LSWORKFLOWS".to_string(),
             Self::RegisterAgent(agent_id) => {
-                format!("REGISTERAGENT|{agent_id}")
+                format!("REGISTERAGENT\x01{agent_id}")
             }
             Self::AgentWorkflowStatusUpdate(agent_id, task_id, task_exe_id, status) => {
                 let status = status.to_string();
-                format!("AGENTWORKFLOWSTATUS|{agent_id}|{task_id}|{task_exe_id}|{status}")
+                format!(
+                    "AGENTWORKFLOWSTATUS\x01{agent_id}\x01{task_id}\x01{task_exe_id}\x01{status}"
+                )
             }
             Self::AgentTaskStatusUpdate(agent_id, task_id, task_exe_id, status) => {
                 let status = status.to_string();
-                format!("AGENTTASKSTATUS|{agent_id}|{task_id}|{task_exe_id}|{status}")
+                format!("AGENTTASKSTATUS\x01{agent_id}\x01{task_id}\x01{task_exe_id}\x01{status}")
             }
             Self::FetchWorkflow(agent_id) => {
-                format!("FETCHWORKFLOW|{agent_id}")
+                format!("FETCHWORKFLOW\x01{agent_id}")
             }
         }
     }
@@ -226,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_principal_req_from_zmq_str() {
-        let req_types = ["PING", "FETCHWORKFLOW|1234"];
+        let req_types = ["PING", "FETCHWORKFLOW\x011234"];
         for rt in req_types {
             PrincipalAPI::try_from(ZmqMessage::from(rt))
                 .expect(&format!("Failed to create AgentAPI from {}", rt));
