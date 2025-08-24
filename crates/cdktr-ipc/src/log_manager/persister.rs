@@ -17,26 +17,11 @@ pub struct LogsPersister<'a> {
     logs_cache: VecDeque<LogMessage>,
 }
 impl<'a> LogsPersister<'a> {
-    pub fn new(client: &'a Connection) -> Result<Self, GenericError> {
-        client
-            .execute(
-                "
-            create table IF NOT EXISTS logstore
-            (
-                workflow_id TEXT,
-                workflow_name TEXT,
-                workflow_instance_id TEXT,
-                timestamp_ms BIGINT,
-                level TEXT,
-                payload TEXT,
-            );",
-                params![],
-            )
-            .map_err(|e| GenericError::DBError(e.to_string()))?;
-        Ok(LogsPersister {
+    pub fn new(client: &'a Connection) -> Self {
+        LogsPersister {
             client,
             logs_cache: VecDeque::new(),
-        })
+        }
     }
     pub async fn start_listener(
         &mut self,
@@ -92,7 +77,7 @@ mod tests {
     #[test]
     fn test_add_messages() {
         let db_cli = get_test_db_client();
-        let mut lpers = LogsPersister::new(&db_cli).unwrap();
+        let mut lpers = LogsPersister::new(&db_cli);
         let msg1 = LogMessage::new(
             "test_workflow_id".to_string(),
             "test_workflow_name".to_string(),
@@ -118,7 +103,7 @@ mod tests {
     #[test]
     fn test_persist_cache() {
         let db_client = get_test_db_client();
-        let mut lpers = LogsPersister::new(&db_client).unwrap();
+        let mut lpers = LogsPersister::new(&db_client);
         let msg1 = LogMessage::new(
             "test_workflow_id".to_string(),
             "test_workflow_name".to_string(),
