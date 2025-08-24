@@ -26,6 +26,7 @@ pub enum GenericError {
     RuntimeError(String),
     WorkflowError(String),
     NoDataException(String), // APIError(String),
+    DBError(String),
 }
 impl GenericError {
     pub fn to_string(&self) -> String {
@@ -38,6 +39,7 @@ impl GenericError {
             Self::ParseError(s) => format!("ParseError: {}", s.clone()),
             Self::WorkflowError(s) => format!("WorkflowError: {}", s.clone()),
             Self::ZMQError(s) => format!("ZMQError: {}", s.clone()),
+            Self::DBError(s) => format!("DBError: {}", s.clone()),
             // Self::APIError(s) => s.clone(),
         }
     }

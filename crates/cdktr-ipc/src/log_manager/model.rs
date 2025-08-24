@@ -4,6 +4,7 @@ use cdktr_core::{
     zmq_helpers::format_zmq_msg_str,
     ZMQ_MESSAGE_DELIMITER,
 };
+use duckdb::{params, AppenderParams, ToSql};
 use zeromq::ZmqMessage;
 
 #[derive(Clone)]
@@ -11,7 +12,7 @@ pub struct LogMessage {
     pub workflow_id: String,
     pub workflow_name: String,
     pub workflow_instance_id: String,
-    pub timestamp_ms: u128,
+    pub timestamp_ms: u64,
     pub level: String,
     pub payload: String,
 }
@@ -21,7 +22,7 @@ impl LogMessage {
         workflow_id: String,
         workflow_name: String,
         workflow_instance_id: String,
-        timestamp_ms: u128,
+        timestamp_ms: u64,
         level: String,
         payload: String,
     ) -> Self {

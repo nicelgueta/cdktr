@@ -85,7 +85,7 @@ struct LogArgs {
     start_datetime_utc: Option<SystemTime>,
 
     /// Upper bound timestamp for which logs
-    /// should be retrieved. Non-inclusive. 
+    /// should be retrieved. Non-inclusive.
     #[arg(long, short, value_parser = humantime::parse_rfc3339_weak)]
     end_datetime_utc: Option<SystemTime>,
 }

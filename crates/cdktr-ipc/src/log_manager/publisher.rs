@@ -49,7 +49,7 @@ impl LogsPublisher {
         let timestamp_ms = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("Failed to get system time")
-            .as_millis();
+            .as_millis() as u64;
         let log_msg: LogMessage = LogMessage::new(
             self.workflow_id.clone(),
             self.workflow_name.clone(),

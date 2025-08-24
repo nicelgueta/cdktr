@@ -1,8 +1,8 @@
 pub mod client;
 pub mod manager;
 pub mod model;
-pub mod publisher;
 mod persister;
+pub mod publisher;
 
 #[cfg(test)]
 mod tests {
@@ -15,11 +15,11 @@ mod tests {
         client::LogsClient, manager::LogManager, model::LogMessage, publisher::LogsPublisher,
     };
 
-    fn get_time() -> u128 {
+    fn get_time() -> u64 {
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
-            .as_millis()
+            .as_millis() as u64
     }
     #[tokio::test]
     async fn test_log_message_format() {
