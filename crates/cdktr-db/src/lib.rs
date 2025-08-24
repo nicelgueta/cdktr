@@ -1,13 +1,19 @@
-use cdktr_core::get_cdktr_setting;
+use cdktr_core::{exceptions::GenericError, get_cdktr_setting};
 use duckdb::{params, Connection, Result};
 use std::env;
 
+mod ddl;
+
 pub fn get_db_client() -> Connection {
-    get_db_cnxn(false)
+    let client = get_db_cnxn(false);
+    gen_ddl(&client).expect("Critical - failed to generate db ddl");
+    client
 }
 
 pub fn get_test_db_client() -> Connection {
-    get_db_cnxn(true)
+    let client = get_db_cnxn(true);
+    gen_ddl(&client).expect("Critical - failed to generate db ddl");
+    client
 }
 
 fn get_db_cnxn(in_memory: bool) -> Connection {
@@ -20,6 +26,15 @@ fn get_db_cnxn(in_memory: bool) -> Connection {
             app_db_path
         ))
     }
+}
+
+fn gen_ddl<'a>(client: &'a Connection) -> Result<(), GenericError> {
+    for ddl_statement in ddl::DDL {
+        client
+            .execute(ddl_statement, [])
+            .map_err(|e| GenericError::DBError(e.to_string()))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

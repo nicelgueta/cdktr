@@ -2,12 +2,10 @@ use cdktr_core::{
     exceptions::{cdktr_result, GenericError, ZMQParseError},
     models::ZMQArgs,
     zmq_helpers::format_zmq_msg_str,
-    ZMQ_MESSAGE_DELIMITER,
 };
-use duckdb::{params, AppenderParams, ToSql};
 use zeromq::ZmqMessage;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct LogMessage {
     pub workflow_id: String,
     pub workflow_name: String,
