@@ -25,10 +25,10 @@ pub fn get_instance_id() -> String {
     format!("{}@{}", whoami::username(), whoami::devicename(),)
 }
 
-pub fn str_or_blank<T: ToString>(s: Option<T>) -> &str {
+pub fn str_or_blank<T: ToString>(s: Option<T>) -> String {
     match s {
-        Some(t) => &t.to_string(),
-        None => "",
+        Some(t) => t.to_string(),
+        None => "".to_string(),
     }
 }
 

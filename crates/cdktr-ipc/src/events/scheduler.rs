@@ -8,7 +8,6 @@ use crate::utils::data_structures::AsyncQueue;
 use async_trait::async_trait;
 use chrono::Utc;
 use cron::Schedule;
-use diesel::SqliteConnection;
 use log::{debug, info};
 use std::str::FromStr;
 use std::thread;

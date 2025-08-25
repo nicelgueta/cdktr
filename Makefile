@@ -22,5 +22,3 @@ ui:
 	cargo run ui
 pycli:
 	cd python-cdktr && uv run cli_zmq.py
-run-migration:
-	diesel migration run
