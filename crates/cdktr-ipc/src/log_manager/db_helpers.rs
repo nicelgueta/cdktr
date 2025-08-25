@@ -63,16 +63,16 @@ pub fn read_logs<'a>(
 }
 
 mod tests {
+    use cdktr_core::utils::data_structures::AsyncQueue;
     use cdktr_db::get_test_db_client;
 
     use super::*;
     use crate::log_manager::model::LogMessage;
-    use crate::log_manager::persister::LogsPersister;
 
-    #[test]
-    fn test_read_logs() {
+    #[tokio::test]
+    async fn test_read_logs() {
         let db_client = get_test_db_client();
-        let mut lpers = LogsPersister::new(&db_client);
+
         let msg1 = LogMessage::new(
             "test_workflow_id".to_string(),
             "test_workflow_name".to_string(),
@@ -89,12 +89,33 @@ mod tests {
             "INFO".to_string(),
             "a second log message!".to_string(),
         );
-        lpers.add_msg(msg1.clone());
-        lpers.add_msg(msg2.clone());
 
-        lpers
-            .persist_cache()
-            .expect("Failed to persist the cached log messages");
+        db_client
+            .execute(
+                "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                [
+                    &msg1.workflow_id,
+                    &msg1.workflow_name,
+                    &msg1.workflow_instance_id,
+                    &msg1.timestamp_ms.to_string(),
+                    &msg1.level,
+                    &msg1.payload,
+                ],
+            )
+            .unwrap();
+        db_client
+            .execute(
+                "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                [
+                    &msg2.workflow_id,
+                    &msg2.workflow_name,
+                    &msg2.workflow_instance_id,
+                    &msg2.timestamp_ms.to_string(),
+                    &msg2.level,
+                    &msg2.payload,
+                ],
+            )
+            .unwrap();
 
         let messages = read_logs(
             &db_client,

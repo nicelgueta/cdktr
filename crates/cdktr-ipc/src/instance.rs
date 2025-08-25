@@ -1,11 +1,18 @@
 use std::{env, time::Duration};
 
 use crate::{
-    log_manager::manager::LogManager,
+    log_manager::{
+        manager::LogManager,
+        persister::{start_listener, start_persistence_loop},
+    },
     server::{principal::PrincipalServer, traits::Server},
     taskmanager,
 };
-use cdktr_core::{exceptions::GenericError, get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
+use cdktr_core::{
+    exceptions::GenericError, get_cdktr_setting, utils::data_structures::AsyncQueue,
+    zmq_helpers::get_server_tcp_uri,
+};
+use cdktr_db::get_db_client;
 use cdktr_workflow::WorkflowStore;
 use log::{error, info, warn};
 use tokio::time::sleep;
@@ -50,6 +57,14 @@ pub async fn start_principal(
         LogManager::new().await?.start().await;
         Ok::<(), GenericError>(())
     });
+
+    // logs persistence to db
+    let logs_queue = AsyncQueue::new();
+    let lq_clone = logs_queue.clone();
+    // start logs persistence listener
+    tokio::spawn(async move { start_listener(lq_clone).await });
+    // start logs persistence db job
+    tokio::spawn(async move { start_persistence_loop(logs_queue).await });
 
     // start REP/REQ server loop for principal
     principal_server

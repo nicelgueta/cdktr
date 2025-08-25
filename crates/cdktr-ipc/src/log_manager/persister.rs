@@ -1,71 +1,75 @@
-use std::{collections::VecDeque, thread, time::Duration};
+use std::{
+    env,
+    {collections::VecDeque, time::Duration},
+};
 
 use crate::log_manager::model::LogMessage;
-use cdktr_core::exceptions::{cdktr_result, GenericError};
-use duckdb::{params, Connection, Result as DuckResult};
+use cdktr_core::{
+    exceptions::{cdktr_result, GenericError},
+    get_cdktr_setting,
+    utils::data_structures::AsyncQueue,
+    zmq_helpers::{get_server_tcp_uri, get_zmq_sub},
+};
+use cdktr_db::{get_db_client, get_test_db_client};
+use duckdb::{params, Result as DuckResult};
 use log::warn;
 use tokio::time::{sleep_until, Instant};
-use zeromq::{SocketRecv, SubSocket};
+use zeromq::SocketRecv;
 
 // write logs to the database every 30 seconds
 static CACHE_PERSISTENCE_INTERVAL_MS: u64 = 30_000;
 
-/// The logs persister loop is a separate component that reads logs from the
-/// logs manager pub socket and stores them in duckdb
-pub struct LogsPersister<'a> {
-    client: &'a Connection,
-    logs_cache: VecDeque<LogMessage>,
+pub async fn start_listener(mut logs_queue: AsyncQueue<LogMessage>) -> Result<(), GenericError> {
+    let mut logs_sub_socket = get_zmq_sub(
+        &get_server_tcp_uri(
+            get_cdktr_setting!(CDKTR_PRINCIPAL_HOST).as_str(),
+            get_cdktr_setting!(CDKTR_LOGS_PUBLISHING_PORT, usize),
+        ),
+        "",
+    )
+    .await?;
+    loop {
+        let log_msg = cdktr_result(logs_sub_socket.recv().await)?;
+        logs_queue.put(LogMessage::try_from(log_msg)?).await
+    }
 }
-impl<'a> LogsPersister<'a> {
-    pub fn new(client: &'a Connection) -> Self {
-        LogsPersister {
-            client,
-            logs_cache: VecDeque::new(),
-        }
-    }
-    pub async fn start_listener(
-        &mut self,
-        logs_sub_socket: &mut SubSocket,
-    ) -> Result<(), GenericError> {
-        loop {
-            let log_msg = cdktr_result(logs_sub_socket.recv().await)?;
-            self.add_msg(LogMessage::try_from(log_msg)?);
-        }
-    }
-    pub async fn start_persistence_loop(&mut self) {
-        loop {
-            sleep_until(Instant::now() + Duration::from_millis(CACHE_PERSISTENCE_INTERVAL_MS))
-                .await;
-            match self.persist_cache() {
-                Ok(()) => (),
-                Err(e) => {
-                    warn!("{}", e.to_string());
-                    warn!("Failed to persist logs to db - will retry on next interval")
-                }
+
+pub async fn start_persistence_loop(mut logs_queue: AsyncQueue<LogMessage>) {
+    loop {
+        sleep_until(Instant::now() + Duration::from_millis(CACHE_PERSISTENCE_INTERVAL_MS)).await;
+        match persist_cache(logs_queue.dump().await, false) {
+            Ok(()) => (),
+            Err(e) => {
+                warn!("{}", e.to_string());
+                warn!("Failed to persist logs to db - will retry on next interval")
             }
         }
     }
-    pub fn add_msg(&mut self, msg: LogMessage) {
-        self.logs_cache.push_back(msg);
+}
+
+pub fn persist_cache(
+    mut logs_to_persist: VecDeque<LogMessage>,
+    use_test_client: bool,
+) -> DuckResult<()> {
+    // TODO: this is a bit nasty just to be able to test this func - find a better way to do this
+    let db_client = if use_test_client {
+        get_test_db_client()
+    } else {
+        get_db_client()
+    };
+    while logs_to_persist.len() > 0 {
+        let msg = logs_to_persist.pop_front().unwrap();
+        let mut app = db_client.appender("logstore")?;
+        app.append_row(params![
+            msg.workflow_id,
+            msg.workflow_name,
+            msg.workflow_instance_id,
+            msg.timestamp_ms,
+            msg.level,
+            msg.payload,
+        ])?
     }
-    pub fn persist_cache(&mut self) -> DuckResult<()> {
-        let mut app = self.client.appender("logstore")?;
-        while self.logs_cache.len() > 0 {
-            let msg = self.logs_cache.pop_front().unwrap();
-            app.append_row(params![
-                msg.workflow_id,
-                msg.workflow_name,
-                msg.workflow_instance_id,
-                msg.timestamp_ms,
-                msg.level,
-                msg.payload,
-            ])?
-        }
-        Ok(())
-    }
-    pub fn msg_count(&self) -> usize {
-        self.logs_cache.len()
-    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -74,36 +78,11 @@ mod tests {
     use super::*;
     use cdktr_db::get_test_db_client;
 
-    #[test]
-    fn test_add_messages() {
-        let db_cli = get_test_db_client();
-        let mut lpers = LogsPersister::new(&db_cli);
-        let msg1 = LogMessage::new(
-            "test_workflow_id".to_string(),
-            "test_workflow_name".to_string(),
-            "test_workflow_instance_id".to_string(),
-            1234567890 as u64,
-            "INFO".to_string(),
-            "a log message!".to_string(),
-        );
-        let msg2 = LogMessage::new(
-            "test_workflow_id".to_string(),
-            "test_workflow_name".to_string(),
-            "test_workflow_instance_id".to_string(),
-            234567890 as u64,
-            "INFO".to_string(),
-            "a second log message!".to_string(),
-        );
-        lpers.add_msg(msg1);
-        lpers.add_msg(msg2);
-
-        assert_eq!(lpers.msg_count(), 2);
-    }
-
-    #[test]
-    fn test_persist_cache() {
+    #[tokio::test]
+    async fn test_persist_cache() {
         let db_client = get_test_db_client();
-        let mut lpers = LogsPersister::new(&db_client);
+        let mut q = AsyncQueue::new();
+
         let msg1 = LogMessage::new(
             "test_workflow_id".to_string(),
             "test_workflow_name".to_string(),
@@ -120,12 +99,10 @@ mod tests {
             "INFO".to_string(),
             "a second log message!".to_string(),
         );
-        lpers.add_msg(msg1);
-        lpers.add_msg(msg2);
+        q.put(msg1).await;
+        q.put(msg2).await;
 
-        lpers
-            .persist_cache()
-            .expect("Failed to persist the cached log messages");
+        persist_cache(q.dump().await, true).expect("Failed to persist the cached log messages");
 
         let mut stmt = db_client.prepare("SELECT * FROM logstore").unwrap();
         let message_iter = stmt

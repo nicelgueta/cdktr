@@ -2,7 +2,7 @@ pub mod client;
 mod db_helpers;
 pub mod manager;
 pub mod model;
-mod persister;
+pub mod persister;
 pub mod publisher;
 
 #[cfg(test)]

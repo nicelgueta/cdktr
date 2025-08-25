@@ -63,6 +63,17 @@ impl<T> AsyncQueue<T> {
             }
         }
     }
+
+    /// Dumps the whole queue into a standard vecdeque to avoid race conditions while
+    /// trying to acquire a snapshot of the queue while other processes are writing to it
+    pub async fn dump(&mut self) -> VecDeque<T> {
+        let mut queue = self.inner.lock().await;
+        let mut dumped = VecDeque::new();
+        while (*queue).len() > 0 {
+            dumped.push_back((*queue).pop_front().unwrap());
+        }
+        dumped
+    }
 }
 
 /// Priority queue used by the Task Router to keep track of agent task counts.
