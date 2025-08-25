@@ -8,9 +8,13 @@ use clap::Parser;
 use dotenv::dotenv;
 use log::{info, warn};
 use models::InstanceType;
-use std::{env, time::SystemTime};
+use std::env;
+use std::path::Path;
+
+use crate::components::logs::LogArgs;
 
 mod api;
+mod components;
 mod models;
 
 /// CDKTR Command Line Interface
@@ -49,51 +53,29 @@ struct StartArgs {
     config: Option<std::path::PathBuf>,
 }
 
-/// Log management CLI
-/// This allows you to tail logs from the principal log manager
-/// and filter them by workflow ID
-#[derive(clap::Args)]
-#[command(version, about, long_about = None)]
-struct LogArgs {
-    /// The log level to set for the application
-    #[arg(long, short, default_value = "info")]
-    log_level: String,
+fn setup() {
+    let path_str = &get_cdktr_setting!(CDKTR_APP_DATA_DIRECTORY);
+    let path_str = path_str.replace("$HOME", &env::var("HOME").expect(
+        format!(
+            "CDKTR_APP_DATA_DIRECTORY not set so attempted to create app data directory at {path_str} but cannot determine home directory from env vars."
+        ).as_str()
+    ));
+    let app_data_dir = Path::new(&path_str);
 
-    /// Tail the log stream instead of reading
-    /// stored logs
-    #[arg(long, short)]
-    tail: bool,
-
-    /// The workflow ID to filter logs by
-    /// if not provided, all logs will be shown
-    /// that are received by the principal log manager
-    #[arg(long, short)]
-    workflow_id: Option<String>,
-
-    /// Filter logs by a specific workflow instance
-    /// id
-    #[arg(long, short)]
-    workflow_instance_id: Option<String>,
-
-    /// The number of log lines to return. Returns all
-    /// if not provided
-    #[arg(long, short)]
-    number: Option<usize>,
-
-    /// Lower bound tiemstamp for which logs should be read. Inclusive.
-    #[arg(long, short, value_parser = humantime::parse_rfc3339_weak)]
-    start_datetime_utc: Option<SystemTime>,
-
-    /// Upper bound timestamp for which logs
-    /// should be retrieved. Non-inclusive.
-    #[arg(long, short, value_parser = humantime::parse_rfc3339_weak)]
-    end_datetime_utc: Option<SystemTime>,
+    info!("Using application data directory: {:?}", app_data_dir);
+    if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
+        warn!(
+            "Failed to create application data directory {:?}: {}",
+            app_data_dir, e
+        );
+    }
 }
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
     env_logger::init();
+    setup();
     _main().await;
 }
 

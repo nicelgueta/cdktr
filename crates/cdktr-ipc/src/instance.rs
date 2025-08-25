@@ -12,7 +12,7 @@ use cdktr_core::{
     exceptions::GenericError, get_cdktr_setting, utils::data_structures::AsyncQueue,
     zmq_helpers::get_server_tcp_uri,
 };
-use cdktr_db::get_db_client;
+use cdktr_db::DBClient;
 use cdktr_workflow::WorkflowStore;
 use log::{error, info, warn};
 use tokio::time::sleep;
@@ -59,12 +59,15 @@ pub async fn start_principal(
     });
 
     // logs persistence to db
+    let db_client = DBClient::new(Some(&get_cdktr_setting!(CDKTR_DB_PATH)))
+        .expect("Failed to create DB client on start up");
     let logs_queue = AsyncQueue::new();
     let lq_clone = logs_queue.clone();
+    let db_clone = db_client.clone();
     // start logs persistence listener
     tokio::spawn(async move { start_listener(lq_clone).await });
     // start logs persistence db job
-    tokio::spawn(async move { start_persistence_loop(logs_queue).await });
+    tokio::spawn(async move { start_persistence_loop(db_clone, logs_queue).await });
 
     // start REP/REQ server loop for principal
     principal_server

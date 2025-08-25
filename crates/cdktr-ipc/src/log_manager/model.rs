@@ -1,7 +1,17 @@
+use std::sync::Arc;
+
 use cdktr_core::{
     exceptions::{cdktr_result, GenericError, ZMQParseError},
     models::ZMQArgs,
     zmq_helpers::format_zmq_msg_str,
+};
+use cdktr_db::DBRecordBatch;
+use duckdb::{
+    arrow::{
+        array::{RecordBatch, StringArray, StringBuilder, UInt64Array, UInt64Builder},
+        datatypes::{DataType, Field, Schema},
+    },
+    params,
 };
 use zeromq::ZmqMessage;
 
@@ -51,6 +61,99 @@ impl LogMessage {
             "[{} {}] [{}/{}] {}",
             timestring, self.level, self.workflow_name, self.workflow_instance_id, self.payload
         )
+    }
+}
+
+impl DBRecordBatch<LogMessage> for Vec<LogMessage> {
+    fn from_record_batch(batch: RecordBatch) -> Result<Vec<LogMessage>, GenericError> {
+        let workflow_id = batch
+            .column(batch.schema().index_of("workflow_id").unwrap())
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        let workflow_name = batch
+            .column(batch.schema().index_of("workflow_name").unwrap())
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        let workflow_instance_id = batch
+            .column(batch.schema().index_of("workflow_instance_id").unwrap())
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        let timestamp_ms = batch
+            .column(batch.schema().index_of("timestamp_ms").unwrap())
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .unwrap();
+
+        let level = batch
+            .column(batch.schema().index_of("level").unwrap())
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        let payload = batch
+            .column(batch.schema().index_of("payload").unwrap())
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        // Now build Vec<LogMessage>
+        Ok((0..batch.num_rows())
+            .map(|i| LogMessage {
+                workflow_id: workflow_id.value(i).to_string(),
+                workflow_name: workflow_name.value(i).to_string(),
+                workflow_instance_id: workflow_instance_id.value(i).to_string(),
+                timestamp_ms: timestamp_ms.value(i),
+                level: level.value(i).to_string(),
+                payload: payload.value(i).to_string(),
+            })
+            .collect())
+    }
+    fn to_record_batch(&self) -> Result<RecordBatch, GenericError> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("workflow_id", DataType::Utf8, false),
+            Field::new("workflow_name", DataType::Utf8, false),
+            Field::new("workflow_instance_id", DataType::Utf8, false),
+            Field::new("timestamp_ms", DataType::UInt64, false),
+            Field::new("level", DataType::Utf8, false),
+            Field::new("payload", DataType::Utf8, false),
+        ]));
+        let mut workflow_id = StringBuilder::new();
+        let mut workflow_name = StringBuilder::new();
+        let mut workflow_instance_id = StringBuilder::new();
+        let mut timestamp_ms = UInt64Builder::new();
+        let mut level = StringBuilder::new();
+        let mut payload = StringBuilder::new();
+
+        for log in self {
+            workflow_id.append_value(&log.workflow_id);
+            workflow_name.append_value(&log.workflow_name);
+            workflow_instance_id.append_value(&log.workflow_instance_id);
+            timestamp_ms.append_value(log.timestamp_ms);
+            level.append_value(&log.level);
+            payload.append_value(&log.payload);
+        }
+
+        let arrays = vec![
+            Arc::new(workflow_id.finish()) as _,
+            Arc::new(workflow_name.finish()) as _,
+            Arc::new(workflow_instance_id.finish()) as _,
+            Arc::new(timestamp_ms.finish()) as _,
+            Arc::new(level.finish()) as _,
+            Arc::new(payload.finish()) as _,
+        ];
+
+        Ok(RecordBatch::try_new(schema, arrays).map_err(|e| {
+            GenericError::DBError(format!(
+                "Failed to create arrow record batch for db insertion. Orig error: {}",
+                e.to_string()
+            ))
+        })?)
     }
 }
 

@@ -7,6 +7,7 @@ context = zmq.Context()
 
 PORT = 5564
 HOST = "0.0.0.0"
+SOH = "\x01"
 
 def sync_to_subscriber(port: int):
     #  Socket to talk to server
@@ -21,7 +22,7 @@ def sync_to_subscriber(port: int):
 
 def run_task():
     cmd = input("Enter task id: ")
-    zmq_str = f"RUNTASK|{cmd}"
+    zmq_str = f"RUNTASK{SOH}{cmd}"
     return zmq_str
 
 def start_req_socket(principal_port):
@@ -44,20 +45,20 @@ def start_req_socket(principal_port):
                 if msg:
                     socket.send(bytes(msg, 'utf-8'))
                     message = socket.recv()
-                    print(f"Received reply: {message.decode('utf-8')}")
+                    print(f"Received reply: {message.decode('utf-8').replace(SOH, '^')}")
             case "2":
                 stream_interval_ms = int(input("Set interval in millis: "))
                 task_n = 0
                 while True:
-                    socket.send(bytes(f"RUNTASK|ex-wf", 'utf-8'))
+                    socket.send(bytes(f"RUNTASK{SOH}ex-wf", 'utf-8'))
                     message = socket.recv()
-                    print(f"Received reply: {message.decode('utf-8')}")
+                    print(f"Received reply: {message.decode('utf-8').replace(SOH, '^')}")
                     time.sleep(stream_interval_ms/1000)
                     task_n+=1
             case "3":
                     socket.send(bytes(f"LSWORKFLOWS", "utf-8"))
                     message = socket.recv()
-                    print(f"Received reply: {message.decode('utf-8')}")
+                    print(f"Received reply: {message.decode('utf-8').replace(SOH, '^')}")
 
             case _:
                 msg = None

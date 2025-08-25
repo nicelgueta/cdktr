@@ -1,7 +1,4 @@
-use std::{
-    env,
-    {collections::VecDeque, time::Duration},
-};
+use std::{env, time::Duration};
 
 use crate::log_manager::model::LogMessage;
 use cdktr_core::{
@@ -10,9 +7,8 @@ use cdktr_core::{
     utils::data_structures::AsyncQueue,
     zmq_helpers::{get_server_tcp_uri, get_zmq_sub},
 };
-use cdktr_db::{get_db_client, get_test_db_client};
-use duckdb::{params, Result as DuckResult};
-use log::warn;
+use cdktr_db::DBClient;
+use log::{info, warn};
 use tokio::time::{sleep_until, Instant};
 use zeromq::SocketRecv;
 
@@ -34,53 +30,38 @@ pub async fn start_listener(mut logs_queue: AsyncQueue<LogMessage>) -> Result<()
     }
 }
 
-pub async fn start_persistence_loop(mut logs_queue: AsyncQueue<LogMessage>) {
+pub async fn start_persistence_loop(db_client: DBClient, mut logs_queue: AsyncQueue<LogMessage>) {
     loop {
         sleep_until(Instant::now() + Duration::from_millis(CACHE_PERSISTENCE_INTERVAL_MS)).await;
-        match persist_cache(logs_queue.dump().await, false) {
+        let logs_to_persist = logs_queue.dump().await;
+        match persist_cache(&db_client, logs_to_persist).await {
             Ok(()) => (),
-            Err(e) => {
-                warn!("{}", e.to_string());
+            Err(failed_batch) => {
+                logs_queue.put_front_multiple(failed_batch);
                 warn!("Failed to persist logs to db - will retry on next interval")
+                //
             }
         }
     }
 }
 
-pub fn persist_cache(
-    mut logs_to_persist: VecDeque<LogMessage>,
-    use_test_client: bool,
-) -> DuckResult<()> {
-    // TODO: this is a bit nasty just to be able to test this func - find a better way to do this
-    let db_client = if use_test_client {
-        get_test_db_client()
-    } else {
-        get_db_client()
-    };
-    while logs_to_persist.len() > 0 {
-        let msg = logs_to_persist.pop_front().unwrap();
-        let mut app = db_client.appender("logstore")?;
-        app.append_row(params![
-            msg.workflow_id,
-            msg.workflow_name,
-            msg.workflow_instance_id,
-            msg.timestamp_ms,
-            msg.level,
-            msg.payload,
-        ])?
-    }
-    Ok(())
+pub async fn persist_cache(
+    db_client: &DBClient,
+    logs_to_persist: Vec<LogMessage>,
+) -> Result<(), Vec<LogMessage>> {
+    info!("Saving {} logs to db", logs_to_persist.len());
+    db_client.batch_load("logstore", logs_to_persist).await
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use cdktr_db::get_test_db_client;
+    use cdktr_db::DBClient;
 
     #[tokio::test]
     async fn test_persist_cache() {
-        let db_client = get_test_db_client();
+        let db_client = DBClient::new(None).unwrap();
         let mut q = AsyncQueue::new();
 
         let msg1 = LogMessage::new(
@@ -102,9 +83,11 @@ mod tests {
         q.put(msg1).await;
         q.put(msg2).await;
 
-        persist_cache(q.dump().await, true).expect("Failed to persist the cached log messages");
-
-        let mut stmt = db_client.prepare("SELECT * FROM logstore").unwrap();
+        persist_cache(&db_client, q.dump().await)
+            .await
+            .expect("Failed to persist the cached log messages");
+        let locked_client = (&db_client).lock_inner_client().await;
+        let mut stmt = locked_client.prepare("SELECT * FROM logstore").unwrap();
         let message_iter = stmt
             .query_map([], |row| {
                 Ok(LogMessage {
@@ -121,5 +104,6 @@ mod tests {
             assert!(msg.is_ok());
             assert!(i < 2)
         }
+        drop(locked_client);
     }
 }

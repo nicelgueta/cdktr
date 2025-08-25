@@ -64,14 +64,14 @@ pub fn read_logs<'a>(
 
 mod tests {
     use cdktr_core::utils::data_structures::AsyncQueue;
-    use cdktr_db::get_test_db_client;
+    use cdktr_db::DBClient;
 
     use super::*;
     use crate::log_manager::model::LogMessage;
 
     #[tokio::test]
     async fn test_read_logs() {
-        let db_client = get_test_db_client();
+        let db_client = DBClient::new(None).unwrap();
 
         let msg1 = LogMessage::new(
             "test_workflow_id".to_string(),
@@ -89,8 +89,8 @@ mod tests {
             "INFO".to_string(),
             "a second log message!".to_string(),
         );
-
-        db_client
+        let locked_client = db_client.lock_inner_client().await;
+        locked_client
             .execute(
                 "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 [
@@ -103,7 +103,7 @@ mod tests {
                 ],
             )
             .unwrap();
-        db_client
+        locked_client
             .execute(
                 "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 [
@@ -118,7 +118,7 @@ mod tests {
             .unwrap();
 
         let messages = read_logs(
-            &db_client,
+            &locked_client,
             Some(0),
             Some(3000000000),
             Some("test_workflow_id"),

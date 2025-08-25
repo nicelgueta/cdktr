@@ -7,7 +7,7 @@ use std::{
     },
 };
 use tokio::{
-    sync::Mutex,
+    sync::{Mutex, MutexGuard},
     time::{sleep, Duration},
 };
 
@@ -27,13 +27,41 @@ impl<T> AsyncQueue<T> {
     /// Gets the next item from the queue.
     pub async fn get(&mut self) -> Option<T> {
         let mut queue = self.inner.lock().await;
-        (*queue).pop_front()
+        queue.pop_front()
     }
 
     /// Puts an item on the queue
     pub async fn put(&mut self, item: T) {
         let mut queue = self.inner.lock().await;
-        (*queue).push_back(item);
+        queue.push_back(item);
+    }
+
+    /// Puts a block of items on the queue
+    pub async fn put_multiple<I>(&self, items: I)
+    where
+        I: IntoIterator<Item = T>,
+    {
+        let mut queue = self.inner.lock().await;
+        for item in items {
+            queue.push_back(item);
+        }
+    }
+
+    // Puts an item at the front of the queue
+    pub async fn put_front(&mut self, item: T) {
+        let mut queue = self.inner.lock().await;
+        queue.push_front(item);
+    }
+
+    // Puts a block of items at the front of the queue
+    pub async fn put_front_multiple<I>(&self, items: I)
+    where
+        I: IntoIterator<Item = T>,
+    {
+        let mut queue = self.inner.lock().await;
+        for item in items {
+            queue.push_front(item);
+        }
     }
 
     /// Checks whether the queue ois empty
@@ -53,7 +81,7 @@ impl<T> AsyncQueue<T> {
             let item_res = {
                 // scoped to release the lock before waiting
                 let mut queue = self.inner.lock().await;
-                (*queue).pop_front()
+                queue.pop_front()
             };
             if let Some(t) = item_res {
                 return t;
@@ -64,13 +92,14 @@ impl<T> AsyncQueue<T> {
         }
     }
 
-    /// Dumps the whole queue into a standard vecdeque to avoid race conditions while
+    /// Dumps the whole queue into a standard vec to avoid race conditions while
     /// trying to acquire a snapshot of the queue while other processes are writing to it
-    pub async fn dump(&mut self) -> VecDeque<T> {
+    /// which would occur if retrieving one-by-one
+    pub async fn dump(&mut self) -> Vec<T> {
         let mut queue = self.inner.lock().await;
-        let mut dumped = VecDeque::new();
-        while (*queue).len() > 0 {
-            dumped.push_back((*queue).pop_front().unwrap());
+        let mut dumped = Vec::new();
+        while queue.len() > 0 {
+            dumped.push((*queue).pop_front().unwrap());
         }
         dumped
     }
