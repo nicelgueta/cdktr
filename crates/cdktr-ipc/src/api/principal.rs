@@ -42,6 +42,17 @@ pub enum PrincipalAPI {
     /// Args:
     ///     agent_id
     FetchWorkflow(String),
+    /// Run a query to read logs from the database
+    /// Args:
+    ///     end_timestamp_ms (optional): filter to results older than this timestamp.
+    ///         Defaults to current time of not specified.
+    ///     start_timestamp_ms (optional): filter results greater or equal to this timestamp.
+    ///         Defaults to end_timestamp - 24h if not set.
+    ///     workflow_id (optional): filter results by the id of the workflow. Returns all
+    ///         if not set.
+    ///     workflow_instance_id (optional): filter results by a specific workflow instance.
+    ///         returns any if not set.
+    QueryLogs(u64, u64, String, String),
 }
 
 impl TryFrom<ZMQArgs> for PrincipalAPI {
@@ -114,6 +125,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                 Some(agent_id) => Ok(Self::FetchWorkflow(agent_id)),
                 None => Err(GenericError::ParseError("Missing agent id".to_string())),
             },
+            "QUERYLOGS" => (),
             _ => Err(GenericError::ParseError(format!(
                 "Unrecognised message type: {}",
                 msg_type
@@ -171,6 +183,9 @@ impl API for PrincipalAPI {
             }
             Self::FetchWorkflow(agent_id) => {
                 format!("FETCHWORKFLOW\x01{agent_id}")
+            }
+            Self::QueryLogs(end_ts, start_ts, wf_id, wf_ins_id) => {
+                format!("QUERYLOGS\x01{end_ts}\x01{start_ts}\x01{wf_id}\x01{wf_ins_id}")
             }
         }
     }

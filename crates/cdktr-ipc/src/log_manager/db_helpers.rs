@@ -1,13 +1,14 @@
 use std::time::{Duration, SystemTime};
 
 use cdktr_core::exceptions::GenericError;
+use cdktr_db::DBClient;
 use duckdb::Connection;
 use log::warn;
 
 use crate::log_manager::model::LogMessage;
 
-pub fn read_logs<'a>(
-    db_client: &'a Connection,
+pub async fn read_logs<'a>(
+    db_client: DBClient,
     start_timestamp_ms: Option<u64>,
     end_timestamp_ms: Option<u64>,
     workflow_id: Option<&str>,
@@ -35,9 +36,10 @@ pub fn read_logs<'a>(
     if let Some(wf_ins_id) = workflow_instance_id {
         stmt_str.push_str(&format!("AND workflow_instance_id = '{wf_ins_id}' "));
     };
-    let mut stmt = db_client.prepare(&stmt_str).unwrap();
-    let results = stmt
-        .query_map([], |row| {
+    let results = {
+        let locked_client = db_client.lock_inner_client().await;
+        let mut stmt = locked_client.prepare(&stmt_str).unwrap();
+        stmt.query_map([], |row| {
             Ok(LogMessage {
                 workflow_id: row.get(0).unwrap(),
                 workflow_name: row.get(1).unwrap(),
@@ -49,7 +51,8 @@ pub fn read_logs<'a>(
         })
         .map_err(|e| GenericError::DBError(e.to_string()))?
         .map(|msg_res| msg_res.map_err(|e| GenericError::DBError(e.to_string())))
-        .collect::<Vec<Result<LogMessage, GenericError>>>();
+        .collect::<Vec<Result<LogMessage, GenericError>>>()
+    };
     let mut msgs = Vec::new();
     for res in results {
         match res {
@@ -89,41 +92,43 @@ mod tests {
             "INFO".to_string(),
             "a second log message!".to_string(),
         );
-        let locked_client = db_client.lock_inner_client().await;
-        locked_client
-            .execute(
-                "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                [
-                    &msg1.workflow_id,
-                    &msg1.workflow_name,
-                    &msg1.workflow_instance_id,
-                    &msg1.timestamp_ms.to_string(),
-                    &msg1.level,
-                    &msg1.payload,
-                ],
-            )
-            .unwrap();
-        locked_client
-            .execute(
-                "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                [
-                    &msg2.workflow_id,
-                    &msg2.workflow_name,
-                    &msg2.workflow_instance_id,
-                    &msg2.timestamp_ms.to_string(),
-                    &msg2.level,
-                    &msg2.payload,
-                ],
-            )
-            .unwrap();
-
+        {
+            let locked_client = db_client.lock_inner_client().await;
+            locked_client
+                .execute(
+                    "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    [
+                        &msg1.workflow_id,
+                        &msg1.workflow_name,
+                        &msg1.workflow_instance_id,
+                        &msg1.timestamp_ms.to_string(),
+                        &msg1.level,
+                        &msg1.payload,
+                    ],
+                )
+                .unwrap();
+            locked_client
+                .execute(
+                    "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    [
+                        &msg2.workflow_id,
+                        &msg2.workflow_name,
+                        &msg2.workflow_instance_id,
+                        &msg2.timestamp_ms.to_string(),
+                        &msg2.level,
+                        &msg2.payload,
+                    ],
+                )
+                .unwrap();
+        }
         let messages = read_logs(
-            &locked_client,
+            db_client,
             Some(0),
             Some(3000000000),
             Some("test_workflow_id"),
             Some("test_workflow_instance_id"),
         )
+        .await
         .expect("Failed to read logs");
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0], msg1);
