@@ -10,7 +10,7 @@ setup:
 # render mermaid diagrams in docs
 	cargo install mdbook-mermaid
 commit:
-	git diff --name-only --cached | grep '.rs$$' | xargs -n 1 rustfmt --edition 2021
+	git diff --name-only --cached | grep '.rs$$' | xargs -n 1 rustfmt --edition 2024
 	git add $(shell git diff --name-only --cached | grep '.rs$$')
 push: test
 
