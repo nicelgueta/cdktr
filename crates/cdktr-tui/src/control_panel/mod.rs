@@ -225,7 +225,7 @@ impl ControlPanel {
         self.data_table
             .set_focus(PANELS[self.panel_focussed] == "WorkFlows");
     }
-    fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> {
+    fn get_actions_section(&self) -> impl StatefulWidget<State = ListState> + use<> {
         List::new(ACTIONS)
             .highlight_style(Style::default().bg(Color::Cyan))
             .highlight_symbol(">")
@@ -235,7 +235,7 @@ impl ControlPanel {
                     .fg(self.panel_highlighted_color("Actions")),
             )
     }
-    fn get_agents_section(&self) -> impl Widget {
+    fn get_agents_section(&self) -> impl Widget + use<> {
         Paragraph::new("space").block(
             Block::bordered()
                 .title(" Agent ZMQ Actions ")

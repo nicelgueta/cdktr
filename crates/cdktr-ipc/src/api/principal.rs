@@ -125,7 +125,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                 Some(agent_id) => Ok(Self::FetchWorkflow(agent_id)),
                 None => Err(GenericError::ParseError("Missing agent id".to_string())),
             },
-            "QUERYLOGS" => (),
+            "QUERYLOGS" => Err(GenericError::ParseError("havent decided yet".to_string())),
             _ => Err(GenericError::ParseError(format!(
                 "Unrecognised message type: {}",
                 msg_type

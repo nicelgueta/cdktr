@@ -55,7 +55,7 @@ pub trait APIAction {
 /// macro to create the action panes.
 /// This is required to create each struct that will be used to render the action panes.
 macro_rules! create_action {
-    ($title:expr, $api_variant:ident, $desc:expr) => {
+    ($title:expr_2021, $api_variant:ident, $desc:expr_2021) => {
         #[derive(Debug, Clone)]
         pub struct $api_variant {
             resp: String,
@@ -128,7 +128,7 @@ macro_rules! create_action {
 /// code and potentially error prone in ensuring that the enum and the struct are in sync,
 /// this macro is used to automate the process.
 macro_rules! create_actions {
-    ($($title:expr, $api_variant:ident, $desc:expr, $params:expr);+ $(;)?) => {
+    ($($title:expr_2021, $api_variant:ident, $desc:expr_2021, $params:expr_2021);+ $(;)?) => {
         // note to self: the "$(;)?" is used to allow the macro to accept a trailing semicolon
         $(
             create_action!($title, $api_variant, $desc);

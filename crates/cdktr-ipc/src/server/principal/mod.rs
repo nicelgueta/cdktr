@@ -80,6 +80,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
             PrincipalAPI::FetchWorkflow(agent_id) => {
                 helpers::handle_fetch_task(&mut self.task_queue, agent_id).await
             }
+            PrincipalAPI::QueryLogs(end_ts, start_ts, wf_id, wf_ins_id) => {
+                (ClientResponseMessage::Success, 0)
+            }
         }
     }
 }
