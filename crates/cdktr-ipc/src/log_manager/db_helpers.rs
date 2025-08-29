@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 use cdktr_core::exceptions::GenericError;
 use cdktr_db::DBClient;
 use duckdb::Connection;
-use log::warn;
+use log::{debug, warn};
 
 use crate::log_manager::model::LogMessage;
 
@@ -11,8 +11,8 @@ pub async fn read_logs<'a>(
     db_client: DBClient,
     start_timestamp_ms: Option<u64>,
     end_timestamp_ms: Option<u64>,
-    workflow_id: Option<&str>,
-    workflow_instance_id: Option<&str>,
+    workflow_id: Option<String>,
+    workflow_instance_id: Option<String>,
 ) -> Result<Vec<LogMessage>, GenericError> {
     let end_timestamp_ms = if let Some(ts) = end_timestamp_ms {
         ts
@@ -28,7 +28,7 @@ pub async fn read_logs<'a>(
         end_timestamp_ms - Duration::from_secs(86400).as_millis() as u64 // default to previous 24 hours of end time
     };
     let mut stmt_str = format!(
-        "SELECT * FROM logstore WHERE timestamp_ms >= '{start_timestamp_ms}' AND timestamp_ms < {end_timestamp_ms} "
+        "SELECT * FROM logstore WHERE timestamp_ms >= {start_timestamp_ms} AND timestamp_ms < {end_timestamp_ms} "
     );
     if let Some(wf_id) = workflow_id {
         stmt_str.push_str(&format!("AND workflow_id = '{wf_id}' "));
@@ -36,6 +36,7 @@ pub async fn read_logs<'a>(
     if let Some(wf_ins_id) = workflow_instance_id {
         stmt_str.push_str(&format!("AND workflow_instance_id = '{wf_ins_id}' "));
     };
+    debug!("stmt_str: {}", &stmt_str);
     let results = {
         let locked_client = db_client.lock_inner_client().await;
         let mut stmt = locked_client.prepare(&stmt_str).unwrap();
@@ -44,9 +45,11 @@ pub async fn read_logs<'a>(
                 workflow_id: row.get(0).unwrap(),
                 workflow_name: row.get(1).unwrap(),
                 workflow_instance_id: row.get(2).unwrap(),
-                timestamp_ms: row.get(3).unwrap(),
-                level: row.get(4).unwrap(),
-                payload: row.get(5).unwrap(),
+                task_name: row.get(3).unwrap(),
+                task_instance_id: row.get(4).unwrap(),
+                timestamp_ms: row.get(5).unwrap(),
+                level: row.get(6).unwrap(),
+                payload: row.get(7).unwrap(),
             })
         })
         .map_err(|e| GenericError::DBError(e.to_string()))?
@@ -80,6 +83,8 @@ mod tests {
             "test_workflow_id".to_string(),
             "test_workflow_name".to_string(),
             "test_workflow_instance_id".to_string(),
+            "test_task_name".to_string(),
+            "test_task_instance_id".to_string(),
             1234567890 as u64,
             "INFO".to_string(),
             "a log message!".to_string(),
@@ -88,6 +93,8 @@ mod tests {
             "test_workflow_id".to_string(),
             "test_workflow_name".to_string(),
             "test_workflow_instance_id".to_string(),
+            "test_task_name".to_string(),
+            "test_task_instance_id".to_string(),
             234567890 as u64,
             "INFO".to_string(),
             "a second log message!".to_string(),
@@ -96,11 +103,13 @@ mod tests {
             let locked_client = db_client.lock_inner_client().await;
             locked_client
                 .execute(
-                    "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, task_name, task_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     [
                         &msg1.workflow_id,
                         &msg1.workflow_name,
                         &msg1.workflow_instance_id,
+                        &msg1.task_name,
+                        &msg1.task_instance_id,
                         &msg1.timestamp_ms.to_string(),
                         &msg1.level,
                         &msg1.payload,
@@ -109,11 +118,13 @@ mod tests {
                 .unwrap();
             locked_client
                 .execute(
-                    "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    "INSERT INTO logstore (workflow_id, workflow_name, workflow_instance_id, task_name, task_instance_id, timestamp_ms, level, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     [
                         &msg2.workflow_id,
                         &msg2.workflow_name,
                         &msg2.workflow_instance_id,
+                        &msg2.task_name,
+                        &msg2.task_instance_id,
                         &msg2.timestamp_ms.to_string(),
                         &msg2.level,
                         &msg2.payload,
@@ -125,8 +136,8 @@ mod tests {
             db_client,
             Some(0),
             Some(3000000000),
-            Some("test_workflow_id"),
-            Some("test_workflow_instance_id"),
+            Some("test_workflow_id".to_string()),
+            Some("test_workflow_instance_id".to_string()),
         )
         .await
         .expect("Failed to read logs");

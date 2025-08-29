@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cdktr_core::{
-    exceptions::{cdktr_result, GenericError, ZMQParseError},
+    exceptions::{GenericError, ZMQParseError, cdktr_result},
     models::ZMQArgs,
     zmq_helpers::format_zmq_msg_str,
 };
@@ -20,6 +20,8 @@ pub struct LogMessage {
     pub workflow_id: String,
     pub workflow_name: String,
     pub workflow_instance_id: String,
+    pub task_name: String,
+    pub task_instance_id: String,
     pub timestamp_ms: u64,
     pub level: String,
     pub payload: String,
@@ -30,6 +32,8 @@ impl LogMessage {
         workflow_id: String,
         workflow_name: String,
         workflow_instance_id: String,
+        task_name: String,
+        task_instance_id: String,
         timestamp_ms: u64,
         level: String,
         payload: String,
@@ -38,6 +42,8 @@ impl LogMessage {
             workflow_id,
             workflow_name,
             workflow_instance_id,
+            task_name,
+            task_instance_id,
             timestamp_ms,
             level,
             payload,
@@ -48,8 +54,8 @@ impl LogMessage {
             .unwrap()
             .to_rfc3339();
         format!(
-            "[{} {}] [{}] {}",
-            timestring, self.level, self.workflow_instance_id, self.payload
+            "[{} {}] [{}/{}] {}",
+            timestring, self.level, self.workflow_name, self.task_name, self.payload
         )
     }
     /// format the message including the workflow id
@@ -58,8 +64,14 @@ impl LogMessage {
             .unwrap()
             .to_rfc3339();
         format!(
-            "[{} {}] [{}/{}] {}",
-            timestring, self.level, self.workflow_name, self.workflow_instance_id, self.payload
+            "[{} {}] [{}={} / {}={}] {}",
+            timestring,
+            self.level,
+            self.workflow_name,
+            self.workflow_instance_id,
+            self.task_name,
+            self.task_instance_id,
+            self.payload
         )
     }
 }
@@ -80,6 +92,18 @@ impl DBRecordBatch<LogMessage> for Vec<LogMessage> {
 
         let workflow_instance_id = batch
             .column(batch.schema().index_of("workflow_instance_id").unwrap())
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        let task_name = batch
+            .column(batch.schema().index_of("task_name").unwrap())
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        let task_instance_id = batch
+            .column(batch.schema().index_of("task_instance_id").unwrap())
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap();
@@ -108,6 +132,8 @@ impl DBRecordBatch<LogMessage> for Vec<LogMessage> {
                 workflow_id: workflow_id.value(i).to_string(),
                 workflow_name: workflow_name.value(i).to_string(),
                 workflow_instance_id: workflow_instance_id.value(i).to_string(),
+                task_name: task_name.value(i).to_string(),
+                task_instance_id: task_instance_id.value(i).to_string(),
                 timestamp_ms: timestamp_ms.value(i),
                 level: level.value(i).to_string(),
                 payload: payload.value(i).to_string(),
@@ -119,6 +145,8 @@ impl DBRecordBatch<LogMessage> for Vec<LogMessage> {
             Field::new("workflow_id", DataType::Utf8, false),
             Field::new("workflow_name", DataType::Utf8, false),
             Field::new("workflow_instance_id", DataType::Utf8, false),
+            Field::new("task_name", DataType::Utf8, false),
+            Field::new("task_instance_id", DataType::Utf8, false),
             Field::new("timestamp_ms", DataType::UInt64, false),
             Field::new("level", DataType::Utf8, false),
             Field::new("payload", DataType::Utf8, false),
@@ -126,6 +154,8 @@ impl DBRecordBatch<LogMessage> for Vec<LogMessage> {
         let mut workflow_id = StringBuilder::new();
         let mut workflow_name = StringBuilder::new();
         let mut workflow_instance_id = StringBuilder::new();
+        let mut task_name = StringBuilder::new();
+        let mut task_instance_id = StringBuilder::new();
         let mut timestamp_ms = UInt64Builder::new();
         let mut level = StringBuilder::new();
         let mut payload = StringBuilder::new();
@@ -134,6 +164,8 @@ impl DBRecordBatch<LogMessage> for Vec<LogMessage> {
             workflow_id.append_value(&log.workflow_id);
             workflow_name.append_value(&log.workflow_name);
             workflow_instance_id.append_value(&log.workflow_instance_id);
+            task_name.append_value(&log.task_name);
+            task_instance_id.append_value(&log.task_instance_id);
             timestamp_ms.append_value(log.timestamp_ms);
             level.append_value(&log.level);
             payload.append_value(&log.payload);
@@ -143,6 +175,8 @@ impl DBRecordBatch<LogMessage> for Vec<LogMessage> {
             Arc::new(workflow_id.finish()) as _,
             Arc::new(workflow_name.finish()) as _,
             Arc::new(workflow_instance_id.finish()) as _,
+            Arc::new(task_name.finish()) as _,
+            Arc::new(task_instance_id.finish()) as _,
             Arc::new(timestamp_ms.finish()) as _,
             Arc::new(level.finish()) as _,
             Arc::new(payload.finish()) as _,
@@ -171,6 +205,8 @@ impl TryFrom<ZmqMessage> for LogMessage {
             workflow_id: zmq_args.next().unwrap(),
             workflow_name: zmq_args.next().unwrap(),
             workflow_instance_id: zmq_args.next().unwrap(),
+            task_name: zmq_args.next().unwrap(),
+            task_instance_id: zmq_args.next().unwrap(),
             timestamp_ms: cdktr_result(zmq_args.next().unwrap().parse())?,
             level: zmq_args.next().unwrap(),
             payload: zmq_args.next().unwrap(),
@@ -184,6 +220,8 @@ impl Into<ZmqMessage> for LogMessage {
             &self.workflow_id,
             &self.workflow_name,
             &self.workflow_instance_id,
+            &self.task_name,
+            &self.task_instance_id,
             &self.timestamp_ms.to_string(),
             &self.level,
             &self.payload,

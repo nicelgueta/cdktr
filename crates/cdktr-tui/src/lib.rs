@@ -1,12 +1,12 @@
 use core::panic;
 use ratatui::{
+    Frame,
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Paragraph, Tabs, Widget},
-    Frame,
 };
 use std::io;
 

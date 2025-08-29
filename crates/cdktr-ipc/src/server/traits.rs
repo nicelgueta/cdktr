@@ -1,5 +1,5 @@
-use super::models::ClientResponseMessage;
 use async_trait::async_trait;
+use cdktr_api::models::ClientResponseMessage;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::zmq_helpers::{get_server_tcp_uri, get_zmq_rep};
 use log::info;

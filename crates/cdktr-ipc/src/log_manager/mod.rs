@@ -5,6 +5,8 @@ pub mod model;
 pub mod persister;
 pub mod publisher;
 
+pub use db_helpers::read_logs;
+
 #[cfg(test)]
 mod tests {
     use cdktr_core::exceptions::GenericError;
@@ -16,11 +18,11 @@ mod tests {
         client::LogsClient, manager::LogManager, model::LogMessage, publisher::LogsPublisher,
     };
 
-    fn get_time() -> u64 {
+    fn get_time() -> i64 {
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
-            .as_millis() as u64
+            .as_millis() as i64
     }
     #[tokio::test]
     async fn test_log_message_format() {
@@ -29,14 +31,20 @@ mod tests {
             "test_workflow_id".to_string(),
             "test_workflow".to_string(),
             "jumping-monkey-0".to_string(),
-            timestamp,
+            "test_task_name".to_string(),
+            "test_task_instance_id".to_string(),
+            timestamp as u64,
             "INFO".to_string(),
             "This is a test log message".to_string(),
         );
         let formatted = log_msg.format();
-        assert!(formatted.contains("jumping-monkey-0"));
-        assert!(formatted.contains("INFO"));
-        assert!(formatted.contains("This is a test log message"));
+        let time_str = chrono::DateTime::from_timestamp_millis(timestamp)
+            .unwrap()
+            .to_rfc3339();
+        assert_eq!(
+            formatted,
+            format!("[{time_str} INFO] [test_workflow/test_task_name] This is a test log message")
+        );
     }
 
     #[tokio::test]
@@ -46,20 +54,30 @@ mod tests {
             "test_workflow_id".to_string(),
             "Test Workflow".to_string(),
             "jumping-monkey-0".to_string(),
-            timestamp,
+            "test_task_name".to_string(),
+            "test_task_instance_id".to_string(),
+            timestamp as u64,
             "INFO".to_string(),
             "This is a test log message".to_string(),
         );
         let formatted = log_msg.format_full();
-        assert!(formatted.contains("Test Workflow/jumping-monkey-0"));
-        assert!(formatted.contains("INFO"));
-        assert!(formatted.contains("This is a test log message"));
+        let time_str = chrono::DateTime::from_timestamp_millis(timestamp)
+            .unwrap()
+            .to_rfc3339();
+        assert_eq!(
+            formatted,
+            format!(
+                "[{time_str} INFO] [Test Workflow=jumping-monkey-0 / test_task_name=test_task_instance_id] This is a test log message"
+            )
+        );
     }
 
     #[tokio::test]
     async fn test_log_manager_start_e2e() -> Result<(), GenericError> {
         let test_workflow_id = "test_workflow_id";
         let test_workflow_name = "Test Workflow";
+        let test_task_name = "test_task_name";
+        let test_task_instance_id = "test_task_instance_id";
         let test_workflow_instance_id = "jumping-monkey-0";
 
         let mut join_set: JoinSet<Result<(), GenericError>> = JoinSet::new();
@@ -92,10 +110,20 @@ mod tests {
             .await
             .unwrap();
             let _ = logs_publisher
-                .pub_msg("INFO".to_string(), "test message 1".to_string())
+                .pub_msg(
+                    "INFO".to_string(),
+                    test_task_name.to_string(),
+                    test_task_instance_id.to_string(),
+                    "test message 1".to_string(),
+                )
                 .await;
             let _ = logs_publisher
-                .pub_msg("DEBUG".to_string(), "test message 2".to_string())
+                .pub_msg(
+                    "DEBUG".to_string(),
+                    test_task_name.to_string(),
+                    test_task_instance_id.to_string(),
+                    "test message 2".to_string(),
+                )
                 .await;
             Ok(())
         });
@@ -106,8 +134,8 @@ mod tests {
         }
         dbg!(&msgs);
         let regs = vec![
-            Regex::new(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} INFO\] \[Test Workflow/jumping-monkey-0\] test message 1$").unwrap(),
-            Regex::new(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} DEBUG\] \[Test Workflow/jumping-monkey-0\] test message 2$").unwrap(),
+            Regex::new(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} INFO\] \[Test Workflow=jumping-monkey-0 \/ test_task_name=test_task_instance_id\] test message 1$").unwrap(),
+            Regex::new(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[\+\-]\d{2}:\d{2} DEBUG\] \[Test Workflow=jumping-monkey-0 \/ test_task_name=test_task_instance_id\] test message 2$").unwrap(),
         ];
         for (i, reg) in regs.iter().enumerate() {
             let res = msgs[i].as_str();

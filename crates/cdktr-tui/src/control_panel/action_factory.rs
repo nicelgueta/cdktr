@@ -1,6 +1,6 @@
 use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 
-use cdktr_ipc::prelude::{ClientResponseMessage, PrincipalAPI, API};
+use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
 use log::warn;
 use ratatui::{
     buffer::Buffer,

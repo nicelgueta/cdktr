@@ -8,8 +8,8 @@ use std::time::Duration;
 use std::{env, sync::Arc};
 use task_tracker::TaskTracker;
 use task_tracker::ThreadSafeTaskTracker;
-use tokio::sync::mpsc;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::task::JoinSet;
 use tokio::time::sleep;
@@ -198,30 +198,30 @@ impl TaskManager {
                         .await;
                         match task_exe_result {
                             Ok(task_exe) => break task_exe,
-                            Err(e) => {
-                                match e {
-                                    TaskManagerError::TooManyThreadsError => {
-                                        debug!("Max number of child threads reached - waiting..");
-                                        sleep(Duration::from_millis(1000)).await;
-                                        continue;
-                                    }
-                                    TaskManagerError::FailedTaskError(e) => {
-                                        error!("{}", e);
-                                        match task_tracker.mark_failed(&task_id) {
-                                            Ok(_) => {
-                                                error!(
-                                                    "Marked {}->{} as failure",
-                                                    task_id, task_execution_id
-                                                );
-                                            }
-                                            Err(e) => {
-                                                error!("Error marking task as failure - aborting workflow");
-                                                return Err(e);
-                                            }
+                            Err(e) => match e {
+                                TaskManagerError::TooManyThreadsError => {
+                                    debug!("Max number of child threads reached - waiting..");
+                                    sleep(Duration::from_millis(1000)).await;
+                                    continue;
+                                }
+                                TaskManagerError::FailedTaskError(e) => {
+                                    error!("{}", e);
+                                    match task_tracker.mark_failed(&task_id) {
+                                        Ok(_) => {
+                                            error!(
+                                                "Marked {}->{} as failure",
+                                                task_id, task_execution_id
+                                            );
+                                        }
+                                        Err(e) => {
+                                            error!(
+                                                "Error marking task as failure - aborting workflow"
+                                            );
+                                            return Err(e);
                                         }
                                     }
                                 }
-                            }
+                            },
                         };
                     };
                     // need to spawn the reading of the logs of the run task in order to free this thread
@@ -234,14 +234,28 @@ impl TaskManager {
                     .await?;
                     read_handles.spawn(async move {
                         while let Some(msg) = task_exe.wait_stdout().await {
-                            let log_msg = format!("[{task_name}={task_execution_id}] STDOUT {msg}");
+                            let log_msg = format!("STDOUT {msg}");
                             info!("{}", &log_msg);
-                            logs_pub.pub_msg("INFO".to_string(), log_msg).await
+                            logs_pub
+                                .pub_msg(
+                                    "INFO".to_string(),
+                                    task_name.clone(),
+                                    task_execution_id.clone(),
+                                    log_msg,
+                                )
+                                .await
                         }
                         while let Some(msg) = task_exe.wait_stderr().await {
-                            let log_msg = format!("[{task_name}={task_execution_id}] STDERR {msg}");
+                            let log_msg = format!("STDERR {msg}");
                             error!("{}", &log_msg);
-                            logs_pub.pub_msg("ERROR".to_string(), log_msg).await
+                            logs_pub
+                                .pub_msg(
+                                    "ERROR".to_string(),
+                                    task_name.clone(),
+                                    task_execution_id.clone(),
+                                    log_msg,
+                                )
+                                .await
                         }
                         info!("Ended task {task_execution_id} ({task_name})");
                     });

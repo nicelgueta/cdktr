@@ -2,13 +2,13 @@ use crate::{exceptions::GenericError, models::AgentMeta};
 use std::{
     collections::{BinaryHeap, HashMap, VecDeque},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 use tokio::{
     sync::{Mutex, MutexGuard},
-    time::{sleep, Duration},
+    time::{Duration, sleep},
 };
 
 /// A simple queue that can be accessed across threads. The queue
@@ -272,7 +272,7 @@ impl AgentPriorityQueue {
 mod tests {
     use super::*;
     use crate::models::AgentMeta;
-    use tokio::time::{sleep, timeout, Duration};
+    use tokio::time::{Duration, sleep, timeout};
 
     #[tokio::test]
     async fn test_async_queue_new() {

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::{zmq_helpers::format_zmq_msg_str, ZMQ_MESSAGE_DELIMITER};
+use crate::{ZMQ_MESSAGE_DELIMITER, zmq_helpers::format_zmq_msg_str};
 
 pub mod data_structures;
 

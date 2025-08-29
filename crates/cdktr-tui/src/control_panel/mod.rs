@@ -1,8 +1,8 @@
 use std::{collections::HashMap, time::Duration};
 
-use action_factory::{ActionHandler, ACTIONS};
+use action_factory::{ACTIONS, ActionHandler};
+use cdktr_api::{API, PrincipalAPI};
 use cdktr_core::{self, get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
-use cdktr_ipc::prelude::{PrincipalAPI, API};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent},

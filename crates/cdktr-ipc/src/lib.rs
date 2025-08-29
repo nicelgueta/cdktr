@@ -1,4 +1,3 @@
-mod api;
 mod client;
 // mod events; TODO: reinclude once the main runner is working
 pub mod log_manager;
@@ -7,12 +6,6 @@ mod taskmanager;
 
 // public api
 pub mod instance;
-pub mod prelude {
-    pub use crate::{
-        api::{APIMeta, PrincipalAPI, API},
-        server::models::ClientResponseMessage,
-    };
-}
 
 // some integration tests for easier debugging - skipped by default since they spawn
 // indefinite loops

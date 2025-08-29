@@ -2,7 +2,7 @@ use std::env;
 use std::time::Duration;
 
 use cdktr_core::{
-    exceptions::{cdktr_result, GenericError},
+    exceptions::{GenericError, cdktr_result},
     get_cdktr_setting,
     zmq_helpers::{get_server_tcp_uri, get_zmq_sub},
 };

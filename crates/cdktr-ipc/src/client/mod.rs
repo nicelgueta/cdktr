@@ -1,7 +1,4 @@
-use crate::{
-    api::{PrincipalAPI, API},
-    prelude::ClientResponseMessage,
-};
+use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
 use cdktr_core::{exceptions::GenericError, get_cdktr_setting};
 use cdktr_workflow::Workflow;
 use log::{debug, error, info, trace, warn};
@@ -109,7 +106,9 @@ impl PrincipalClient {
                             ));
                         };
                         let retry_interval = cdktr_default_timeout.as_millis();
-                        warn!("Failed to communicate to principal - trying again in {retry_interval} ms (attempt {reconnection_attempts} of {cdktr_retry_attempts})");
+                        warn!(
+                            "Failed to communicate to principal - trying again in {retry_interval} ms (attempt {reconnection_attempts} of {cdktr_retry_attempts})"
+                        );
                         reconnection_attempts += 1;
                         continue;
                     }
@@ -138,7 +137,7 @@ impl PrincipalClient {
                             return Err(GenericError::ParseError(format!(
                                 "Failed to read Workflow JSON from ZMQ string. Error: {}",
                                 e.to_string()
-                            )))
+                            )));
                         }
                     };
                     return Ok(workflow);
@@ -147,7 +146,7 @@ impl PrincipalClient {
                     return Err(GenericError::RuntimeError(format!(
                         "Unexpected client response message received from principal: {}",
                         other.to_string()
-                    )))
+                    )));
                 }
             },
             Err(e) => match e {
@@ -159,7 +158,7 @@ impl PrincipalClient {
                     return Err(GenericError::RuntimeError(format!(
                         "Unspecified error in principal heartbeat: {}",
                         e.to_string()
-                    )))
+                    )));
                 }
             },
         }

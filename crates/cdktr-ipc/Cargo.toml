@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 cdktr-core = { workspace = true}
 cdktr-workflow = { workspace = true}
+cdktr-api = { workspace = true}
 cdktr-db = { workspace = true}
 async-trait = { workspace = true }
 chrono = { workspace = true }

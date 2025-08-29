@@ -1,5 +1,5 @@
 use cdktr_core::exceptions::GenericError;
-use duckdb::{arrow::array::RecordBatch, Connection, Params};
+use duckdb::{Connection, Params, arrow::array::RecordBatch};
 use log::warn;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::{Mutex, MutexGuard};

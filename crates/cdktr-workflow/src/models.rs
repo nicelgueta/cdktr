@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use cdktr_core::exceptions::GenericError;
-use cdktr_core::models::{traits, FlowExecutionResult};
+use cdktr_core::models::{FlowExecutionResult, traits};
 use daggy::{self, Dag, NodeIndex, Walker};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -268,7 +268,7 @@ impl FromYaml for Workflow {
                     "Error reading yaml file {:?}. Error: {}",
                     file.to_str(),
                     e.to_string()
-                )))
+                )));
             }
         };
         // let name = key_from_path(file.to_path_buf(), file.parent().unwrap().to_path_buf());

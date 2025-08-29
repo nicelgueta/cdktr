@@ -44,7 +44,13 @@ impl LogsPublisher {
     /// Publishes a log message to the principal server
     /// If it fails to send then it will store it in a local queue
     /// and attempt to resend it next time a new message is published
-    pub async fn pub_msg(&mut self, level: String, msg: String) {
+    pub async fn pub_msg(
+        &mut self,
+        level: String,
+        task_name: String,
+        task_instance_id: String,
+        msg: String,
+    ) {
         let _ = self.check_and_clear_local_messages().await;
         let timestamp_ms = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -54,6 +60,8 @@ impl LogsPublisher {
             self.workflow_id.clone(),
             self.workflow_name.clone(),
             self.workflow_instance_id.clone(),
+            task_name.clone(),
+            task_instance_id.clone(),
             timestamp_ms,
             level.clone(),
             msg.clone(),
@@ -65,6 +73,8 @@ impl LogsPublisher {
                 self.workflow_id.clone(),
                 self.workflow_name.clone(),
                 self.workflow_instance_id.clone(),
+                task_name,
+                task_instance_id,
                 timestamp_ms,
                 level,
                 msg,
@@ -105,7 +115,7 @@ mod tests {
     use super::*;
     use cdktr_core::zmq_helpers::get_zmq_pull;
     use tokio::sync::mpsc;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
     use zeromq::SocketRecv;
 
     // TODO

@@ -2,14 +2,14 @@ use std::{env, time::Duration};
 
 use crate::log_manager::model::LogMessage;
 use cdktr_core::{
-    exceptions::{cdktr_result, GenericError},
+    exceptions::{GenericError, cdktr_result},
     get_cdktr_setting,
     utils::data_structures::AsyncQueue,
     zmq_helpers::{get_server_tcp_uri, get_zmq_sub},
 };
 use cdktr_db::DBClient;
 use log::{info, warn};
-use tokio::time::{sleep_until, Instant};
+use tokio::time::{Instant, sleep_until};
 use zeromq::SocketRecv;
 
 // write logs to the database every 30 seconds
@@ -68,6 +68,8 @@ mod tests {
             "test_workflow_id".to_string(),
             "test_workflow_name".to_string(),
             "test_workflow_instance_id".to_string(),
+            "test_task_name".to_string(),
+            "test_task_instance_id".to_string(),
             1234567890 as u64,
             "INFO".to_string(),
             "a log message!".to_string(),
@@ -76,6 +78,8 @@ mod tests {
             "test_workflow_id".to_string(),
             "test_workflow_name".to_string(),
             "test_workflow_instance_id".to_string(),
+            "test_task_name".to_string(),
+            "test_task_instance_id".to_string(),
             234567890 as u64,
             "INFO".to_string(),
             "a second log message!".to_string(),
@@ -94,9 +98,11 @@ mod tests {
                     workflow_id: row.get(0).unwrap(),
                     workflow_name: row.get(1).unwrap(),
                     workflow_instance_id: row.get(2).unwrap(),
-                    timestamp_ms: row.get(3).unwrap(),
-                    level: row.get(4).unwrap(),
-                    payload: row.get(5).unwrap(),
+                    task_name: row.get(3).unwrap(),
+                    task_instance_id: row.get(4).unwrap(),
+                    timestamp_ms: row.get(5).unwrap(),
+                    level: row.get(6).unwrap(),
+                    payload: row.get(7).unwrap(),
                 })
             })
             .unwrap();

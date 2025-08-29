@@ -1,14 +1,22 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use cdktr_core::{
     models::AgentMeta,
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
+use cdktr_db::DBClient;
 use cdktr_workflow::{Workflow, WorkflowStore};
 use chrono::Utc;
 
-use crate::api::PrincipalAPI;
+use cdktr_api::PrincipalAPI;
+use log::{debug, info};
+use tokio::sync::Mutex;
 
-use super::{models::ClientResponseMessage, traits::Server};
+use crate::log_manager::read_logs;
+
+use super::traits::Server;
+use cdktr_api::models::ClientResponseMessage;
 
 mod helpers;
 
@@ -17,15 +25,17 @@ pub struct PrincipalServer {
     live_agents: AgentPriorityQueue,
     task_queue: AsyncQueue<Workflow>,
     workflows: WorkflowStore,
+    db_client: DBClient
 }
 
 impl PrincipalServer {
-    pub fn new(instance_id: String, workflows: WorkflowStore) -> Self {
+    pub fn new(instance_id: String, workflows: WorkflowStore, db_client: DBClient ) -> Self {
         Self {
             instance_id,
             live_agents: AgentPriorityQueue::new(),
             task_queue: AsyncQueue::new(),
             workflows,
+            db_client
         }
     }
 
@@ -52,7 +62,7 @@ impl Server<PrincipalAPI> for PrincipalServer {
         &mut self,
         cli_msg: PrincipalAPI,
     ) -> (ClientResponseMessage, usize) {
-        match cli_msg {
+        let result = match cli_msg {
             PrincipalAPI::Ping => (ClientResponseMessage::Pong, 0),
             PrincipalAPI::ListWorkflowStore => {
                 helpers::handle_list_workflows(&self.workflows).await
@@ -80,10 +90,24 @@ impl Server<PrincipalAPI> for PrincipalServer {
             PrincipalAPI::FetchWorkflow(agent_id) => {
                 helpers::handle_fetch_task(&mut self.task_queue, agent_id).await
             }
-            PrincipalAPI::QueryLogs(end_ts, start_ts, wf_id, wf_ins_id) => {
-                (ClientResponseMessage::Success, 0)
+            PrincipalAPI::QueryLogs(end_ts, start_ts, wf_id, wf_ins_id, verbose) => {
+                info!("Fetching logs");
+                let logs_result = read_logs(
+                    self.db_client.clone(), start_ts, end_ts, wf_id, wf_ins_id
+                ).await;
+                match logs_result {
+                    Ok(logs) => match serde_json::to_string(
+                        &logs.iter().map(|l| if verbose {l.format_full()} else {l.format()}).collect::<Vec<String>>()
+                    ) {
+                        Ok(str_result) => (ClientResponseMessage::SuccessWithPayload(str_result), 0),
+                        Err(e) => (ClientResponseMessage::ServerError(format!("Failed to read logs from db: {}", e.to_string())), 0)
+                    },
+                    Err(e) => (ClientResponseMessage::ServerError(format!("Failed to read logs from db: {}", e.to_string())), 0)
+                }
             }
-        }
+        };
+        debug!("Returning ({}): {}", result.1, result.0.to_string());
+        result
     }
 }
 
@@ -133,7 +157,7 @@ mod tests {
             ),
         ];
 
-        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await);
+        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await, DBClient::new(None).unwrap());
         for (zmq_s, assertion_fn, exp_exit_code) in test_params {
             println!("Testing {zmq_s}");
             let zmq_msg = ZmqMessage::from(zmq_s);
@@ -148,7 +172,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_new() {
-        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await);
+        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await, DBClient::new(None).unwrap());
         let agent_id = String::from("localhost-4567");
         let (resp, exit_code) = server.register_agent(&agent_id).await;
         {
@@ -160,7 +184,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_agent_already_exists() {
-        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await);
+        let mut server = PrincipalServer::new("fake_ins".to_string(), get_workflowstore().await, DBClient::new(None).unwrap());
         let agent_id = String::from("localhost-4567");
         server.register_agent(&agent_id).await;
         let old_timestamp = { server.live_agents.pop().await.unwrap().get_last_ping_ts() };

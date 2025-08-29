@@ -237,13 +237,15 @@ mod tests {
             sleep(Duration::from_millis(500)).await;
             rep.send("OK".into()).await.unwrap()
         });
-        assert!(send_recv_with_timeout(
-            endpoint,
-            ZmqMessage::from("hello"),
-            Duration::from_millis(1)
+        assert!(
+            send_recv_with_timeout(
+                endpoint,
+                ZmqMessage::from("hello"),
+                Duration::from_millis(1)
+            )
+            .await
+            .is_err()
         )
-        .await
-        .is_err())
     }
 
     #[test]

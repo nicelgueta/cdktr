@@ -1,17 +1,14 @@
 use cdktr_core::{get_cdktr_setting, utils};
-use cdktr_ipc::{
-    instance::{start_agent, start_principal},
-    log_manager::{client::LogsClient, model::LogMessage},
-};
+use cdktr_ipc::instance::{start_agent, start_principal};
 use cdktr_tui::tui_main;
 use clap::Parser;
 use dotenv::dotenv;
-use log::{info, warn};
+use log::{debug, info, warn};
 use models::InstanceType;
 use std::env;
 use std::path::Path;
 
-use crate::components::logs::LogArgs;
+use crate::components::logs::{LogArgs, handle_logs};
 
 mod api;
 mod components;
@@ -62,7 +59,7 @@ fn setup() {
     ));
     let app_data_dir = Path::new(&path_str);
 
-    info!("Using application data directory: {:?}", app_data_dir);
+    debug!("Using application data directory: {:?}", app_data_dir);
     if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
         warn!(
             "Failed to create application data directory {:?}: {}",
@@ -120,31 +117,7 @@ async fn _main() {
             let _ = tui_main().await;
             ()
         }
-        CdktrCli::Task(args) => (),
-        CdktrCli::Logs(args) => {
-            // let log_level = args.log_level.to_lowercase();
-            let print_func = if let Some(wf_id) = &args.workflow_id {
-                |msg: LogMessage| println!("{}", msg.format())
-            } else {
-                |msg: LogMessage| println!("{}", msg.format_full())
-            };
-            let mut logs_client = match LogsClient::new(
-                "cdktr-cli".to_string(),
-                &args.workflow_id.unwrap_or("".to_string()),
-            )
-            .await
-            {
-                Ok(client) => client,
-                Err(e) => {
-                    println!("{}", e.to_string());
-                    return;
-                }
-            };
-            let (tx, mut rx) = tokio::sync::mpsc::channel::<LogMessage>(100);
-            tokio::spawn(async move { logs_client.listen(tx, None).await });
-            while let Some(msg) = rx.recv().await {
-                print_func(msg);
-            }
-        }
+        CdktrCli::Task(args) => todo!(),
+        CdktrCli::Logs(args) => handle_logs(args).await,
     }
 }
