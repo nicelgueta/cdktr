@@ -53,7 +53,13 @@ pub enum PrincipalAPI {
     ///     workflow_instance_id (optional): filter results by a specific workflow instance.
     ///         returns any if not set.
     ///     verbose: Full instance names in logs
-    QueryLogs(Option<u64>, Option<u64>, Option<String>, Option<String>, bool),
+    QueryLogs(
+        Option<u64>,
+        Option<u64>,
+        Option<String>,
+        Option<String>,
+        bool,
+    ),
 }
 
 impl TryFrom<ZMQArgs> for PrincipalAPI {
@@ -129,43 +135,63 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
             "QUERYLOGS" => match args.next() {
                 Some(end_ts) => {
                     let end_ts_opt = if end_ts.len() > 0 {
-                        Some(end_ts.parse().map_err(|e| GenericError::ParseError("Not a valid end timestamp".to_string()))?)
+                        Some(end_ts.parse().map_err(|e| {
+                            GenericError::ParseError("Not a valid end timestamp".to_string())
+                        })?)
                     } else {
                         None
                     };
                     match args.next() {
                         Some(start_ts) => {
                             let start_ts_opt = if start_ts.len() > 0 {
-                                Some(start_ts.parse().map_err(|e| GenericError::ParseError("Not a valid end timestamp".to_string()))?)
-                            } else { None };
+                                Some(start_ts.parse().map_err(|e| {
+                                    GenericError::ParseError(
+                                        "Not a valid end timestamp".to_string(),
+                                    )
+                                })?)
+                            } else {
+                                None
+                            };
                             match args.next() {
                                 Some(wf_id) => {
-                                    let wf_id_opt = if wf_id.len() > 0 {
-                                        Some(wf_id)
-                                    } else { None };
+                                    let wf_id_opt =
+                                        if wf_id.len() > 0 { Some(wf_id) } else { None };
                                     match args.next() {
                                         Some(wf_ins_id) => {
                                             let wf_ins_id_opt = if wf_ins_id.len() > 0 {
                                                 Some(wf_ins_id)
-                                            } else { None };
+                                            } else {
+                                                None
+                                            };
                                             Ok(Self::QueryLogs(
                                                 end_ts_opt,
                                                 start_ts_opt,
                                                 wf_id_opt,
                                                 wf_ins_id_opt,
-                                                match args.next(){Some(v) => v.len() > 0, None => false}
+                                                match args.next() {
+                                                    Some(v) => v.len() > 0,
+                                                    None => false,
+                                                },
                                             ))
-                                        },
-                                        None => Err(GenericError::ParseError("Missing WORKFLOW_INSTANCE_ID parameter".to_string()))
+                                        }
+                                        None => Err(GenericError::ParseError(
+                                            "Missing WORKFLOW_INSTANCE_ID parameter".to_string(),
+                                        )),
                                     }
-                                },
-                                None => Err(GenericError::ParseError("Missing WORKFLOW_ID parameter".to_string()))
+                                }
+                                None => Err(GenericError::ParseError(
+                                    "Missing WORKFLOW_ID parameter".to_string(),
+                                )),
                             }
-                        },
-                        None => Err(GenericError::ParseError("Missing START_TIMESTAMP parameter".to_string()))
+                        }
+                        None => Err(GenericError::ParseError(
+                            "Missing START_TIMESTAMP parameter".to_string(),
+                        )),
                     }
-                },
-                None => Err(GenericError::ParseError("Missing END_TIMESTAMP".to_string()))
+                }
+                None => Err(GenericError::ParseError(
+                    "Missing END_TIMESTAMP".to_string(),
+                )),
             },
             _ => Err(GenericError::ParseError(format!(
                 "Unrecognised message type: {}",
@@ -241,7 +267,7 @@ impl API for PrincipalAPI {
                     },
                     wf_id.clone().unwrap_or("".to_string()),
                     wf_ins_id.clone().unwrap_or("".to_string()),
-                    if *verbose {"v"} else {""}
+                    if *verbose { "v" } else { "" }
                 )
             }
         }

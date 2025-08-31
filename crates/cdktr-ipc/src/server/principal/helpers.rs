@@ -11,9 +11,7 @@ use log::{info, trace};
 
 pub async fn handle_list_workflows(workflows: &WorkflowStore) -> (ClientResponseMessage, usize) {
     (
-        ClientResponseMessage::SuccessWithPayload(
-            workflows.to_string().await
-        ),
+        ClientResponseMessage::SuccessWithPayload(workflows.to_string().await),
         0,
     )
 }

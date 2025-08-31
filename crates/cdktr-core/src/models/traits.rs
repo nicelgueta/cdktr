@@ -14,4 +14,3 @@ pub trait Executor {
         stderr_tx: Sender<String>,
     ) -> FlowExecutionResult;
 }
-

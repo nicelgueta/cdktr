@@ -1,10 +1,13 @@
-use std::{env, time::{Duration, SystemTime}};
+use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
 use cdktr_core;
-use log::{info, warn};
-use cdktr_api::{models::ClientResponseMessage, PrincipalAPI, API};
 use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use log::error;
+use log::{info, warn};
+use std::{
+    env,
+    time::{Duration, SystemTime},
+};
 
 /// Log management CLI
 /// This allows you to tail logs from the principal log manager
@@ -58,8 +61,9 @@ pub async fn handle_logs(args: LogArgs) {
         |msg: LogMessage| println!("{}", msg.format_full())
     };
 
-    if args.tail { tail_logs(args, print_func).await }
-    else {
+    if args.tail {
+        tail_logs(args, print_func).await
+    } else {
         info!("Querying logs from db");
         query_logs(args).await
     }
@@ -88,49 +92,48 @@ async fn tail_logs(args: LogArgs, print_func: impl Fn(LogMessage)) {
 async fn query_logs(args: LogArgs) {
     let principal_uri = get_server_tcp_uri(
         &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize)
+        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
     );
     let api = PrincipalAPI::QueryLogs(
         match args.end_datetime_utc {
             Some(dt) => Some(
                 dt.duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Unable to create unix timestamp from end timestamp")
-                    .as_millis() as u64
+                    .as_millis() as u64,
             ),
-            None => None
+            None => None,
         },
         match args.start_datetime_utc {
             Some(dt) => Some(
                 dt.duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Unable to create unix timestamp from end timestamp")
-                    .as_millis() as u64
+                    .as_millis() as u64,
             ),
-            None => None
+            None => None,
         },
         args.workflow_id,
         args.workflow_instance_id,
-        args.verbose
+        args.verbose,
     );
-    let api_result = api.send(
-        &principal_uri,
-        Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64)
-    ).await;
+    let api_result = api
+        .send(
+            &principal_uri,
+            Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64),
+        )
+        .await;
     match api_result {
         Ok(msg) => match msg {
             ClientResponseMessage::SuccessWithPayload(payload) => {
-                let logs: Vec<String> = serde_json::from_str(&payload).expect(
-                    "Unable to read logs from API response"
-                );
+                let logs: Vec<String> =
+                    serde_json::from_str(&payload).expect("Unable to read logs from API response");
                 for log_msg in logs {
                     println!("{}", log_msg)
                 }
             }
-            other => error!("Unexpected response: {}", other.to_string())
+            other => error!("Unexpected response: {}", other.to_string()),
         },
         Err(e) => {
             error!("{}", e.to_string())
         }
     }
-
-
 }

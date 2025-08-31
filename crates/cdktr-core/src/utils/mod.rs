@@ -1,6 +1,11 @@
 use std::{collections::VecDeque, env, time::Duration};
 
-use crate::{exceptions::GenericError, macros::internal_get_cdktr_setting, zmq_helpers::{format_zmq_msg_str, get_server_tcp_uri}, ZMQ_MESSAGE_DELIMITER};
+use crate::{
+    ZMQ_MESSAGE_DELIMITER,
+    exceptions::GenericError,
+    macros::internal_get_cdktr_setting,
+    zmq_helpers::{format_zmq_msg_str, get_server_tcp_uri},
+};
 use log::warn;
 pub mod data_structures;
 
@@ -35,14 +40,12 @@ pub fn str_or_blank<T: ToString>(s: Option<T>) -> String {
 pub fn get_principal_uri() -> String {
     get_server_tcp_uri(
         &internal_get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        internal_get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize)
+        internal_get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
     )
 }
 
 pub fn get_default_timeout() -> Duration {
-    Duration::from_millis(
-        internal_get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64
-    )
+    Duration::from_millis(internal_get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64)
 }
 
 #[cfg(test)]

@@ -117,7 +117,6 @@ impl WorkflowStore {
         let workflows = inner_mutex.clone();
         serde_json::to_string(&workflows).expect("Workflow store could not be serialised to JSON")
     }
-
 }
 
 #[cfg(test)]

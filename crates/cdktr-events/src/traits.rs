@@ -1,8 +1,9 @@
 use async_trait::async_trait;
-use cdktr_api::{models::ClientResponseMessage, PrincipalAPI, API};
-use cdktr_core::{exceptions::GenericError, utils::{get_default_timeout, get_principal_uri}};
-
-
+use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
+use cdktr_core::{
+    exceptions::GenericError,
+    utils::{get_default_timeout, get_principal_uri},
+};
 
 /// The event listener trait is for implementing components that
 /// listen to external events and place onto a Queue. T refers to
@@ -16,17 +17,13 @@ pub trait EventListener<T> {
         match result {
             Ok(r) => match r {
                 ClientResponseMessage::Success => Ok(()),
-                other => {
-                    Err(GenericError::WorkflowError(
-                        format!(
-                            "Failed to start workflow {}. Response from principal: {}",
-                            workflow_id,
-                            other.to_string()
-                        )
-                    ))
-                }
+                other => Err(GenericError::WorkflowError(format!(
+                    "Failed to start workflow {}. Response from principal: {}",
+                    workflow_id,
+                    other.to_string()
+                ))),
             },
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 }

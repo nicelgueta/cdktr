@@ -1,4 +1,7 @@
-use std::{env::{self, home_dir}, time::Duration};
+use std::{
+    env::{self, home_dir},
+    time::Duration,
+};
 
 use crate::{
     log_manager::{
@@ -40,7 +43,6 @@ pub async fn start_principal(
     instance_port: usize,
     instance_id: String,
 ) -> Result<(), GenericError> {
-
     let db_path = get_cdktr_setting!(CDKTR_DB_PATH);
     let db_path_str = if db_path.contains("$HOME") {
         db_path.replace(
@@ -48,17 +50,19 @@ pub async fn start_principal(
             home_dir()
                 .expect("Unable to determine user home directory")
                 .to_str()
-                .expect("Unable to determine user home directory")
+                .expect("Unable to determine user home directory"),
         )
     } else {
         db_path
     };
-    let db_client = DBClient::new(Some(&db_path_str)).expect("Failed to create DB client on start up");
+    let db_client =
+        DBClient::new(Some(&db_path_str)).expect("Failed to create DB client on start up");
     let workflows = WorkflowStore::from_dir(get_cdktr_setting!(CDKTR_WORKFLOW_DIR).as_str())
         .await
         .expect("Failed to load workflow store on load");
     info!("Loaded {} workflows into store", workflows.count().await);
-    let mut principal_server = PrincipalServer::new(instance_id.clone(), workflows.clone(), db_client.clone());
+    let mut principal_server =
+        PrincipalServer::new(instance_id.clone(), workflows.clone(), db_client.clone());
 
     // start workflow refresh loop
     tokio::spawn(async move {

@@ -324,7 +324,7 @@ impl Workflow {
     pub fn cron(&self) -> Option<&String> {
         match &self.cron {
             Some(cron) => Some(&cron),
-            None => None
+            None => None,
         }
     }
 
