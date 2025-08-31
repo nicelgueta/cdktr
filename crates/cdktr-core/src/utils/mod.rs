@@ -1,7 +1,7 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, env, time::Duration};
 
-use crate::{ZMQ_MESSAGE_DELIMITER, zmq_helpers::format_zmq_msg_str};
-
+use crate::{exceptions::GenericError, macros::internal_get_cdktr_setting, zmq_helpers::{format_zmq_msg_str, get_server_tcp_uri}, ZMQ_MESSAGE_DELIMITER};
+use log::warn;
 pub mod data_structures;
 
 /// helper function to convert a SOH delimited string
@@ -30,6 +30,19 @@ pub fn str_or_blank<T: ToString>(s: Option<T>) -> String {
         Some(t) => t.to_string(),
         None => "".to_string(),
     }
+}
+
+pub fn get_principal_uri() -> String {
+    get_server_tcp_uri(
+        &internal_get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
+        internal_get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize)
+    )
+}
+
+pub fn get_default_timeout() -> Duration {
+    Duration::from_millis(
+        internal_get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64
+    )
 }
 
 #[cfg(test)]

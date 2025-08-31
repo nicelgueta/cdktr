@@ -108,7 +108,7 @@ impl WorkflowStore {
         let mut inner_mutex = self.inner.lock().await;
         *inner_mutex = get_yaml_map(&self.dir).await;
         debug!(
-            "Workflow store refreshed with {} workflows",
+            "Workflow store refreshed with {} w orkflows",
             inner_mutex.len()
         )
     }
@@ -118,15 +118,6 @@ impl WorkflowStore {
         serde_json::to_string(&workflows).expect("Workflow store could not be serialised to JSON")
     }
 
-    pub async fn to_json_array(&self) -> Vec<HashMap<&'static str, String>> {
-        let mut v = Vec::new();
-        for (task_id, wf) in &*self.inner.lock().await {
-            let mut wf_hm = wf.to_hashmap();
-            wf_hm.insert("task_id", task_id.clone());
-            v.push(wf_hm);
-        }
-        v
-    }
 }
 
 #[cfg(test)]

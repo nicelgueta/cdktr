@@ -16,7 +16,7 @@ pub enum PrincipalAPI {
     /// Runs a task by id. Principal then adds the task to the primary
     /// work queue to be picked up by a agent worker.
     /// Args:
-    ///     task_id: i64
+    ///     task_id: String
     RunTask(String),
     /// Allows an agent to register itself with the principal
     /// can register its presence. If the agent

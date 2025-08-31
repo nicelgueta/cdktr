@@ -321,6 +321,13 @@ impl Workflow {
         &self.path
     }
 
+    pub fn cron(&self) -> Option<&String> {
+        match &self.cron {
+            Some(cron) => Some(&cron),
+            None => None
+        }
+    }
+
     pub fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, GenericError> {
         let start_time = if let Some(t) = &self.start_time {
             t

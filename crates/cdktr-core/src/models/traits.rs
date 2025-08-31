@@ -1,4 +1,3 @@
-use crate::utils::data_structures::AsyncQueue;
 use async_trait::async_trait;
 use tokio::sync::mpsc::Sender;
 
@@ -16,10 +15,3 @@ pub trait Executor {
     ) -> FlowExecutionResult;
 }
 
-/// The event listener trait is for implementing components that
-/// listen to external events and place onto a Queue. T refers to
-/// the item that will be placed on the queue upon each event.
-#[async_trait]
-pub trait EventListener<T> {
-    async fn start_listening(&mut self, out_queue: AsyncQueue<T>);
-}

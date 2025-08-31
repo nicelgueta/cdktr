@@ -22,7 +22,7 @@ macro_rules! get_cdktr_setting {
 
 macro_rules! internal_get_cdktr_setting {
     ($setting:ident) => {
-        env::var(stringify!($setting)).unwrap_or(cdktr_core::config::$setting.to_string())
+        env::var(stringify!($setting)).unwrap_or(crate::config::$setting.to_string())
     };
     ($setting:ident, usize) => {
         match env::var(stringify!($setting)) {
@@ -36,7 +36,7 @@ macro_rules! internal_get_cdktr_setting {
                     crate::config::$setting
                 }
             },
-            Err(e) => crate::config::$setting,
+            Err(_e) => crate::config::$setting,
         }
     };
 }
