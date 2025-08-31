@@ -16,9 +16,10 @@ use cdktr_core::{
     zmq_helpers::get_server_tcp_uri,
 };
 use cdktr_db::DBClient;
+use cdktr_events::start_scheduler;
 use cdktr_workflow::WorkflowStore;
 use log::{error, info, warn};
-use tokio::time::sleep;
+use tokio::{task::JoinSet, time::sleep};
 
 /// Starts the main agent loop
 pub async fn start_agent(
@@ -64,14 +65,16 @@ pub async fn start_principal(
     let mut principal_server =
         PrincipalServer::new(instance_id.clone(), workflows.clone(), db_client.clone());
 
+    let mut m_joined: JoinSet<Result<(), GenericError>> = JoinSet::new();
+
     // start workflow refresh loop
-    tokio::spawn(async move {
+    m_joined.spawn(async move {
         admin_refresh_loop(workflows).await;
         Ok::<(), GenericError>(())
     });
 
     // start logs manager
-    tokio::spawn(async move {
+    m_joined.spawn(async move {
         LogManager::new().await?.start().await;
         Ok::<(), GenericError>(())
     });
@@ -81,16 +84,30 @@ pub async fn start_principal(
     let lq_clone = logs_queue.clone();
     let db_clone = db_client.clone();
     // start logs persistence listener
-    tokio::spawn(async move { start_listener(lq_clone).await });
+    m_joined.spawn(async move { start_listener(lq_clone).await });
     // start logs persistence db job
-    tokio::spawn(async move { start_persistence_loop(db_clone, logs_queue).await });
+    m_joined.spawn(async move {
+        start_persistence_loop(db_clone, logs_queue).await;
+        Ok::<(), GenericError>(())
+    });
 
     // start REP/REQ server loop for principal
-    principal_server
-        .start(&instance_host, instance_port)
-        .await
-        .expect("CDKTR: Unable to start client server");
+    m_joined.spawn(async move {
+        principal_server
+            .start(&instance_host, instance_port)
+            .await
+            .expect("CDKTR: Unable to start client server");
+        Ok::<(), GenericError>(())
+    });
 
+    // start scheduler
+    m_joined.spawn(async move {
+        // give the rest of the app 2 seconds to start up before activating schedules
+        sleep(Duration::from_millis(2_000)).await;
+        start_scheduler().await
+    });
+
+    let _ = m_joined.join_all().await;
     std::process::exit(1); // loop has broken
 }
 

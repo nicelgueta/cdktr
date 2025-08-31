@@ -10,6 +10,7 @@ cdktr-workflow = { path = "crates/cdktr-workflow" }
 cdktr-ipc = { path = "crates/cdktr-ipc" }
 cdktr-api = { path = "crates/cdktr-api" }
 cdktr-db = { path = "crates/cdktr-db" }
+cdktr-events = { path = "crates/cdktr-events" }
 arrow = "56.1.0"
 async-trait = "0.1.80"
 chrono = "0.4.38"

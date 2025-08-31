@@ -8,6 +8,7 @@ cdktr-core = { workspace = true}
 cdktr-workflow = { workspace = true}
 cdktr-api = { workspace = true}
 cdktr-db = { workspace = true}
+cdktr-events = { workspace = true}
 async-trait = { workspace = true }
 chrono = { workspace = true }
 cron = { workspace = true }

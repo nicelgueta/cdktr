@@ -749,6 +749,7 @@ dependencies = [
  "cdktr-api",
  "cdktr-core",
  "cdktr-db",
+ "cdktr-events",
  "cdktr-workflow",
  "chrono",
  "cron",

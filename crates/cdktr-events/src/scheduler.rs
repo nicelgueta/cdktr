@@ -27,31 +27,48 @@ pub struct Scheduler {
     principal_uri: String,
     workflows: HashMap<String, Workflow>,
     schedule_priority_queue: BinaryHeap<(i64, String)>,
-    next_peek: i64,
+    next_peek: (String, i64),
 }
 
 #[async_trait]
 impl EventListener<Task> for Scheduler {
     async fn start_listening(&mut self) -> Result<(), GenericError> {
         loop {
-            let mut ms_to_wait = self.next_peek - Utc::now().timestamp_millis();
+            let mut ms_to_wait = self.next_peek.1 - Utc::now().timestamp_millis();
             ms_to_wait = if ms_to_wait < 0 { 0 } else { ms_to_wait };
             let time_to_wait = Duration::from_millis(ms_to_wait as u64);
 
             // put this component to sleep until the allotted time
+            info!(
+                "Next task `{}` scheduled to run at {}",
+                self.next_peek.0,
+                DateTime::from_timestamp_millis(self.next_peek.1)
+                    .unwrap()
+                    .to_rfc2822()
+            );
             sleep(time_to_wait).await;
 
             let workflow_id = self.schedule_priority_queue.pop().unwrap().1;
+            if self.next_peek.0 != workflow_id {
+                return Err(GenericError::RuntimeError(format!(
+                    "Popped wrong workflow from the priority queue. Expected {} but got {}",
+                    self.next_peek.0, workflow_id
+                )));
+            }
+            info!("Staging scheduled task: {}", &workflow_id);
             self.run_workflow(&workflow_id).await?;
 
             // add the next run of the same workflow back to priority queue
             let workflow = self.workflows.get(&workflow_id).unwrap();
             match workflow.cron() {
                 Some(cron) => {
-                    let next_run = Self::next_run_from_cron(cron, workflow.start_time_utc())?;
+                    let next_run = Self::next_run_from_cron(cron, Ok(Utc::now()))?;
                     // invert the timestamp to make a min heap
                     self.schedule_priority_queue
                         .push((-next_run.timestamp_millis(), workflow_id));
+                    // update the peek
+                    let q_top = self.schedule_priority_queue.peek().unwrap();
+                    self.next_peek = (q_top.1.clone(), -q_top.0);
                 }
                 None => continue,
             };
@@ -63,7 +80,7 @@ impl Scheduler {
         let principal_uri = get_principal_uri();
         let api = PrincipalAPI::ListWorkflowStore;
         let response = api.send(&principal_uri, get_default_timeout()).await?;
-        let workflows = match response {
+        let workflows: HashMap<String, Workflow> = match response {
             ClientResponseMessage::SuccessWithPayload(wfs) => {
                 serde_json::from_str(&wfs).map_err(|e| {
                     GenericError::ParseError(format!(
@@ -74,13 +91,19 @@ impl Scheduler {
             }
             other => Err(GenericError::WorkflowError(other.to_string())),
         }?;
+        info!(
+            "Scheduler found {} workflows with active schedules",
+            (&workflows).len()
+        );
         let schedule_priority_queue = Self::build_schedule_queue(&workflows)?;
         if schedule_priority_queue.is_empty() {
             return Err(GenericError::NoDataException(
                 "No workflows have valid schedules. Scheduler cannot run".to_string(),
             ));
         };
-        let next_peek = schedule_priority_queue.peek().unwrap().0;
+        // flip sign to get the original value
+        let q_top = schedule_priority_queue.peek().unwrap();
+        let next_peek = (q_top.1.clone(), -q_top.0);
         Ok(Self {
             principal_uri,
             workflows,
