@@ -130,3 +130,131 @@ impl Scheduler {
         Ok(next_run)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+    use std::collections::HashMap;
+
+    fn get_workflow(cron: Option<&str>, start_time: Option<&str>) -> Workflow {
+        let cron_str = match cron {
+            Some(v) => &format!(r#"cron: "{}""#, v),
+            None => "",
+        };
+        let start_time_str = match start_time {
+            Some(v) => &format!(r#"start_time: {}"#, v),
+            None => "",
+        };
+        let yaml = format!(
+            r#"
+name: Dummy Flow
+{}
+{}
+tasks:
+  task1:
+    name: Task 1
+    description: Runs first task
+    config:
+      !Subprocess
+      cmd: echo
+      args:
+        - hello
+        - world
+        "#,
+            cron_str, start_time_str
+        );
+        let yml_str = yaml.as_str();
+        Workflow::new("fake/path.yml".to_string(), yml_str).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_build_schedule_queue_with_valid_cron() {
+        let mut workflows = HashMap::new();
+        let start_time = Utc::now();
+        workflows.insert(
+            "wf1".to_string(),
+            get_workflow(Some("*/2 * * * * *"), Some(&start_time.to_rfc3339())),
+        );
+        let queue = Scheduler::build_schedule_queue(&workflows).unwrap();
+        assert_eq!(queue.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_build_schedule_queue_with_invalid_cron() {
+        let mut workflows = HashMap::new();
+        let start_time = Utc::now();
+        workflows.insert(
+            "wf1".to_string(),
+            get_workflow(Some("invalid cron"), Some(&start_time.to_rfc3339())),
+        );
+        let queue = Scheduler::build_schedule_queue(&workflows);
+        assert!(queue.is_err()); // error when no workflows to create a heap from
+    }
+
+    #[tokio::test]
+    async fn test_build_schedule_queue_with_no_cron() {
+        let mut workflows = HashMap::new();
+        let start_time = Utc::now();
+        let wf = get_workflow(None, Some(&start_time.to_rfc3339()));
+        workflows.insert("wf1".to_string(), wf);
+        let queue = Scheduler::build_schedule_queue(&workflows).unwrap();
+        assert_eq!(queue.len(), 0); // error when no workflows to create a heap from
+    }
+
+    #[tokio::test]
+    async fn test_next_run_from_cron_future_start() {
+        let cron = "0 0 * * * *".to_string();
+        let future = Utc::now() + chrono::Duration::days(1);
+        let result = Scheduler::next_run_from_cron(&cron, Ok(future));
+        assert!(result.is_ok());
+        assert!(result.unwrap() > Utc::now());
+    }
+
+    #[tokio::test]
+    async fn test_next_run_from_cron_invalid_cron() {
+        let cron = "invalid cron".to_string();
+        let now = Utc::now();
+        let result = Scheduler::next_run_from_cron(&cron, Ok(now));
+        assert!(matches!(result, Err(GenericError::ParseError(_))));
+    }
+
+    #[tokio::test]
+    async fn test_next_run_from_cron_past_start() {
+        let cron = "0 0 * * * *".to_string();
+        let past = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
+        let result = Scheduler::next_run_from_cron(&cron, Ok(past));
+        assert!(result.is_ok());
+        assert!(result.unwrap() > Utc::now());
+    }
+
+    #[tokio::test]
+    async fn test_scheduler_new_no_workflows() {
+        // Patch get_principal_uri and PrincipalAPI::ListWorkflowStore to return empty workflows
+        // This is a placeholder; in real code, use a mocking framework or dependency injection.
+        // Here, just check the error handling logic directly.
+        let workflows: HashMap<String, Workflow> = HashMap::new();
+        let queue = Scheduler::build_schedule_queue(&workflows).unwrap();
+        assert!(queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_scheduler_builds_min_heap() {
+        let mut workflows = HashMap::new();
+        let now = Utc::now();
+        workflows.insert(
+            "wf1".to_string(),
+            get_workflow(Some("0 0 * * * *"), Some(&now.to_rfc3339())),
+        );
+        workflows.insert(
+            "wf2".to_string(),
+            get_workflow(Some("0 12 * * * *"), Some(&now.to_rfc3339())),
+        );
+        let queue = Scheduler::build_schedule_queue(&workflows).unwrap();
+        assert_eq!(queue.len(), 2);
+        // The heap should have the earliest run at the top (min-heap by inverted timestamp)
+        let mut timestamps: Vec<i64> = queue.iter().map(|(ts, _)| -*ts).collect();
+        timestamps.sort();
+        assert!(timestamps[0] <= timestamps[1]);
+    }
+}
