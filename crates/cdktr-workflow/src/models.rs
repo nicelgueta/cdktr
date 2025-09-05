@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use cdktr_core::exceptions::GenericError;
+use cdktr_core::get_cdktr_setting;
 use cdktr_core::models::{FlowExecutionResult, traits};
 use daggy::{self, Dag, NodeIndex, Walker};
 use regex::Regex;
@@ -387,9 +388,11 @@ impl ToString for Workflow {
 
 fn path_to_workflow_id(path: &str) -> Result<String, GenericError> {
     let re = Regex::new(r"^(.+)\.[^.]+$").unwrap();
+    let workflow_dir = get_cdktr_setting!(CDKTR_WORKFLOW_DIR);
     match re.captures(&path).map(|caps| {
         let mut stem = caps[1].to_string();
-        if stem.starts_with('/') {
+        stem = stem.replace(&workflow_dir, "");
+        while stem.starts_with('/') | stem.starts_with('.') {
             stem.remove(0);
         }
         stem.replace(['/', '\\'], ".")
