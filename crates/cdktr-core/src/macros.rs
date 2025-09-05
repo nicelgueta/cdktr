@@ -1,14 +1,14 @@
 #[macro_export]
 macro_rules! get_cdktr_setting {
     ($setting:ident) => {
-        env::var(stringify!($setting)).unwrap_or(cdktr_core::config::$setting.to_string())
+        ::std::env::var(stringify!($setting)).unwrap_or(cdktr_core::config::$setting.to_string())
     };
     ($setting:ident, usize) => {
         match env::var(stringify!($setting)) {
             Ok(v) => match v.parse() {
                 Ok(i) => i,
                 Err(e) => {
-                    warn!(
+                    ::log::warn!(
                         "Env var setting {}, is not a valid unsigned integer. Using default",
                         stringify!($setting)
                     );
