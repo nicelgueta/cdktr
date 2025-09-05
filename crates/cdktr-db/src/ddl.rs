@@ -34,7 +34,6 @@ pub static DDL: [&'static str; 4] = [
     // Create the runinfo - this is an insert only table
     "create table IF NOT EXISTS run_status
     (
-        run_id TEXT,
         object_id TEXT,
         object_instance_id TEXT,
         run_type RunType,

@@ -28,7 +28,7 @@ pub enum PrincipalAPI {
     /// Allows an agent to update the principal with the status of a specific
     /// workflow
     /// Args:
-    ///     agent_id, task_id, task_execution_id, status
+    ///     agent_id, workflow_id, workflow_instance_id, status
     WorkflowStatusUpdate(String, String, String, RunStatus),
     /// Allows an agent to update the principal with the status of a specific
     /// task

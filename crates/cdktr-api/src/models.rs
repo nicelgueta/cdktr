@@ -1,6 +1,42 @@
+use cdktr_db::impl_dbrecordbatch;
 use zeromq::ZmqMessage;
 
 use cdktr_core::models::ZMQArgs;
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct StausUpdate {
+    object_id: String,
+    object_instance_id: String,
+    run_type: String, // TODO use enum in the arrow record batch: RunType,
+    status: String,   // TODO use enum in the arrow record batch: RunStatus,
+    timestamp_ms: u64,
+}
+impl StausUpdate {
+    pub fn new(
+        object_id: String,
+        object_instance_id: String,
+        run_type: String, // TODO use enum in the arrow record batch: RunType,
+        status: String,   // TODO use enum in the arrow record batch: RunStatus,
+        timestamp_ms: u64,
+    ) -> Self {
+        Self {
+            object_id,
+            object_instance_id,
+            run_type,
+            status,
+            timestamp_ms,
+        }
+    }
+}
+impl_dbrecordbatch!(
+    StausUpdate, Vec<StausUpdate>, {
+        object_id=> Utf8,
+        object_instance_id => Utf8,
+        run_type => Utf8,
+        status => Utf8,
+        timestamp_ms => UInt64,
+    }
+);
 
 #[derive(Debug)]
 pub enum RepReqError {

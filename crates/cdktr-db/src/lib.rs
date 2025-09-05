@@ -32,7 +32,7 @@ macro_rules! impl_dbrecordbatch {
             // add more types
         }
         impl ::cdktr_db::DBRecordBatch<$struct> for $vec {
-            fn from_record_batch(batch: RecordBatch) -> Result<$vec, GenericError> {
+            fn from_record_batch(batch: ::duckdb::arrow::array::RecordBatch) -> Result<$vec, ::cdktr_core::exceptions::GenericError> {
                 $(
                     let $field = batch
                         .column(batch.schema().index_of(stringify!($field)).unwrap())
@@ -50,9 +50,9 @@ macro_rules! impl_dbrecordbatch {
                     .collect())
             }
 
-            fn to_record_batch(&self) -> Result<RecordBatch, GenericError> {
-                let schema = Arc::new(Schema::new(vec![
-                    $(Field::new(stringify!($field), ::duckdb::arrow::datatypes::DataType::$arrow_ty, false)),*
+            fn to_record_batch(&self) -> Result<::duckdb::arrow::array::RecordBatch, ::cdktr_core::exceptions::GenericError> {
+                let schema = ::std::sync::Arc::new(::duckdb::arrow::datatypes::Schema::new(vec![
+                    $(::duckdb::arrow::datatypes::Field::new(stringify!($field), ::duckdb::arrow::datatypes::DataType::$arrow_ty, false)),*
                 ]));
 
                 $(
@@ -66,11 +66,11 @@ macro_rules! impl_dbrecordbatch {
                 }
 
                 let arrays = vec![
-                    $(Arc::new($field.finish()) as _),*
+                    $(::std::sync::Arc::new($field.finish()) as _),*
                 ];
 
-                Ok(RecordBatch::try_new(schema, arrays).map_err(|e| {
-                    GenericError::DBError(format!(
+                Ok(::duckdb::arrow::array::RecordBatch::try_new(schema, arrays).map_err(|e| {
+                    ::cdktr_core::exceptions::GenericError::DBError(format!(
                         "Failed to create arrow record batch for db insertion. Orig error: {}",
                         e
                     ))

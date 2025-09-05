@@ -1,7 +1,7 @@
 use std::time::{Duration, SystemTime};
 
 use cdktr_core::exceptions::GenericError;
-use cdktr_db::DBClient;
+use cdktr_db::{DBClient, DBRecordBatch};
 use duckdb::Connection;
 use log::{debug, warn};
 

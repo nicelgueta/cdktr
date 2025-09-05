@@ -1,8 +1,11 @@
-use cdktr_api::models::ClientResponseMessage;
+use std::time::SystemTime;
+
+use cdktr_api::models::{ClientResponseMessage, StausUpdate};
 use cdktr_core::{
-    models::RunStatus,
+    models::{RunStatus, RunType},
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
+use cdktr_db::DBClient;
 use cdktr_workflow::{Workflow, WorkflowStore};
 /// API module to provide all of the principal message handling
 /// utilities
@@ -17,7 +20,7 @@ pub async fn handle_list_workflows(workflows: &WorkflowStore) -> (ClientResponse
 }
 
 pub async fn handle_agent_task_status_update(
-    live_agents: AgentPriorityQueue,
+    db_client: DBClient,
     task_id: &str,
     status: &RunStatus,
 ) -> (ClientResponseMessage, usize) {
@@ -31,17 +34,29 @@ pub async fn handle_agent_task_status_update(
 }
 
 pub async fn handle_agent_workflow_status_update(
-    live_agents: AgentPriorityQueue,
-    task_id: &str,
-    status: &RunStatus,
+    db_client: DBClient,
+    workflow_id: String,
+    workflow_instance_id: String,
+    status: RunStatus,
 ) -> (ClientResponseMessage, usize) {
-    // TODO: do something with the task id.
-    //
-    // TODO
-    (
-        ClientResponseMessage::SuccessWithPayload("TBD".to_string()),
-        0,
-    )
+    let item = StausUpdate::new(
+        workflow_id,
+        workflow_instance_id,
+        RunType::Workflow.to_string(),
+        status.to_string(),
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
+    );
+    let batch = vec![item];
+    match db_client.batch_load("run_status", batch).await {
+        Ok(()) => (ClientResponseMessage::Success, 0),
+        Err(e) => (
+            ClientResponseMessage::ServerError(format!("Failed to update task statuses: {:?}", e)),
+            0,
+        ),
+    }
 }
 
 /// handler for the principal to place a workflow task on the queue ready for pick-up by a worker

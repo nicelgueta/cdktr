@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use cdktr_core::{
     exceptions::{GenericError, ZMQParseError, cdktr_result},
-    models::ZMQArgs,
+    models::{RunStatus, RunType, ZMQArgs},
     zmq_helpers::format_zmq_msg_str,
 };
 use cdktr_db::impl_dbrecordbatch;
 use duckdb::arrow::{
     array::RecordBatch,
-    datatypes::{DataType, Field, Schema},
+    datatypes::{Field, Schema},
 };
 use zeromq::ZmqMessage;
 
@@ -23,7 +23,6 @@ pub struct LogMessage {
     pub level: String,
     pub payload: String,
 }
-
 impl_dbrecordbatch!(
     LogMessage, Vec<LogMessage>, {
         workflow_id => Utf8,
@@ -36,7 +35,6 @@ impl_dbrecordbatch!(
         payload =>Utf8,
     }
 );
-
 impl LogMessage {
     pub fn new(
         workflow_id: String,

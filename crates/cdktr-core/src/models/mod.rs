@@ -25,7 +25,21 @@ impl FlowExecutionResult {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
+pub enum RunType {
+    Workflow,
+    Task,
+}
+impl RunType {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Workflow => "Workflow".to_string(),
+            Self::Task => "Task".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum RunStatus {
     PENDING,
     RUNNING,

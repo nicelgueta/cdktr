@@ -37,7 +37,7 @@ pub async fn start_persistence_loop(db_client: DBClient, mut logs_queue: AsyncQu
         match persist_cache(&db_client, logs_to_persist).await {
             Ok(()) => (),
             Err(failed_batch) => {
-                logs_queue.put_front_multiple(failed_batch);
+                logs_queue.put_front_multiple(failed_batch).await;
                 warn!("Failed to persist logs to db - will retry on next interval")
                 //
             }

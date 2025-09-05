@@ -673,6 +673,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cdktr-core",
+ "cdktr-db",
+ "duckdb",
  "env_logger",
  "log",
  "zeromq",
