@@ -26,22 +26,22 @@ impl FlowExecutionResult {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum TaskStatus {
+pub enum RunStatus {
     PENDING,
     RUNNING,
     WAITING,
     COMPLETED,
     FAILED,
 }
-impl TryFrom<String> for TaskStatus {
+impl TryFrom<String> for RunStatus {
     type Error = exceptions::GenericError;
     fn try_from(value: String) -> Result<Self, exceptions::GenericError> {
         match value.as_str() {
-            "PENDING" => Ok(TaskStatus::PENDING),
-            "RUNNING" => Ok(TaskStatus::RUNNING),
-            "WAITING" => Ok(TaskStatus::WAITING),
-            "COMPLETED" => Ok(TaskStatus::COMPLETED),
-            "FAILED" => Ok(TaskStatus::FAILED),
+            "PENDING" => Ok(RunStatus::PENDING),
+            "RUNNING" => Ok(RunStatus::RUNNING),
+            "WAITING" => Ok(RunStatus::WAITING),
+            "COMPLETED" => Ok(RunStatus::COMPLETED),
+            "FAILED" => Ok(RunStatus::FAILED),
             _ => Err(exceptions::GenericError::ParseError(format!(
                 "Unrecognised task status: {}",
                 value
@@ -49,14 +49,14 @@ impl TryFrom<String> for TaskStatus {
         }
     }
 }
-impl TaskStatus {
+impl RunStatus {
     pub fn to_string(&self) -> String {
         match self {
-            TaskStatus::PENDING => String::from("PENDING"),
-            TaskStatus::RUNNING => String::from("RUNNING"),
-            TaskStatus::WAITING => String::from("WAITING"),
-            TaskStatus::COMPLETED => String::from("COMPLETED"),
-            TaskStatus::FAILED => String::from("FAILED"),
+            RunStatus::PENDING => String::from("PENDING"),
+            RunStatus::RUNNING => String::from("RUNNING"),
+            RunStatus::WAITING => String::from("WAITING"),
+            RunStatus::COMPLETED => String::from("COMPLETED"),
+            RunStatus::FAILED => String::from("FAILED"),
         }
     }
 }

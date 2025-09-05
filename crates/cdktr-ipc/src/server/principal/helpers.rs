@@ -1,6 +1,6 @@
 use cdktr_api::models::ClientResponseMessage;
 use cdktr_core::{
-    models::TaskStatus,
+    models::RunStatus,
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
 };
 use cdktr_workflow::{Workflow, WorkflowStore};
@@ -19,7 +19,7 @@ pub async fn handle_list_workflows(workflows: &WorkflowStore) -> (ClientResponse
 pub async fn handle_agent_task_status_update(
     live_agents: AgentPriorityQueue,
     task_id: &str,
-    status: &TaskStatus,
+    status: &RunStatus,
 ) -> (ClientResponseMessage, usize) {
     // TODO: do something with the task id.
     //
@@ -33,7 +33,7 @@ pub async fn handle_agent_task_status_update(
 pub async fn handle_agent_workflow_status_update(
     live_agents: AgentPriorityQueue,
     task_id: &str,
-    status: &TaskStatus,
+    status: &RunStatus,
 ) -> (ClientResponseMessage, usize) {
     // TODO: do something with the task id.
     //

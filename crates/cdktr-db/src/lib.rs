@@ -1,17 +1,83 @@
 use cdktr_core::exceptions::GenericError;
-use duckdb::{Connection, Params, arrow::array::RecordBatch};
+use duckdb::{Connection, Params, arrow};
 use log::warn;
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard};
 
 mod ddl;
 
-pub trait DBRecordBatch<T>
-where
-    Self: Sized,
-{
-    fn to_record_batch(&self) -> Result<RecordBatch, GenericError>;
-    fn from_record_batch(rb: RecordBatch) -> Result<Self, GenericError>;
+pub trait DBRecordBatch<T> {
+    fn from_record_batch(batch: arrow::array::RecordBatch) -> Result<Vec<T>, GenericError>;
+    fn to_record_batch(&self) -> Result<arrow::array::RecordBatch, GenericError>;
+}
+
+/// Proc macro to conveniently provide the implementation for converting
+/// a given struct to a record batch for easy loading into the database
+#[macro_export]
+macro_rules! impl_dbrecordbatch {
+    (
+        $struct:ident, $vec:ty, {
+            $($field:ident => $arrow_ty:ident),* $(,)?
+        }
+    ) => {
+        macro_rules! builder_path {
+            (UInt64) => { ::duckdb::arrow::array::UInt64Builder };
+            (Utf8) => { ::duckdb::arrow::array::StringBuilder };
+            // add more types
+        }
+
+        macro_rules! array_builder {
+            (UInt64) => { ::duckdb::arrow::array::UInt64Array };
+            (Utf8) => { ::duckdb::arrow::array::StringArray };
+            // add more types
+        }
+        impl ::cdktr_db::DBRecordBatch<$struct> for $vec {
+            fn from_record_batch(batch: RecordBatch) -> Result<$vec, GenericError> {
+                $(
+                    let $field = batch
+                        .column(batch.schema().index_of(stringify!($field)).unwrap())
+                        .as_any()
+                        .downcast_ref::<array_builder!($arrow_ty)>()
+                        .unwrap();
+                )*
+
+                Ok((0..batch.num_rows())
+                    .map(|i| $struct {
+                        $(
+                            $field: $field.value(i).into(),
+                        )*
+                    })
+                    .collect())
+            }
+
+            fn to_record_batch(&self) -> Result<RecordBatch, GenericError> {
+                let schema = Arc::new(Schema::new(vec![
+                    $(Field::new(stringify!($field), ::duckdb::arrow::datatypes::DataType::$arrow_ty, false)),*
+                ]));
+
+                $(
+                    let mut $field = <builder_path!($arrow_ty)>::new();
+                )*
+
+                for item in self {
+                    $(
+                        $field.append_value(item.$field.clone());
+                    )*
+                }
+
+                let arrays = vec![
+                    $(Arc::new($field.finish()) as _),*
+                ];
+
+                Ok(RecordBatch::try_new(schema, arrays).map_err(|e| {
+                    GenericError::DBError(format!(
+                        "Failed to create arrow record batch for db insertion. Orig error: {}",
+                        e
+                    ))
+                })?)
+            }
+        }
+    };
 }
 
 /// Thread-safe db client mutex to be shared across a cdktr principal
@@ -86,7 +152,7 @@ impl DBClient {
 fn gen_ddl<'a>(cnxn: &'a Connection) -> Result<(), GenericError> {
     for ddl_statement in ddl::DDL {
         cnxn.execute(ddl_statement, [])
-            .map_err(|e| GenericError::DBError(e.to_string()))?;
+            .map_err(|e| GenericError::DBQueryStatementError(e.to_string()))?;
     }
     Ok(())
 }
