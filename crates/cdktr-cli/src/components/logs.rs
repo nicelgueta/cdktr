@@ -56,9 +56,9 @@ pub struct LogArgs {
 
 pub async fn handle_logs(args: LogArgs) {
     let print_func = if args.verbose {
-        |msg: LogMessage| println!("{}", msg.format())
-    } else {
         |msg: LogMessage| println!("{}", msg.format_full())
+    } else {
+        |msg: LogMessage| println!("{}", msg.format())
     };
 
     if args.tail {
