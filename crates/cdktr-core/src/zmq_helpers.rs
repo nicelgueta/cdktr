@@ -130,11 +130,26 @@ pub async fn push_with_timeout(
     duration: Duration,
     msg: ZmqMessage,
 ) -> Result<(), GenericError> {
-    println!("hello");
     let push_res = timeout(duration, push_socket.send(msg)).await;
     match push_res {
         Ok(r) => match r {
             Ok(()) => Ok(()),
+            Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
+                e.to_string(),
+            ))),
+        },
+        Err(_e) => Err(GenericError::TimeoutError),
+    }
+}
+
+pub async fn sub_with_timeout(
+    sub_socket: &mut SubSocket,
+    duration: Duration,
+) -> Result<ZmqMessage, GenericError> {
+    let push_res = timeout(duration, sub_socket.recv()).await;
+    match push_res {
+        Ok(r) => match r {
+            Ok(zmq_msg) => Ok(zmq_msg),
             Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
                 e.to_string(),
             ))),
