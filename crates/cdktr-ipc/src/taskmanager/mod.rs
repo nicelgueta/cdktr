@@ -233,29 +233,18 @@ impl TaskManager {
                     )
                     .await?;
                     read_handles.spawn(async move {
+                        let mut task_logger = logs_pub
+                            .get_task_logger(&task_name, &task_execution_id)
+                            .await;
                         while let Some(msg) = task_exe.wait_stdout().await {
                             let log_msg = format!("STDOUT {msg}");
                             info!("{}", &log_msg);
-                            logs_pub
-                                .pub_msg(
-                                    "INFO".to_string(),
-                                    task_name.clone(),
-                                    task_execution_id.clone(),
-                                    log_msg,
-                                )
-                                .await
+                            task_logger.info(&log_msg).await;
                         }
                         while let Some(msg) = task_exe.wait_stderr().await {
                             let log_msg = format!("STDERR {msg}");
                             error!("{}", &log_msg);
-                            logs_pub
-                                .pub_msg(
-                                    "ERROR".to_string(),
-                                    task_name.clone(),
-                                    task_execution_id.clone(),
-                                    log_msg,
-                                )
-                                .await
+                            task_logger.error(&log_msg).await;
                         }
                         info!("Ended task {task_execution_id} ({task_name})");
                     });

@@ -111,18 +111,18 @@ mod tests {
             .unwrap();
             let _ = logs_publisher
                 .pub_msg(
-                    "INFO".to_string(),
-                    test_task_name.to_string(),
-                    test_task_instance_id.to_string(),
-                    "test message 1".to_string(),
+                    "INFO",
+                    test_task_name,
+                    test_task_instance_id,
+                    "test message 1",
                 )
                 .await;
             let _ = logs_publisher
                 .pub_msg(
-                    "DEBUG".to_string(),
-                    test_task_name.to_string(),
-                    test_task_instance_id.to_string(),
-                    "test message 2".to_string(),
+                    "DEBUG",
+                    test_task_name,
+                    test_task_instance_id,
+                    "test message 2",
                 )
                 .await;
             Ok(())

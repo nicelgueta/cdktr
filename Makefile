@@ -14,6 +14,8 @@ commit:
 	git add $(shell git diff --name-only --cached | grep '.rs$$')
 push: test
 
+build:
+	cargo build --release
 principal:
 	cargo run start -i principal
 agent:
@@ -22,3 +24,5 @@ ui:
 	cargo run ui
 pycli:
 	cd python-cdktr && uv run cli_zmq.py
+run-release:
+	./target/release/cdktr-cli

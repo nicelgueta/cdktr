@@ -40,7 +40,7 @@ impl EventListener<Task> for Scheduler {
 
             // put this component to sleep until the allotted time
             info!(
-                "Next task `{}` scheduled to run at {}",
+                "Next task `{}` scheduled to run:  {}",
                 self.next_peek.0,
                 DateTime::from_timestamp_millis(self.next_peek.1)
                     .unwrap()

@@ -11,6 +11,44 @@ use zeromq::{PushSocket, SocketSend};
 
 use crate::log_manager::model::LogMessage;
 
+pub struct TaskLogger<'a, 'b> {
+    task_name: &'a str,
+    task_instance_id: &'a str,
+    publisher: &'b mut LogsPublisher,
+}
+
+impl<'a, 'b> TaskLogger<'a, 'b> {
+    fn new(
+        publisher: &'b mut LogsPublisher,
+        task_name: &'a str,
+        task_instance_id: &'a str,
+    ) -> Self {
+        Self {
+            publisher,
+            task_name,
+            task_instance_id,
+        }
+    }
+
+    pub async fn info(&mut self, msg: &str) {
+        self.publisher
+            .pub_msg("INFO", self.task_name, self.task_instance_id, msg)
+            .await
+    }
+
+    pub async fn warn(&mut self, msg: &str) {
+        self.publisher
+            .pub_msg("WARNING", self.task_name, self.task_instance_id, msg)
+            .await
+    }
+
+    pub async fn error(&mut self, msg: &str) {
+        self.publisher
+            .pub_msg("ERROR", self.task_name, self.task_instance_id, msg)
+            .await
+    }
+}
+
 pub struct LogsPublisher {
     prin_host: String,
     logs_listen_port: usize,
@@ -41,15 +79,23 @@ impl LogsPublisher {
         })
     }
 
+    pub async fn get_task_logger<'a, 'b>(
+        &'b mut self,
+        task_name: &'a str,
+        task_instance_id: &'a str,
+    ) -> TaskLogger<'a, 'b> {
+        TaskLogger::new(self, task_name, task_instance_id)
+    }
+
     /// Publishes a log message to the principal server
     /// If it fails to send then it will store it in a local queue
     /// and attempt to resend it next time a new message is published
     pub async fn pub_msg(
         &mut self,
-        level: String,
-        task_name: String,
-        task_instance_id: String,
-        msg: String,
+        level: &str,
+        task_name: &str,
+        task_instance_id: &str,
+        msg: &str,
     ) {
         let _ = self.check_and_clear_local_messages().await;
         let timestamp_ms = SystemTime::now()
@@ -60,11 +106,11 @@ impl LogsPublisher {
             self.workflow_id.clone(),
             self.workflow_name.clone(),
             self.workflow_instance_id.clone(),
-            task_name.clone(),
-            task_instance_id.clone(),
+            task_name.to_string(),
+            task_instance_id.to_string(),
             timestamp_ms,
-            level.clone(),
-            msg.clone(),
+            level.to_string(),
+            msg.to_string(),
         );
         match self.push_socket.send(log_msg.into()).await {
             // failed to push to socket so log internally
@@ -73,11 +119,11 @@ impl LogsPublisher {
                 self.workflow_id.clone(),
                 self.workflow_name.clone(),
                 self.workflow_instance_id.clone(),
-                task_name,
-                task_instance_id,
+                task_name.to_string(),
+                task_instance_id.to_string(),
                 timestamp_ms,
-                level,
-                msg,
+                level.to_string(),
+                msg.to_string(),
             )),
             Ok(()) => (),
         }
