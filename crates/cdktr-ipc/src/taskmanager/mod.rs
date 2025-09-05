@@ -211,6 +211,7 @@ impl TaskManager {
                     let mut task_exe = loop {
                         let task_exe_result = run_in_executor(
                             task_tracker.clone(),
+                            agent_id.clone(),
                             task_id.clone(),
                             task.clone(),
                             task_execution_id.clone(),
@@ -318,17 +319,33 @@ impl TaskManager {
 /// of member of the Task enum it pertains to.
 async fn run_in_executor(
     mut task_tracker: ThreadSafeTaskTracker,
+    agent_id: String,
     task_id: String,
     task: Task,
     task_execution_id: String,
 ) -> Result<TaskExecutionHandle, TaskManagerError> {
     let (handle, stdout_rx, stderr_rx) = {
+        let principal_uri = get_principal_uri();
         let (stdout_tx, stdout_rx) = mpsc::channel(32);
         let (stderr_tx, stderr_rx) = mpsc::channel(32);
         let executable_task = task.get_exe_task();
         let task_exe_id_clone = task_execution_id.clone();
         let handle = tokio::spawn(async move {
             info!("Spawning task {task_exe_id_clone}");
+            if PrincipalAPI::TaskStatusUpdate(
+                agent_id.clone(),
+                task_id.clone(),
+                task_execution_id.clone(),
+                RunStatus::RUNNING,
+            )
+            .send(&principal_uri, get_default_timeout())
+            .await
+            .is_err()
+            {
+                error!(
+                    "Failed to send status update of RUNNING to principal for task: {task_id}/{task_execution_id}"
+                )
+            };
             let flow_result = executable_task.run(stdout_tx, stderr_tx).await;
             match flow_result {
                 FlowExecutionResult::SUCCESS => {
@@ -336,6 +353,20 @@ async fn run_in_executor(
                         "Successfully completed task: {}->{}",
                         &task_id, &task_execution_id
                     );
+                    if PrincipalAPI::TaskStatusUpdate(
+                        agent_id.clone(),
+                        task_id.clone(),
+                        task_execution_id.clone(),
+                        RunStatus::COMPLETED,
+                    )
+                    .send(&principal_uri, get_default_timeout())
+                    .await
+                    .is_err()
+                    {
+                        error!(
+                            "Failed to send status update of COMPLETED to principal for task: {task_id}/{task_execution_id}"
+                        )
+                    };
                     match task_tracker.mark_success(&task_id) {
                         Ok(_) => Ok(()),
                         Err(e) => Err(TaskManagerError::FailedTaskError(format!(
@@ -349,6 +380,20 @@ async fn run_in_executor(
                         "Task {}->{} experienced a critical failure. Error: {}",
                         &task_id, &task_execution_id, err_msg
                     );
+                    if PrincipalAPI::TaskStatusUpdate(
+                        agent_id.clone(),
+                        task_id.clone(),
+                        task_execution_id.clone(),
+                        RunStatus::FAILED,
+                    )
+                    .send(&principal_uri, get_default_timeout())
+                    .await
+                    .is_err()
+                    {
+                        error!(
+                            "Failed to send status update of FAILED to principal for task: {task_id}/{task_execution_id}"
+                        )
+                    };
                     match task_tracker.mark_failed(&task_id) {
                         Ok(_) => {
                             warn!("Marked {}->{} as failure", &task_id, &task_execution_id);
@@ -365,6 +410,20 @@ async fn run_in_executor(
                         "Task {}->{} crashed. Error: {}",
                         &task_id, &task_execution_id, err_msg
                     );
+                    if PrincipalAPI::TaskStatusUpdate(
+                        agent_id.clone(),
+                        task_id.clone(),
+                        task_execution_id.clone(),
+                        RunStatus::FAILED,
+                    )
+                    .send(&principal_uri, get_default_timeout())
+                    .await
+                    .is_err()
+                    {
+                        error!(
+                            "Failed to send status update of CRASHED to principal for task: {task_id}/{task_execution_id}"
+                        )
+                    };
                     match task_tracker.mark_failed(&task_id) {
                         Ok(_) => {
                             warn!("Marked {}->{} as failure", &task_id, &task_execution_id);

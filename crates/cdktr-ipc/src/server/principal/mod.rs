@@ -90,8 +90,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 // TODO do something with agent id
                 helpers::handle_agent_task_status_update(
                     self.db_client.clone(),
-                    &task_instance_id,
-                    &status,
+                    task_id,
+                    task_instance_id,
+                    status,
                 )
                 .await
             }

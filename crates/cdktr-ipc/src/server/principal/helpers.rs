@@ -21,16 +21,28 @@ pub async fn handle_list_workflows(workflows: &WorkflowStore) -> (ClientResponse
 
 pub async fn handle_agent_task_status_update(
     db_client: DBClient,
-    task_id: &str,
-    status: &RunStatus,
+    task_id: String,
+    task_instance_id: String,
+    status: RunStatus,
 ) -> (ClientResponseMessage, usize) {
-    // TODO: do something with the task id.
-    //
-    // TODO
-    (
-        ClientResponseMessage::SuccessWithPayload("TBD".to_string()),
-        0,
-    )
+    let item = StausUpdate::new(
+        task_id,
+        task_instance_id,
+        RunType::Task.to_string(),
+        status.to_string(),
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
+    );
+    let batch = vec![item];
+    match db_client.batch_load("run_status", batch).await {
+        Ok(()) => (ClientResponseMessage::Success, 0),
+        Err(e) => (
+            ClientResponseMessage::ServerError(format!("Failed to update task statuses: {:?}", e)),
+            0,
+        ),
+    }
 }
 
 pub async fn handle_agent_workflow_status_update(
@@ -53,7 +65,10 @@ pub async fn handle_agent_workflow_status_update(
     match db_client.batch_load("run_status", batch).await {
         Ok(()) => (ClientResponseMessage::Success, 0),
         Err(e) => (
-            ClientResponseMessage::ServerError(format!("Failed to update task statuses: {:?}", e)),
+            ClientResponseMessage::ServerError(format!(
+                "Failed to update workflow statuses: {:?}",
+                e
+            )),
             0,
         ),
     }
