@@ -46,6 +46,7 @@ pub enum RunStatus {
     WAITING,
     COMPLETED,
     FAILED,
+    CRASHED,
 }
 impl TryFrom<String> for RunStatus {
     type Error = exceptions::GenericError;
@@ -56,6 +57,7 @@ impl TryFrom<String> for RunStatus {
             "WAITING" => Ok(RunStatus::WAITING),
             "COMPLETED" => Ok(RunStatus::COMPLETED),
             "FAILED" => Ok(RunStatus::FAILED),
+            "CRASHED" => Ok(RunStatus::CRASHED),
             _ => Err(exceptions::GenericError::ParseError(format!(
                 "Unrecognised task status: {}",
                 value
@@ -71,6 +73,7 @@ impl RunStatus {
             RunStatus::WAITING => String::from("WAITING"),
             RunStatus::COMPLETED => String::from("COMPLETED"),
             RunStatus::FAILED => String::from("FAILED"),
+            RunStatus::CRASHED => String::from("CRASHED"),
         }
     }
 }

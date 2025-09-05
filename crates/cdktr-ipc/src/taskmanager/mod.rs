@@ -1,5 +1,7 @@
+use cdktr_api::{API, PrincipalAPI};
 use cdktr_core::get_cdktr_setting;
-use cdktr_core::models::FlowExecutionResult;
+use cdktr_core::models::{FlowExecutionResult, RunStatus};
+use cdktr_core::utils::{get_default_timeout, get_principal_uri};
 use cdktr_core::{exceptions::GenericError, models::traits::Executor};
 use cdktr_workflow::Task;
 use log::{debug, error, info, warn};
@@ -160,11 +162,29 @@ impl TaskManager {
                     }
                 }
             };
+
             debug!("MAX WF -> {}", self.max_concurrent_workflows);
             let name_gen_cl = self.name_gen.clone();
             // spawn workflow thread so we can return to request another workflow
+            let agent_id = self.instance_id.clone();
+            let workflow_id = workflow.id().clone();
             let wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
                 let workflow_instance_id = { name_gen_cl.lock().await.next() };
+                let principal_uri = get_principal_uri();
+                if PrincipalAPI::WorkflowStatusUpdate(
+                    agent_id.clone(),
+                    workflow_id.clone(),
+                    workflow_instance_id.clone(),
+                    RunStatus::RUNNING,
+                )
+                .send(&principal_uri, get_default_timeout())
+                .await
+                .is_err()
+                {
+                    error!(
+                        "Failed to send status update of RUNNING to principal for: {workflow_id}/{workflow_instance_id}"
+                    )
+                };
                 let mut task_tracker = ThreadSafeTaskTracker::from_workflow(&workflow)?;
                 if task_tracker.is_finished() {
                     warn!(
@@ -217,6 +237,20 @@ impl TaskManager {
                                             error!(
                                                 "Error marking task as failure - aborting workflow"
                                             );
+                                            if PrincipalAPI::WorkflowStatusUpdate(
+                                                agent_id.clone(),
+                                                workflow_id.clone(),
+                                                workflow_instance_id.clone(),
+                                                RunStatus::CRASHED,
+                                            )
+                                            .send(&principal_uri, get_default_timeout())
+                                            .await
+                                            .is_err()
+                                            {
+                                                error!(
+                                                    "Failed to send status update of CRASHED to principal for: {workflow_id}/{workflow_instance_id}"
+                                                )
+                                            };
                                             return Err(e);
                                         }
                                     }
@@ -260,6 +294,20 @@ impl TaskManager {
                     workflow.name(),
                     workflow_instance_id,
                 );
+                if PrincipalAPI::WorkflowStatusUpdate(
+                    agent_id.clone(),
+                    workflow_id.clone(),
+                    workflow_instance_id.clone(),
+                    RunStatus::COMPLETED,
+                )
+                .send(&principal_uri, get_default_timeout())
+                .await
+                .is_err()
+                {
+                    error!(
+                        "Failed to send status update of COMPLETED to principal for: {workflow_id}/{workflow_instance_id}"
+                    )
+                };
                 Ok(())
             });
         }
