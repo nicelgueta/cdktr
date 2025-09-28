@@ -4,7 +4,7 @@ macro_rules! get_cdktr_setting {
         ::std::env::var(stringify!($setting)).unwrap_or(cdktr_core::config::$setting.to_string())
     };
     ($setting:ident, usize) => {
-        match env::var(stringify!($setting)) {
+        match ::std::env::var(stringify!($setting)) {
             Ok(v) => match v.parse() {
                 Ok(i) => i,
                 Err(e) => {
@@ -25,7 +25,7 @@ macro_rules! internal_get_cdktr_setting {
         env::var(stringify!($setting)).unwrap_or(crate::config::$setting.to_string())
     };
     ($setting:ident, usize) => {
-        match env::var(stringify!($setting)) {
+        match ::std::env::var(stringify!($setting)) {
             Ok(v) => match v.parse() {
                 Ok(i) => i,
                 Err(_e) => {

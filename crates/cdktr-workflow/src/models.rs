@@ -310,6 +310,7 @@ impl Workflow {
         self.dag.get_task(task_id)
     }
 
+    // equality values
     pub fn name(&self) -> &String {
         &self.name
     }
@@ -328,6 +329,7 @@ impl Workflow {
             None => None,
         }
     }
+    //
 
     pub fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, GenericError> {
         let start_time = if let Some(t) = &self.start_time {
@@ -369,6 +371,21 @@ impl Workflow {
     pub fn validate(&self) -> Result<(), GenericError> {
         self.start_time_utc()?;
         Ok(())
+    }
+}
+
+impl PartialEq for Workflow {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+            && self.name() == other.name()
+            && self.path() == other.path()
+            && self.cron() == other.cron()
+    }
+    fn ne(&self, other: &Self) -> bool {
+        self.id() != other.id()
+            || self.name() != other.name()
+            || self.path() != other.path()
+            || self.cron() != other.cron()
     }
 }
 

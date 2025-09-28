@@ -108,7 +108,7 @@ impl WorkflowStore {
         let mut inner_mutex = self.inner.lock().await;
         *inner_mutex = get_yaml_map(&self.dir).await;
         debug!(
-            "Workflow store refreshed with {} w orkflows",
+            "Workflow store refreshed with {} workflows",
             inner_mutex.len()
         )
     }

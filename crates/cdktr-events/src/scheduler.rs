@@ -2,14 +2,17 @@ use async_trait::async_trait;
 use cdktr_api::models::ClientResponseMessage;
 use cdktr_api::{API, PrincipalAPI};
 use cdktr_core::exceptions::GenericError;
+use cdktr_core::get_cdktr_setting;
 use cdktr_core::utils::{data_structures::AsyncQueue, get_default_timeout, get_principal_uri};
 use cdktr_workflow::{Task, Workflow};
 use chrono::{DateTime, Utc};
 use cron::Schedule;
-use log::{debug, info};
+use log::{debug, error, info};
 use std::collections::{BinaryHeap, HashMap};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 use tokio::time::sleep;
 
 use crate::traits::EventListener;
@@ -23,79 +26,87 @@ use crate::traits::EventListener;
 /// to read diesel async) to poll the DB for schedules and when it finds flows that
 /// are supposed to start within the next poll interval it queues them in order of
 /// earliest to latest
+#[derive(Clone)]
 pub struct Scheduler {
-    principal_uri: String,
-    workflows: HashMap<String, Workflow>,
-    schedule_priority_queue: BinaryHeap<(i64, String)>,
-    next_peek: (String, i64),
+    workflows_ptr: Arc<Mutex<HashMap<String, Workflow>>>,
+    schedule_priority_queue_ptr: Arc<Mutex<BinaryHeap<(i64, String)>>>,
+    next_peek: Arc<Mutex<(String, i64, bool)>>, // task_id, unix timestamp for start, has been logged
 }
 
 #[async_trait]
 impl EventListener<Task> for Scheduler {
     async fn start_listening(&mut self) -> Result<(), GenericError> {
+        let poll_duration = Duration::from_millis(get_cdktr_setting!(
+            CDKTR_SCHEDULER_START_POLL_FREQUENCY_MS,
+            usize
+        ) as u64);
         loop {
-            let mut ms_to_wait = self.next_peek.1 - Utc::now().timestamp_millis();
-            ms_to_wait = if ms_to_wait < 0 { 0 } else { ms_to_wait };
-            let time_to_wait = Duration::from_millis(ms_to_wait as u64);
-
-            // put this component to sleep until the allotted time
-            info!(
-                "Next task `{}` scheduled to run:  {}",
-                self.next_peek.0,
-                DateTime::from_timestamp_millis(self.next_peek.1)
-                    .unwrap()
-                    .to_rfc2822()
-            );
-            sleep(time_to_wait).await;
-
-            let workflow_id = self.schedule_priority_queue.pop().unwrap().1;
-            if self.next_peek.0 != workflow_id {
-                return Err(GenericError::RuntimeError(format!(
-                    "Popped wrong workflow from the priority queue. Expected {} but got {}",
-                    self.next_peek.0, workflow_id
-                )));
+            while !self.next_workflow_ready().await {
+                let mut next_peek_lock = self.next_peek.lock().await;
+                let logged_to_console = next_peek_lock.2;
+                if !logged_to_console {
+                    (*next_peek_lock).2 = true;
+                    info!(
+                        "Next task `{}` scheduled to run:  {}",
+                        next_peek_lock.0,
+                        DateTime::from_timestamp_millis(next_peek_lock.1)
+                            .unwrap()
+                            .to_rfc2822()
+                    );
+                };
+                drop(next_peek_lock); // release the lock before sleeping
+                sleep(poll_duration).await;
             }
+            let workflow_id = {
+                let mut pqlock = self.schedule_priority_queue_ptr.lock().await;
+                pqlock.pop().unwrap().1
+            };
+            {
+                let next_peek_lock = self.next_peek.lock().await;
+                if next_peek_lock.0 != workflow_id {
+                    return Err(GenericError::RuntimeError(format!(
+                        "Popped wrong workflow from the priority queue. Expected {} but got {}",
+                        next_peek_lock.0, workflow_id
+                    )));
+                }
+            };
             info!("Staging scheduled task: {}", &workflow_id);
             self.run_workflow(&workflow_id).await?;
 
             // add the next run of the same workflow back to priority queue
-            let workflow = self.workflows.get(&workflow_id).unwrap();
-            match workflow.cron() {
-                Some(cron) => {
-                    let next_run = Self::next_run_from_cron(cron, Ok(Utc::now()))?;
-                    // invert the timestamp to make a min heap
-                    self.schedule_priority_queue
-                        .push((-next_run.timestamp_millis(), workflow_id));
-                    // update the peek
-                    let q_top = self.schedule_priority_queue.peek().unwrap();
-                    self.next_peek = (q_top.1.clone(), -q_top.0);
-                }
-                None => continue,
-            };
+            {
+                // lock holds for duration of usage to avoid a refresh coinciding
+                let workflows = self.workflows_ptr.lock().await;
+                let workflow = workflows.get(&workflow_id).unwrap();
+                match workflow.cron() {
+                    Some(cron) => {
+                        let next_run = Self::next_run_from_cron(cron, Ok(Utc::now()))?;
+                        // invert the timestamp to make a min heap
+                        let q_top = {
+                            let mut pqlock = self.schedule_priority_queue_ptr.lock().await;
+                            pqlock.push((-next_run.timestamp_millis(), workflow_id));
+                            // update the peek
+                            pqlock.peek().unwrap().clone()
+                        };
+                        *self.next_peek.lock().await = (q_top.1, -q_top.0, false);
+                    }
+                    None => continue,
+                };
+            }
         }
     }
 }
 impl Scheduler {
     pub async fn new() -> Result<Self, GenericError> {
-        let principal_uri = get_principal_uri();
-        let api = PrincipalAPI::ListWorkflowStore;
-        let response = api.send(&principal_uri, get_default_timeout()).await?;
-        let workflows: HashMap<String, Workflow> = match response {
-            ClientResponseMessage::SuccessWithPayload(wfs) => {
-                serde_json::from_str(&wfs).map_err(|e| {
-                    GenericError::ParseError(format!(
-                        "Failed to read workflows from principal message. Not valid JSON: {}",
-                        e.to_string()
-                    ))
-                })
-            }
-            other => Err(GenericError::WorkflowError(other.to_string())),
-        }?;
+        let principal_uri: String = get_principal_uri();
+        let workflows = Self::get_workflows(&principal_uri).await?;
+        let workflows_len = workflows.len();
         info!(
             "Scheduler found {} workflows with active schedules",
-            (&workflows).len()
+            workflows_len
         );
         let schedule_priority_queue = Self::build_schedule_queue(&workflows)?;
+        let workflows_ptr = Arc::new(Mutex::new(workflows));
         if schedule_priority_queue.is_empty() {
             return Err(GenericError::NoDataException(
                 "No workflows have valid schedules. Scheduler cannot run".to_string(),
@@ -103,11 +114,11 @@ impl Scheduler {
         };
         // flip sign to get the original value
         let q_top = schedule_priority_queue.peek().unwrap();
-        let next_peek = (q_top.1.clone(), -q_top.0);
+        let next_peek = Arc::new(Mutex::new((q_top.1.clone(), -q_top.0, false)));
+        let schedule_priority_queue_ptr = Arc::new(Mutex::new(schedule_priority_queue));
         Ok(Self {
-            principal_uri,
-            workflows,
-            schedule_priority_queue,
+            workflows_ptr,
+            schedule_priority_queue_ptr,
             next_peek,
         })
     }
@@ -151,6 +162,80 @@ impl Scheduler {
             ))
         }?;
         Ok(next_run)
+    }
+
+    async fn get_workflows(principal_uri: &str) -> Result<HashMap<String, Workflow>, GenericError> {
+        let api = PrincipalAPI::ListWorkflowStore;
+        let response = api.send(principal_uri, get_default_timeout()).await?;
+        match response {
+            ClientResponseMessage::SuccessWithPayload(wfs) => {
+                serde_json::from_str(&wfs).map_err(|e| {
+                    GenericError::ParseError(format!(
+                        "Failed to read workflows from principal message. Not valid JSON: {}",
+                        e.to_string()
+                    ))
+                })
+            }
+            other => Err(GenericError::WorkflowError(other.to_string())),
+        }
+    }
+
+    pub async fn spawn_refresh_loop(&self) {
+        info!("Spawning scheduler workflow refresh loop");
+        let scheduler_ptr = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = refresh_loop(scheduler_ptr).await {
+                error!("Scheduler efresh loop crashed: {}", e)
+            };
+        });
+    }
+
+    async fn next_workflow_ready(&self) -> bool {
+        self.next_peek.lock().await.1 - Utc::now().timestamp_millis() <= 0
+    }
+
+    async fn workflows_match(&self, incoming_workflows: &HashMap<String, Workflow>) -> bool {
+        let workflows_lock = self.workflows_ptr.lock().await;
+        &*workflows_lock == incoming_workflows
+    }
+
+    async fn update_schedule_priority_queue(
+        &mut self,
+        incoming_workflows: HashMap<String, Workflow>,
+    ) -> Result<(), GenericError> {
+        debug!("Updating workflow scheduling priority queue");
+        let mut pqlock = self.schedule_priority_queue_ptr.lock().await;
+        *pqlock = Scheduler::build_schedule_queue(&incoming_workflows)?;
+        debug!("PQ rebuilt");
+        (*self.workflows_ptr.lock().await).extend(incoming_workflows.into_iter()); // will override where key already exists
+        let q_top = pqlock.peek().unwrap();
+        *self.next_peek.lock().await = (q_top.1.clone(), -q_top.0, false);
+        Ok(())
+    }
+}
+
+async fn refresh_loop(mut scheduler: Scheduler) -> Result<(), GenericError> {
+    let principal_uri = get_principal_uri();
+    let workflow_refresh_seconds =
+        get_cdktr_setting!(CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S, usize) as u64;
+    loop {
+        let _ = sleep(Duration::from_secs(workflow_refresh_seconds)).await;
+        debug!("checking internal workflow store for new workflows defs");
+        match Scheduler::get_workflows(&principal_uri).await {
+            Ok(wfs) => {
+                if !scheduler.workflows_match(&wfs).await {
+                    info!("Found workflows to refresh from principal");
+                    scheduler.update_schedule_priority_queue(wfs).await;
+                    info!("Successfully refreshed workflows from principal");
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Failed to retrieve workflows from principal: {}",
+                    e.to_string()
+                )
+            }
+        }
     }
 }
 

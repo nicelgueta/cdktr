@@ -3,8 +3,7 @@ use cdktr_core::{
     get_cdktr_setting,
     zmq_helpers::{get_server_tcp_uri, get_zmq_pub, get_zmq_pull},
 };
-use log::{debug, info, warn};
-use std::env;
+use log::{debug, info, trace, warn};
 use zeromq::{PubSocket, PullSocket, SocketRecv, SocketSend};
 
 use crate::log_manager::model::LogMessage;
@@ -48,7 +47,7 @@ impl LogManager {
                             continue;
                         }
                     };
-                    debug!(
+                    trace!(
                         "Received log message on topic {}: {}",
                         &log_message.workflow_instance_id, &log_message.payload
                     );

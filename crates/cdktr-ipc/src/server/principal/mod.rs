@@ -10,8 +10,7 @@ use cdktr_workflow::{Workflow, WorkflowStore};
 use chrono::Utc;
 
 use cdktr_api::PrincipalAPI;
-use log::{debug, info};
-use tokio::sync::Mutex;
+use log::{debug, info, trace};
 
 use crate::log_manager::read_logs;
 
@@ -131,7 +130,7 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 }
             }
         };
-        debug!("Returning ({}): {}", result.1, result.0.to_string());
+        trace!("Returning ({}): {}", result.1, result.0.to_string());
         result
     }
 }

@@ -10,6 +10,7 @@ mod traits;
 pub async fn start_scheduler() -> Result<(), GenericError> {
     let mut scheduler = scheduler::Scheduler::new().await?;
     info!("Starting scheduler");
+    scheduler.spawn_refresh_loop().await;
     scheduler.start_listening().await?;
     Ok(())
 }

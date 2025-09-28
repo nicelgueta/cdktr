@@ -38,7 +38,11 @@
             "args": [
                 "start",
                 "-i", "principal"
-            ]
+            ],
+            "env": {
+                "RUST_LOG": "debug",
+                "CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S": "5"
+            }
         }
     ]
 }

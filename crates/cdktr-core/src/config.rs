@@ -1,10 +1,10 @@
 /// This config file lists out all the default values for the main CDKTR env configs
 /// All can be overridden by either an ENV var of the same name. Some can also be overridden
-/// from the command line. These should only be primitive typess
+/// from the command line. These should only be primitive types
 ///
 
 /// default max number of concurrent workflows an agent can handle
-pub static CDKTR_AGENT_MAX_CONCURRENCY: usize = 2;
+pub static CDKTR_AGENT_MAX_CONCURRENCY: usize = 5;
 
 /// number of times to re-attempt a zmq request
 pub static CDKTR_RETRY_ATTEMPTS: usize = 20;
@@ -31,6 +31,10 @@ pub static CDKTR_WORKFLOW_DIR: &'static str = "workflows";
 /// useful for CICD environments where new workflows are added without
 /// having to bounce any services
 pub static CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S: usize = 60;
+
+/// (low-level config) Interval at which the Scheduler should check whether
+/// a workflow is ready to start
+pub static CDKTR_SCHEDULER_START_POLL_FREQUENCY_MS: usize = 500;
 
 /// Task queue persistence interval. Used in case of failure of the principal
 /// so it can pick up where it left off. Stored in APP DATA directory.
