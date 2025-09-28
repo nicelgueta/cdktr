@@ -7,7 +7,7 @@ edition = "2024"
 cdktr-core = { workspace = true}
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yml = { workspace = true }
+serde_norway = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }

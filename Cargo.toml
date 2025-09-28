@@ -23,7 +23,7 @@ serde_json = "1.0.117"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "io-std", "process", "io-util", "sync", "time"] }
 zeromq = "0.4.1"
 rustyrs = "0.5.5"
-serde_yml = "0.0.12"
+serde_norway = "0.9.42"
 topological-sort = "0.2.2"
 regex = "1.11.1"
 humantime = "2.2.0"

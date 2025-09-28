@@ -135,7 +135,7 @@ mod tests {
         type Error = GenericError;
         fn from_yaml(file_path: &str) -> Result<Self, Self::Error> {
             let obj: MockYamlContent =
-                serde_yml::from_str(&fs::read_to_string(file_path).unwrap()).unwrap();
+                serde_norway::from_str(&fs::read_to_string(file_path).unwrap()).unwrap();
             Ok(obj)
         }
     }

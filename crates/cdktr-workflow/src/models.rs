@@ -281,7 +281,7 @@ impl FromYaml for Workflow {
 }
 impl Workflow {
     pub fn new(path: String, contents: &str) -> Result<Self, GenericError> {
-        let inner_res = serde_yml::from_str::<InnerWorkflow>(contents);
+        let inner_res = serde_norway::from_str::<InnerWorkflow>(contents);
         match inner_res {
             Ok(inner) => {
                 let dag = inner.gen_dag(&inner.name)?;
