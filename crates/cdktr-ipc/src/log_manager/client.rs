@@ -40,7 +40,7 @@ impl LogsClient {
     ) -> Result<(), GenericError> {
         if let Some(to) = loop_timeout {
             if let Err(_e) = tokio::time::timeout(to, self.listen_loop(tx)).await {
-                return Err(GenericError::TimeoutError);
+                return Err(GenericError::PrincipalTimeoutError);
             } else {
                 Ok(())
             }

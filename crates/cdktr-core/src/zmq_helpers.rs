@@ -71,7 +71,7 @@ pub async fn get_zmq_push(endpoint_uri: &str) -> Result<PushSocket, GenericError
         Ok(push_socket)
     })
     .await
-    .map_err(|_e| GenericError::TimeoutError)?;
+    .map_err(|_e| GenericError::ZMQTimeoutError)?;
     push_socket_res
 }
 
@@ -119,7 +119,7 @@ pub async fn send_recv_with_timeout(
                     format!("ZMQ failure: {}", e.to_string()),
                 ))),
             },
-            Err(_e) => Err(GenericError::TimeoutError),
+            Err(_e) => Err(GenericError::ZMQTimeoutError),
         },
         Err(e) => Err(GenericError::RuntimeError(e.to_string())),
     }
@@ -138,7 +138,7 @@ pub async fn push_with_timeout(
                 e.to_string(),
             ))),
         },
-        Err(_e) => Err(GenericError::TimeoutError),
+        Err(_e) => Err(GenericError::ZMQTimeoutError),
     }
 }
 
@@ -154,7 +154,7 @@ pub async fn sub_with_timeout(
                 e.to_string(),
             ))),
         },
-        Err(_e) => Err(GenericError::TimeoutError),
+        Err(_e) => Err(GenericError::ZMQTimeoutError),
     }
 }
 
@@ -196,7 +196,7 @@ mod tests {
         .expect("Encountered join error");
         match res {
             Ok(req) => Ok(req),
-            Err(_e) => Err(GenericError::TimeoutError),
+            Err(_e) => Err(GenericError::ZMQTimeoutError),
         }
     }
 

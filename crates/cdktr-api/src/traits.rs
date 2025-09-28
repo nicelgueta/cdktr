@@ -45,7 +45,15 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
         timeout: Duration,
     ) -> Result<ClientResponseMessage, GenericError> {
         trace!("Requesting @ {} with msg: {}", tcp_uri, self.to_string());
-        let zmq_m = send_recv_with_timeout(tcp_uri.to_string(), self.into(), timeout).await?;
+        let zmq_m = send_recv_with_timeout(tcp_uri.to_string(), self.into(), timeout)
+            .await
+            .map_err(|e| {
+                if let GenericError::ZMQTimeoutError = e {
+                    GenericError::PrincipalTimeoutError
+                } else {
+                    e
+                }
+            })?;
         // dbg!(&zmq_m);
         let cli_msg = ClientResponseMessage::from(zmq_m);
         // dbg!(&cli_msg);

@@ -49,7 +49,7 @@ impl PrincipalClient {
                     error!(
                         "Max reconnect attempts reached - connection with principal has been lost"
                     );
-                    return Err(GenericError::TimeoutError);
+                    return Err(GenericError::PrincipalTimeoutError);
                 }
                 warn!(
                     "Failed to communicate to principal: {} - trying again in {} ms (attempt {} of {})",
@@ -97,7 +97,7 @@ impl PrincipalClient {
                         sleep(sleep_interval).await;
                         continue;
                     }
-                    GenericError::TimeoutError => {
+                    GenericError::PrincipalTimeoutError => {
                         if reconnection_attempts == cdktr_retry_attempts {
                             error!("Max reconnection attempts reached - aborting");
                             return Err(GenericError::RuntimeError(
@@ -150,9 +150,9 @@ impl PrincipalClient {
                 }
             },
             Err(e) => match e {
-                GenericError::TimeoutError => {
+                GenericError::ZMQTimeoutError => {
                     error!("Agent call timed out fetching workflow from principal");
-                    return Err(GenericError::TimeoutError);
+                    return Err(GenericError::PrincipalTimeoutError);
                 }
                 e => {
                     return Err(GenericError::RuntimeError(format!(
