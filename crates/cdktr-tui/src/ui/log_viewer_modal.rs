@@ -258,7 +258,7 @@ impl<'a> LogViewerModal<'a> {
         let visible_height = area.height as usize;
 
         // In live mode with no scroll, show the most recent logs
-        let (start_idx, end_idx) = if self.state.is_live_mode && self.state.scroll_offset == 0 {
+        let (start_idx, end_idx) = if self.state.is_live_mode && self.state.auto_scroll {
             let start = total_logs.saturating_sub(visible_height);
             (start, total_logs)
         } else {
@@ -301,9 +301,17 @@ impl<'a> LogViewerModal<'a> {
         let help_text = if self.state.is_editing {
             "** EDITING ** | Esc:Exit Edit | Tab:Next Field | Enter:Execute | ←→:Move Cursor"
         } else if self.state.is_live_mode {
-            "Esc:Close | t:Toggle Mode | j/k:Scroll | PgUp/PgDn:Page"
+            let auto_scroll_text = if self.state.auto_scroll {
+                "s:Auto-scroll (on)"
+            } else {
+                "s:Auto-scroll (off)"
+            };
+            &format!(
+                "Esc:Close | t:Toggle tail/query mode | {} | PgUp/PgDn:Page",
+                auto_scroll_text
+            )
         } else {
-            "Esc:Close | t:Toggle Mode | e:Edit | Enter:Query | j/k:Scroll | PgUp/PgDn:Page"
+            "Esc:Close | t:Toggle tail/query mode | e:Edit | Enter:Query | j/k:Scroll | PgUp/PgDn:Page"
         };
 
         Paragraph::new(Line::from(vec![Span::styled(

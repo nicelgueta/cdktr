@@ -59,6 +59,9 @@ pub struct LogViewerState {
 
     /// Whether in editing mode (focused on input fields)
     pub is_editing: bool,
+
+    /// Whether auto-scroll is enabled in live mode
+    pub auto_scroll: bool,
 }
 
 impl Default for LogViewerState {
@@ -73,7 +76,7 @@ impl Default for LogViewerState {
         Self {
             is_open: false,
             workflow_id: None,
-            is_live_mode: true, // Default to live mode
+            is_live_mode: false, // Default to query mode
             logs: Vec::new(),
             scroll_offset: 0,
             start_time,
@@ -86,6 +89,7 @@ impl Default for LogViewerState {
             cursor_position: 0,
             error_message: None,
             is_editing: false,
+            auto_scroll: true,
         }
     }
 }
@@ -116,7 +120,7 @@ impl LogViewerStore {
                 state.workflow_id = Some(workflow_id.clone());
                 state.logs.clear();
                 state.scroll_offset = 0;
-                state.is_live_mode = true;
+                state.is_live_mode = false;
                 state.cursor_position = 0;
                 state.error_message = None;
                 state.is_editing = false;
@@ -181,8 +185,12 @@ impl LogViewerStore {
                     if let Some(wf_id) = &state.workflow_id {
                         if &log_msg.workflow_id == wf_id {
                             state.logs.push(log_msg.format_full());
-                            // Auto-scroll to bottom in live mode
-                            state.scroll_offset = 0;
+                            // Auto-scroll to bottom only if auto_scroll is enabled
+                            if state.auto_scroll {
+                                state.scroll_offset = 0;
+                            } else {
+                                state.scroll_offset += 1; // to account for new log to keep in place
+                            }
                         }
                     }
                 }
@@ -197,8 +205,8 @@ impl LogViewerStore {
         let mut state = self.state.write().unwrap();
         state.logs.push(log);
 
-        // Auto-scroll to bottom in live mode
-        if state.is_live_mode && !state.logs.is_empty() {
+        // Auto-scroll to bottom only if auto_scroll is enabled
+        if state.is_live_mode && state.auto_scroll && !state.logs.is_empty() {
             state.scroll_offset = 0;
         }
     }
@@ -214,12 +222,20 @@ impl LogViewerStore {
     pub fn scroll_down(&self, amount: usize) {
         let mut state = self.state.write().unwrap();
         state.scroll_offset = state.scroll_offset.saturating_add(amount);
+        // Disable auto-scroll when user manually scrolls in live mode
+        if state.is_live_mode {
+            state.auto_scroll = false;
+        }
     }
 
     /// Scroll up
     pub fn scroll_up(&self, amount: usize) {
         let mut state = self.state.write().unwrap();
         state.scroll_offset = state.scroll_offset.saturating_sub(amount);
+        // Disable auto-scroll when user manually scrolls in live mode
+        if state.is_live_mode {
+            state.auto_scroll = false;
+        }
     }
 
     /// Update the currently focused input field
@@ -378,6 +394,13 @@ impl LogViewerStore {
         state.end_time = end.with_timezone(&Utc);
 
         Ok(())
+    }
+
+    /// Toggle auto-scroll setting
+    /// In live mode, this controls whether new logs auto-scroll the view
+    pub fn toggle_auto_scroll(&self) {
+        let mut state = self.state.write().unwrap();
+        state.auto_scroll = !state.auto_scroll;
     }
 
     /// Get filtered logs based on grep pattern (regex)

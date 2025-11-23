@@ -239,8 +239,8 @@ fn handle_log_viewer_keys(
                 }
                 None
             }
-            KeyCode::Char('q') | KeyCode::Char('Q') => {
-                // 'q' no longer executes query - use Enter instead
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                log_viewer_store.toggle_auto_scroll();
                 None
             }
             KeyCode::Char('j') | KeyCode::Down => {
