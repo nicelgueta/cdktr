@@ -117,7 +117,7 @@ fn next_workflow(workflows_store: &WorkflowsStore) -> Option<Action> {
         current_index + 1
     };
 
-    let workflow_id = state.workflows[next_index].task_id.clone();
+    let workflow_id = state.workflows[next_index].id.clone();
     Some(Action::SelectWorkflow(workflow_id))
 }
 
@@ -135,6 +135,6 @@ fn previous_workflow(workflows_store: &WorkflowsStore) -> Option<Action> {
         current_index - 1
     };
 
-    let workflow_id = state.workflows[prev_index].task_id.clone();
+    let workflow_id = state.workflows[prev_index].id.clone();
     Some(Action::SelectWorkflow(workflow_id))
 }

@@ -46,7 +46,9 @@ impl AdminPanel {
             0
         };
 
-        let end_index = total_logs.saturating_sub(self.scroll_offset);
+        let end_index = total_logs
+            .saturating_sub(self.scroll_offset)
+            .max(inner_height.min(total_logs));
 
         let visible_logs: Vec<Line> = self.logs[start_index..end_index]
             .iter()
@@ -64,7 +66,6 @@ impl AdminPanel {
         } else {
             format!(" Application Logs {} ", scroll_indicator)
         };
-
         let block = Block::default()
             .borders(Borders::ALL)
             .title(title)

@@ -56,13 +56,16 @@ impl AppLogsStore {
     /// Scroll down in the log view
     pub fn scroll_down(&self, amount: usize) {
         let mut state = self.state.write().unwrap();
-        state.scroll_offset = state.scroll_offset.saturating_add(amount);
+        state.scroll_offset = state.scroll_offset.saturating_sub(amount);
     }
 
     /// Scroll up in the log view
     pub fn scroll_up(&self, amount: usize) {
         let mut state = self.state.write().unwrap();
-        state.scroll_offset = state.scroll_offset.saturating_sub(amount);
+        if state.scroll_offset >= state.logs.len() {
+            state.scroll_offset = state.logs.len();
+        }
+        state.scroll_offset = state.scroll_offset.saturating_add(amount);
     }
 
     /// Reset scroll to bottom (most recent logs)

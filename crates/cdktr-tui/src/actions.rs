@@ -1,6 +1,7 @@
 /// Core Action types for the flux architecture.
 /// All state mutations flow through Actions dispatched to the Dispatcher.
 use cdktr_core::models::RunStatus;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Represents all possible user intents and system events in the application
@@ -69,25 +70,13 @@ pub enum PanelId {
 }
 
 /// Metadata about a workflow returned from the backend
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowMetadata {
-    pub task_id: String,
+    pub id: String,
     pub name: String,
     pub description: String,
     pub path: String,
     // Add more fields as needed
-}
-
-impl WorkflowMetadata {
-    /// Parse from the HashMap format returned by ListWorkflowStore API
-    pub fn from_map(map: HashMap<String, String>) -> Self {
-        Self {
-            task_id: map.get("task_id").cloned().unwrap_or_default(),
-            name: map.get("name").cloned().unwrap_or_default(),
-            description: map.get("description").cloned().unwrap_or_default(),
-            path: map.get("path").cloned().unwrap_or_default(),
-        }
-    }
 }
 
 /// Represents a single log line (placeholder for future log streaming)

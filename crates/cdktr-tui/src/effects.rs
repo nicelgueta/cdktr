@@ -40,7 +40,6 @@ impl Effects {
 
         task::spawn(async move {
             log::info!("Fetching workflows from backend...");
-
             let result = fetch_workflows_from_backend().await;
 
             match result {
@@ -72,11 +71,16 @@ async fn fetch_workflows_from_backend() -> Result<Vec<WorkflowMetadata>, String>
         Ok(response) => {
             let payload = response.payload();
 
+            log::debug!("Got payload from backend: {:?}", payload);
+
+            let parsed_payload =
+                serde_json::from_str::<HashMap<String, WorkflowMetadata>>(&payload);
+
             // Parse JSON response
-            match serde_json::from_str::<Vec<HashMap<String, String>>>(&payload) {
-                Ok(data) => {
-                    let workflows = data.into_iter().map(WorkflowMetadata::from_map).collect();
-                    Ok(workflows)
+            match parsed_payload {
+                Ok(workflows) => {
+                    let workflow_list = workflows.into_values().collect();
+                    Ok(workflow_list)
                 }
                 Err(e) => Err(format!("Failed to parse workflow data: {}", e)),
             }

@@ -57,7 +57,7 @@ impl Sidebar {
         let items: Vec<Line> = self
             .workflows
             .iter()
-            .map(|wf| Line::from(format!(" {} - {}", wf.task_id, wf.name)))
+            .map(|wf| Line::from(format!(" {} - {}", wf.id, wf.name)))
             .collect();
 
         let list = List::new(items)

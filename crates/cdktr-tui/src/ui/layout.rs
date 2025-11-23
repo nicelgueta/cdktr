@@ -107,7 +107,7 @@ fn render_workflows_content(
 
 fn render_admin_content(frame: &mut Frame, area: Rect, app_logs_store: &AppLogsStore) {
     let app_logs_state = app_logs_store.get_state();
-    let admin_panel = AdminPanel::from_state(&app_logs_state);
+    let mut admin_panel = AdminPanel::from_state(&app_logs_state);
     admin_panel.render(area, frame.buffer_mut());
 }
 
@@ -142,8 +142,6 @@ fn render_header(
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" | "),
-        Span::styled("Workflow Orchestrator", Style::default().fg(Color::White)),
         Span::raw(" | Status: "),
         Span::styled(status, Style::default().fg(status_color)),
         Span::raw(" | "),

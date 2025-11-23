@@ -38,7 +38,7 @@ impl MainPanel {
             let lines = vec![
                 Line::from(vec![
                     Span::styled("ID: ", Style::default().fg(Color::Yellow)),
-                    Span::raw(&workflow.task_id),
+                    Span::raw(&workflow.id),
                 ]),
                 Line::from(vec![
                     Span::styled("Name: ", Style::default().fg(Color::Yellow)),

@@ -53,7 +53,7 @@ impl WorkflowsStore {
 
                 // Auto-select first workflow if none selected
                 if state.selected_workflow_id.is_none() && !workflows.is_empty() {
-                    state.selected_workflow_id = Some(workflows[0].task_id.clone());
+                    state.selected_workflow_id = Some(workflows[0].id.clone());
                 }
             }
 
@@ -78,7 +78,7 @@ impl WorkflowsStore {
         state
             .selected_workflow_id
             .as_ref()
-            .and_then(|id| state.workflows.iter().find(|w| &w.task_id == id).cloned())
+            .and_then(|id| state.workflows.iter().find(|w| &w.id == id).cloned())
     }
 
     /// Get the index of the currently selected workflow
@@ -87,14 +87,13 @@ impl WorkflowsStore {
         state
             .selected_workflow_id
             .as_ref()
-            .and_then(|id| state.workflows.iter().position(|w| &w.task_id == id))
+            .and_then(|id| state.workflows.iter().position(|w| &w.id == id))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     #[test]
     fn test_initial_state() {
@@ -109,11 +108,20 @@ mod tests {
     fn test_workflow_list_loaded() {
         let store = WorkflowsStore::new();
 
-        let mut map1 = HashMap::new();
-        map1.insert("task_id".to_string(), "wf1".to_string());
-        map1.insert("name".to_string(), "Workflow 1".to_string());
-
-        let workflows = vec![WorkflowMetadata::from_map(map1)];
+        let workflows = vec![
+            WorkflowMetadata {
+                id: "wf1".to_string(),
+                name: "Workflow 1".to_string(),
+                description: "Desc 1".to_string(),
+                path: "/path/to/wf1".to_string(),
+            },
+            WorkflowMetadata {
+                id: "wf2".to_string(),
+                name: "Workflow 2".to_string(),
+                description: "Desc 2".to_string(),
+                path: "/path/to/wf2".to_string(),
+            },
+        ];
 
         store.reduce(&Action::WorkflowListLoaded(workflows));
 
@@ -127,14 +135,19 @@ mod tests {
     fn test_select_workflow() {
         let store = WorkflowsStore::new();
 
-        let mut map1 = HashMap::new();
-        map1.insert("task_id".to_string(), "wf1".to_string());
-        let mut map2 = HashMap::new();
-        map2.insert("task_id".to_string(), "wf2".to_string());
-
         let workflows = vec![
-            WorkflowMetadata::from_map(map1),
-            WorkflowMetadata::from_map(map2),
+            WorkflowMetadata {
+                id: "wf1".to_string(),
+                name: "Workflow 1".to_string(),
+                description: "Desc 1".to_string(),
+                path: "/path/to/wf1".to_string(),
+            },
+            WorkflowMetadata {
+                id: "wf2".to_string(),
+                name: "Workflow 2".to_string(),
+                description: "Desc 2".to_string(),
+                path: "/path/to/wf2".to_string(),
+            },
         ];
 
         store.reduce(&Action::WorkflowListLoaded(workflows));
