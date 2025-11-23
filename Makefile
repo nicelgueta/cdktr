@@ -24,5 +24,5 @@ ui:
 	cargo run ui
 pycli:
 	cd python-cdktr && uv run cli_zmq.py
-run-release:
+run:
 	./target/release/cdktr-cli
