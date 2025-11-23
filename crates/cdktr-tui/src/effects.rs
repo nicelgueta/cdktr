@@ -2,8 +2,8 @@
 /// Effects are triggered by Actions and dispatch new Actions with results
 use crate::actions::Action;
 use crate::dispatcher::Dispatcher;
-use crate::stores::LogViewerStore;
-use cdktr_api::{API, PrincipalAPI};
+use crate::stores::{LogViewerStore, WorkflowsStore};
+use cdktr_api::{API, PrincipalAPI, models::StatusUpdate};
 use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use cdktr_workflow::Workflow;
@@ -17,6 +17,7 @@ use tokio::task;
 pub struct Effects {
     dispatcher: Dispatcher,
     log_viewer_store: Option<LogViewerStore>,
+    workflows_store: Option<WorkflowsStore>,
 }
 
 impl Effects {
@@ -24,6 +25,7 @@ impl Effects {
         Self {
             dispatcher,
             log_viewer_store: None,
+            workflows_store: None,
         }
     }
 
@@ -31,10 +33,37 @@ impl Effects {
         self.log_viewer_store = Some(store);
     }
 
+    pub fn set_workflows_store(&mut self, store: WorkflowsStore) {
+        self.workflows_store = Some(store);
+    }
+
     /// Spawn background tasks for status monitoring and workflow refresh
     pub fn spawn_background_tasks(&self) {
         self.spawn_workflow_refresh();
         self.spawn_status_monitor();
+        self.spawn_workflow_status_monitor();
+    }
+
+    /// Spawn a background task to monitor recent workflow statuses
+    fn spawn_workflow_status_monitor(&self) {
+        let dispatcher = self.dispatcher.clone();
+        let interval_ms = get_cdktr_setting!(CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS, usize) as u64;
+
+        task::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(interval_ms)).await;
+
+                match fetch_recent_workflow_statuses().await {
+                    Ok(status_updates) => {
+                        dispatcher.dispatch(Action::RecentWorkflowStatusesUpdated(status_updates));
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to fetch recent workflow statuses: {}", e);
+                        // Don't dispatch error to avoid disrupting user experience
+                    }
+                }
+            }
+        });
     }
 
     /// Spawn a background task to ping the principal and update status
@@ -270,6 +299,30 @@ async fn ping_principal() -> bool {
     match api_msg.send(&uri, timeout).await {
         Ok(_) => true,
         Err(_) => false,
+    }
+}
+
+/// Fetch the latest status updates for recent workflows
+async fn fetch_recent_workflow_statuses() -> Result<Vec<StatusUpdate>, String> {
+    let api_msg = PrincipalAPI::GetRecentWorkflowStatuses;
+
+    let uri = get_server_tcp_uri(
+        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
+        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
+    );
+
+    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
+
+    match api_msg.send(&uri, timeout).await {
+        Ok(response) => {
+            let payload = response.payload();
+
+            match serde_json::from_str::<Vec<StatusUpdate>>(&payload) {
+                Ok(status_updates) => Ok(status_updates),
+                Err(e) => Err(format!("Failed to parse status updates: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("ZMQ request failed: {}", e)),
     }
 }
 

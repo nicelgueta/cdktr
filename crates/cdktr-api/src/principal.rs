@@ -60,6 +60,8 @@ pub enum PrincipalAPI {
         Option<String>,
         bool,
     ),
+    /// Get recent workflow status updates (last 10 workflows)
+    GetRecentWorkflowStatuses,
 }
 
 impl TryFrom<ZMQArgs> for PrincipalAPI {
@@ -193,6 +195,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                     "Missing END_TIMESTAMP".to_string(),
                 )),
             },
+            "GETRECENTSTATUSES" => Ok(Self::GetRecentWorkflowStatuses),
             _ => Err(GenericError::ParseError(format!(
                 "Unrecognised message type: {}",
                 msg_type
@@ -203,7 +206,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
 
 impl API for PrincipalAPI {
     fn get_meta(&self) -> Vec<APIMeta> {
-        const META: [(&'static str, &'static str); 7] = [
+        const META: [(&'static str, &'static str); 8] = [
             ("PING", "Check server is online"),
             (
                 "LSWORKFLOWS",
@@ -226,6 +229,10 @@ impl API for PrincipalAPI {
                 "Allows an agent to fetch a unit of work from the principal task queue. Returns a success message if there is no work to do.",
             ),
             ("QUERYLOGS", "Queries logs from the main principal database"),
+            (
+                "GETLATESTSTATUS",
+                "Get latest status update for a workflow (workflow_id)",
+            ),
         ];
         META.iter()
             .map(|(action, desc)| APIMeta::new(action.to_string(), desc.to_string()))
@@ -270,6 +277,7 @@ impl API for PrincipalAPI {
                     if *verbose { "v" } else { "" }
                 )
             }
+            Self::GetRecentWorkflowStatuses => "GETRECENTSTATUSES".to_string(),
         }
     }
 }

@@ -1,17 +1,18 @@
 use cdktr_db::impl_dbrecordbatch;
+use serde::{Deserialize, Serialize};
 use zeromq::ZmqMessage;
 
 use cdktr_core::models::ZMQArgs;
 
-#[derive(Clone, PartialEq, Debug)]
-pub struct StausUpdate {
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct StatusUpdate {
     object_id: String,
     object_instance_id: String,
     run_type: String, // TODO use enum in the arrow record batch: RunType,
     status: String,   // TODO use enum in the arrow record batch: RunStatus,
     timestamp_ms: u64,
 }
-impl StausUpdate {
+impl StatusUpdate {
     pub fn new(
         object_id: String,
         object_instance_id: String,
@@ -27,9 +28,29 @@ impl StausUpdate {
             timestamp_ms,
         }
     }
+
+    pub fn object_id(&self) -> &str {
+        &self.object_id
+    }
+
+    pub fn object_instance_id(&self) -> &str {
+        &self.object_instance_id
+    }
+
+    pub fn run_type(&self) -> &str {
+        &self.run_type
+    }
+
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
+    pub fn timestamp_ms(&self) -> u64 {
+        self.timestamp_ms
+    }
 }
 impl_dbrecordbatch!(
-    StausUpdate, Vec<StausUpdate>, {
+    StatusUpdate, Vec<StatusUpdate>, {
         object_id=> Utf8,
         object_instance_id => Utf8,
         run_type => Utf8,

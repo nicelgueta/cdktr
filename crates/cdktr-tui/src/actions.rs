@@ -1,5 +1,6 @@
 /// Core Action types for the flux architecture.
 /// All state mutations flow through Actions dispatched to the Dispatcher.
+use cdktr_api::models::StatusUpdate;
 use cdktr_core::models::RunStatus;
 use cdktr_ipc::log_manager::model::LogMessage;
 use cdktr_workflow::Workflow;
@@ -78,6 +79,18 @@ pub enum Action {
 
     /// Principal status was updated (online/offline)
     PrincipalStatusUpdated(bool),
+
+    /// Recent workflow status updates received
+    RecentWorkflowStatusesUpdated(Vec<StatusUpdate>),
+
+    /// Scroll RunInfo panel
+    ScrollRunInfo(i32), // positive = down, negative = up
+
+    /// Update RunInfo filter input
+    UpdateRunInfoFilter(String),
+
+    /// Scroll MainPanel DAG visualization
+    ScrollMainPanel(i16), // positive = down, negative = up
 }
 
 /// Identifies different tabs in the UI

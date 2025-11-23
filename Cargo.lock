@@ -671,6 +671,8 @@ dependencies = [
  "duckdb",
  "env_logger",
  "log",
+ "serde",
+ "serde_json",
  "zeromq",
 ]
 

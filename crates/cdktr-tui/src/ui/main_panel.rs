@@ -14,13 +14,19 @@ use ratatui::{
 pub struct MainPanel {
     pub selected_workflow: Option<Workflow>,
     pub is_focused: bool,
+    pub scroll_offset: u16,
 }
 
 impl MainPanel {
-    pub fn new(selected_workflow: Option<Workflow>, ui_state: &UIState) -> Self {
+    pub fn new(
+        selected_workflow: Option<Workflow>,
+        ui_state: &UIState,
+        scroll_offset: u16,
+    ) -> Self {
         Self {
             selected_workflow,
             is_focused: ui_state.focused_panel == PanelId::MainPanel,
+            scroll_offset,
         }
     }
 
@@ -101,6 +107,12 @@ impl MainPanel {
         // Render DAG tree
         all_lines.extend(dag_viz::render_dag(dag));
 
-        Paragraph::new(all_lines).render(area, buf);
+        // Skip lines based on scroll offset
+        let visible_lines: Vec<_> = all_lines
+            .into_iter()
+            .skip(self.scroll_offset as usize)
+            .collect();
+
+        Paragraph::new(visible_lines).render(area, buf);
     }
 }

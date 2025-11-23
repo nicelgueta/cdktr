@@ -1,5 +1,6 @@
 /// WorkflowsStore manages the state of workflows in the application
 use crate::actions::Action;
+use cdktr_api::models::StatusUpdate;
 use cdktr_workflow::Workflow;
 use std::sync::{Arc, RwLock};
 
@@ -17,6 +18,18 @@ pub struct WorkflowsState {
 
     /// Error message if loading failed
     pub error: Option<String>,
+
+    /// Recent workflow status updates (last 10)
+    pub recent_statuses: Vec<StatusUpdate>,
+
+    /// Scroll offset for RunInfo panel
+    pub run_info_scroll_offset: usize,
+
+    /// Filter input for RunInfo panel
+    pub run_info_filter: String,
+
+    /// Scroll offset for MainPanel DAG visualization
+    pub main_panel_scroll_offset: u16,
 }
 
 impl Default for WorkflowsState {
@@ -26,6 +39,10 @@ impl Default for WorkflowsState {
             selected_workflow_id: None,
             is_loading: false,
             error: None,
+            recent_statuses: Vec::new(),
+            run_info_scroll_offset: 0,
+            run_info_filter: String::new(),
+            main_panel_scroll_offset: 0,
         }
     }
 }
@@ -80,6 +97,25 @@ impl WorkflowsStore {
 
             Action::SelectWorkflow(workflow_id) => {
                 state.selected_workflow_id = Some(workflow_id.clone());
+            }
+
+            Action::RecentWorkflowStatusesUpdated(status_updates) => {
+                state.recent_statuses = status_updates.clone();
+            }
+
+            Action::ScrollRunInfo(delta) => {
+                let new_offset = state.run_info_scroll_offset as i32 + delta;
+                state.run_info_scroll_offset = new_offset.max(0) as usize;
+            }
+
+            Action::UpdateRunInfoFilter(filter) => {
+                state.run_info_filter = filter.clone();
+                state.run_info_scroll_offset = 0; // Reset scroll when filter changes
+            }
+
+            Action::ScrollMainPanel(delta) => {
+                let new_offset = state.main_panel_scroll_offset as i16 + delta;
+                state.main_panel_scroll_offset = new_offset.max(0) as u16;
             }
 
             _ => {

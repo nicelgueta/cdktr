@@ -25,13 +25,12 @@ pub fn render_layout(
 ) {
     let area = frame.area();
 
-    // Main layout: Header | Tabs | Content | Footer
+    // Main layout: Header | (Tabs + Content) | Footer
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // Header
-            Constraint::Length(3), // Tabs
-            Constraint::Min(1),    // Content
+            Constraint::Min(1),    // Tabs + Content
             Constraint::Length(3), // Footer
         ])
         .split(area);
@@ -39,22 +38,19 @@ pub fn render_layout(
     // Render header
     render_header(frame, vertical_chunks[0], workflows_store, ui_store);
 
-    // Render tabs
+    // Render tabs and content based on active tab
     let ui_state = ui_store.get_state();
-    render_tabs(frame, vertical_chunks[1], &ui_state.active_tab);
-
-    // Render content based on active tab
     match ui_state.active_tab {
         TabId::Workflows => {
-            render_workflows_content(frame, vertical_chunks[2], workflows_store, ui_store);
+            render_workflows_with_tabs(frame, vertical_chunks[1], workflows_store, ui_store);
         }
         TabId::Admin => {
-            render_admin_content(frame, vertical_chunks[2], app_logs_store);
+            render_admin_content(frame, vertical_chunks[1], app_logs_store);
         }
     }
 
     // Render footer
-    render_footer(frame, vertical_chunks[3], ui_store);
+    render_footer(frame, vertical_chunks[2], ui_store);
 
     // Render log viewer modal on top if open
     let log_viewer_state = log_viewer_store.get_state();
@@ -85,36 +81,66 @@ fn render_tabs(frame: &mut Frame, area: Rect, active_tab: &TabId) {
     frame.render_widget(tabs, area);
 }
 
-fn render_workflows_content(
+fn render_workflows_with_tabs(
     frame: &mut Frame,
     area: Rect,
     workflows_store: &WorkflowsStore,
     ui_store: &UIStore,
 ) {
-    // Content layout: Sidebar | Main Panel | Detail Panel
-    let content_chunks = Layout::default()
+    // Split horizontally: (Tabs + Left panels) | Right panel
+    let horizontal_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(25), // Sidebar
-            Constraint::Percentage(45), // Main Panel
-            Constraint::Percentage(30), // Detail Panel
+            Constraint::Percentage(65), // Left section (Sidebar + Main Panel)
+            Constraint::Percentage(35), // Right section (Recent Workflow Runs)
         ])
         .split(area);
 
+    // Split left section vertically: Tabs | Content
+    let left_vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tabs
+            Constraint::Min(0),    // Content (Sidebar + Main Panel)
+        ])
+        .split(horizontal_chunks[0]);
+
+    // Render tabs in left section only
+    let ui_state = ui_store.get_state();
+    render_tabs(frame, left_vertical[0], &ui_state.active_tab);
+
+    // Split the left content area into Sidebar and Main Panel
+    let content_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(31), // Sidebar (20% of total = ~31% of 65%)
+            Constraint::Percentage(69), // Main Panel (45% of total = ~69% of 65%)
+        ])
+        .split(left_vertical[1]);
+
     // Render panels
     let workflows_state = workflows_store.get_state();
-    let ui_state = ui_store.get_state();
     let selected_index = workflows_store.get_selected_index();
     let selected_workflow = workflows_store.get_selected_workflow();
 
     let sidebar = Sidebar::from_state(&workflows_state, &ui_state, selected_index);
     sidebar.render(content_chunks[0], frame.buffer_mut());
 
-    let main_panel = MainPanel::new(selected_workflow.clone(), &ui_state);
+    let main_panel = MainPanel::new(
+        selected_workflow.clone(),
+        &ui_state,
+        workflows_state.main_panel_scroll_offset,
+    );
     main_panel.render(content_chunks[1], frame.buffer_mut());
 
-    let run_info_panel = RunInfoPanel::new(selected_workflow, &ui_state);
-    run_info_panel.render(content_chunks[2], frame.buffer_mut());
+    // Render right panel (Recent Workflow Runs) - spans full height
+    let run_info_panel = RunInfoPanel::new(
+        workflows_state.recent_statuses.clone(),
+        &ui_state,
+        workflows_state.run_info_filter.clone(),
+        workflows_state.run_info_scroll_offset,
+    );
+    run_info_panel.render(horizontal_chunks[1], frame.buffer_mut());
 }
 
 fn render_admin_content(frame: &mut Frame, area: Rect, app_logs_store: &AppLogsStore) {

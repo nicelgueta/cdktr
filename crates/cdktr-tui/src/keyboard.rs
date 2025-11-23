@@ -60,6 +60,56 @@ fn handle_workflows_tab_keys(
             previous_workflow(workflows_store)
         }
 
+        // MainPanel scrolling (j/k or Up/Down)
+        KeyCode::Char('j') | KeyCode::Down if *focused_panel == PanelId::MainPanel => {
+            Some(Action::ScrollMainPanel(1))
+        }
+        KeyCode::Char('k') | KeyCode::Up if *focused_panel == PanelId::MainPanel => {
+            Some(Action::ScrollMainPanel(-1))
+        }
+        KeyCode::PageDown if *focused_panel == PanelId::MainPanel => {
+            Some(Action::ScrollMainPanel(5))
+        }
+        KeyCode::PageUp if *focused_panel == PanelId::MainPanel => {
+            Some(Action::ScrollMainPanel(-5))
+        }
+
+        // RunInfoPanel scrolling (j/k or Up/Down)
+        KeyCode::Char('j') | KeyCode::Down if *focused_panel == PanelId::RunInfoPanel => {
+            Some(Action::ScrollRunInfo(1))
+        }
+        KeyCode::Char('k') | KeyCode::Up if *focused_panel == PanelId::RunInfoPanel => {
+            Some(Action::ScrollRunInfo(-1))
+        }
+        KeyCode::PageDown if *focused_panel == PanelId::RunInfoPanel => {
+            Some(Action::ScrollRunInfo(5))
+        }
+        KeyCode::PageUp if *focused_panel == PanelId::RunInfoPanel => {
+            Some(Action::ScrollRunInfo(-5))
+        }
+
+        // RunInfoPanel filter input
+        KeyCode::Char('/') if *focused_panel == PanelId::RunInfoPanel => {
+            // Start filter mode - for now just send empty filter
+            None
+        }
+        KeyCode::Backspace if *focused_panel == PanelId::RunInfoPanel => {
+            let state = workflows_store.get_state();
+            let mut filter = state.run_info_filter;
+            filter.pop();
+            Some(Action::UpdateRunInfoFilter(filter))
+        }
+        KeyCode::Char(c) if *focused_panel == PanelId::RunInfoPanel && !c.is_control() => {
+            let state = workflows_store.get_state();
+            let mut filter = state.run_info_filter;
+            filter.push(c);
+            Some(Action::UpdateRunInfoFilter(filter))
+        }
+        KeyCode::Esc if *focused_panel == PanelId::RunInfoPanel => {
+            // Clear filter
+            Some(Action::UpdateRunInfoFilter(String::new()))
+        }
+
         // Enter to open log viewer
         KeyCode::Enter if *focused_panel == PanelId::Sidebar => {
             let state = workflows_store.get_state();

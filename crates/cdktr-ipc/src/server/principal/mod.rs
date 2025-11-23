@@ -129,6 +129,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
                     ),
                 }
             }
+            PrincipalAPI::GetRecentWorkflowStatuses => {
+                helpers::handle_get_recent_workflow_statuses(self.db_client.clone()).await
+            }
         };
         trace!("Returning ({}): {}", result.1, result.0.to_string());
         result
