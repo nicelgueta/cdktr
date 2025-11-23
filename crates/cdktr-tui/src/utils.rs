@@ -3,6 +3,7 @@ use std::hash::Hash;
 
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 
+#[allow(dead_code)]
 pub fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
     let [area] = Layout::horizontal([horizontal])
         .flex(Flex::Center)
@@ -11,6 +12,7 @@ pub fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect 
     area
 }
 
+#[allow(dead_code)]
 pub fn vec_to_hashmap<T, V>(v: Vec<(T, V)>) -> HashMap<T, V>
 where
     T: Hash + Eq,

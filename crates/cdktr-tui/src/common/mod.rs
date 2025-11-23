@@ -1,3 +1,5 @@
+// Reusable components - allow dead code since they may be used in future features
+#[allow(dead_code)]
 mod data_pane;
+#[allow(dead_code)]
 mod input;
-pub use data_pane::{DataTable, TableRow};

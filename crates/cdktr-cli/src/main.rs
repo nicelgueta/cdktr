@@ -71,14 +71,21 @@ fn setup() {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    env_logger::init();
-    setup();
-    _main().await;
-}
 
-async fn _main() {
+    // Parse CLI args first to check if we're running TUI
     let cli_instance = CdktrCli::parse();
 
+    // Only initialize env_logger for non-TUI commands
+    // TUI will use its own custom in-memory logger
+    if !matches!(cli_instance, CdktrCli::Ui) {
+        env_logger::init();
+    }
+
+    setup();
+    _main(cli_instance).await;
+}
+
+async fn _main(cli_instance: CdktrCli) {
     let principal_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
     let principal_port: usize = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize);
 

@@ -1,4 +1,5 @@
 use std::io::{self, Stdout, stdout};
+use std::panic;
 
 use ratatui::{
     Terminal,
@@ -14,6 +15,13 @@ pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 
 /// Initialize the terminal
 pub fn init() -> io::Result<Tui> {
+    // Set up panic hook to restore terminal
+    let original_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        let _ = restore();
+        original_hook(panic_info);
+    }));
+
     execute!(stdout(), EnterAlternateScreen)?;
     enable_raw_mode()?;
     Terminal::new(CrosstermBackend::new(stdout()))

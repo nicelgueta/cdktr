@@ -768,6 +768,7 @@ dependencies = [
  "cdktr-api",
  "cdktr-core",
  "cdktr-ipc",
+ "chrono",
  "color-eyre",
  "crossterm 0.29.0",
  "env_logger",

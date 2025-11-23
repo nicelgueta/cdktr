@@ -2,7 +2,7 @@ use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent, KeyEventKind},
     layout::{Position, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     widgets::{Block, Paragraph, Widget},
 };
 
