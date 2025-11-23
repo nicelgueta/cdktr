@@ -1,6 +1,8 @@
 /// Core Action types for the flux architecture.
 /// All state mutations flow through Actions dispatched to the Dispatcher.
 use cdktr_core::models::RunStatus;
+use cdktr_ipc::log_manager::model::LogMessage;
+use cdktr_workflow::Workflow;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -29,7 +31,7 @@ pub enum Action {
 
     // ===== System/Effect Actions (emitted by Effects) =====
     /// Workflow list was successfully loaded from backend
-    WorkflowListLoaded(Vec<WorkflowMetadata>),
+    WorkflowListLoaded(Vec<Workflow>),
 
     /// Failed to load workflow list
     WorkflowListLoadFailed(String),
@@ -52,6 +54,27 @@ pub enum Action {
 
     /// Application should exit
     Quit,
+
+    /// Open log viewer for a workflow
+    OpenLogViewer(String), // workflow_id
+
+    /// Close the log viewer modal
+    CloseLogViewer,
+
+    /// Toggle between live tail and query mode in log viewer
+    ToggleLogMode,
+
+    /// A log message was received from the log stream
+    LogReceived(LogMessage),
+
+    /// Execute a log query with current time parameters
+    ExecuteLogQuery,
+
+    /// Query logs result received from backend (formatted strings)
+    QueryLogsResult(Vec<String>),
+
+    /// Query logs failed with error
+    QueryLogsError(String),
 }
 
 /// Identifies different tabs in the UI
@@ -69,15 +92,7 @@ pub enum PanelId {
     DetailPanel,
 }
 
-/// Metadata about a workflow returned from the backend
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkflowMetadata {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub path: String,
-    // Add more fields as needed
-}
+// WorkflowMetadata is now imported as Workflow from cdktr-workflow crate
 
 /// Represents a single log line (placeholder for future log streaming)
 #[derive(Debug, Clone)]

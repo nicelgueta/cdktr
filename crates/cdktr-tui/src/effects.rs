@@ -1,33 +1,54 @@
 /// Effects module handles side effects (I/O, network calls, etc.)
 /// Effects are triggered by Actions and dispatch new Actions with results
-use crate::actions::{Action, WorkflowMetadata};
+use crate::actions::Action;
 use crate::dispatcher::Dispatcher;
+use crate::stores::LogViewerStore;
 use cdktr_api::{API, PrincipalAPI};
 use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
+use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
+use cdktr_workflow::Workflow;
+use chrono::Utc;
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio::sync::mpsc;
 use tokio::task;
 
 /// Effects handler that executes side effects based on actions
 pub struct Effects {
     dispatcher: Dispatcher,
+    log_viewer_store: Option<LogViewerStore>,
 }
 
 impl Effects {
     pub fn new(dispatcher: Dispatcher) -> Self {
-        Self { dispatcher }
+        Self {
+            dispatcher,
+            log_viewer_store: None,
+        }
     }
 
+    pub fn set_log_viewer_store(&mut self, store: LogViewerStore) {
+        self.log_viewer_store = Some(store);
+    }
     /// Handle an action and execute any necessary side effects
     pub fn handle(&self, action: &Action) {
         match action {
             Action::RefreshWorkflows => {
                 self.fetch_workflows();
             }
+            Action::OpenLogViewer(workflow_id) => {
+                self.start_log_tail(workflow_id.clone());
+            }
+            Action::ToggleLogMode => {
+                // When switching to query mode, automatically execute a query
+                self.query_logs();
+            }
+            Action::ExecuteLogQuery => {
+                self.query_logs();
+            }
 
             // Future: handle other actions that require side effects
             // Action::StartWorkflow(id) => self.start_workflow(id),
-            // Action::FetchLogs(workflow_id, step_id) => self.fetch_logs(workflow_id, step_id),
             _ => {
                 // Most actions don't require side effects
             }
@@ -54,10 +75,113 @@ impl Effects {
             }
         });
     }
+
+    /// Start tailing logs for a workflow
+    fn start_log_tail(&self, workflow_id: String) {
+        let dispatcher = self.dispatcher.clone();
+
+        task::spawn(async move {
+            log::info!("Starting log tail for workflow: {}", workflow_id);
+
+            // Create a logs client and subscribe to the workflow
+            match LogsClient::new("tui".to_string(), &workflow_id).await {
+                Ok(mut client) => {
+                    let (tx, mut rx) = mpsc::channel::<LogMessage>(100);
+
+                    // Spawn listener task
+                    task::spawn(async move {
+                        if let Err(e) = client.listen(tx, None).await {
+                            log::error!("Log listener error: {:?}", e);
+                        }
+                    });
+
+                    // Forward logs to the dispatcher
+                    while let Some(log_msg) = rx.recv().await {
+                        dispatcher.dispatch(Action::LogReceived(log_msg));
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to create logs client: {:?}", e);
+                }
+            }
+        });
+    }
+
+    /// Query logs from the backend based on time range
+    fn query_logs(&self) {
+        let dispatcher = self.dispatcher.clone();
+
+        // Get time range and workflow_id from log viewer store
+        let (start_ts, end_ts, workflow_id) = if let Some(ref store) = self.log_viewer_store {
+            let state = store.get_state();
+            let start_ts = state.start_time.timestamp_millis() as u64;
+            let end_ts = state.end_time.timestamp_millis() as u64;
+            (start_ts, end_ts, state.workflow_id.clone())
+        } else {
+            // Fallback to default if store not set
+            let end_time = Utc::now();
+            let start_time = end_time - chrono::Duration::days(2);
+            (
+                start_time.timestamp_millis() as u64,
+                end_time.timestamp_millis() as u64,
+                None,
+            )
+        };
+
+        task::spawn(async move {
+            log::info!("Querying logs from {} to {}", start_ts, end_ts);
+
+            match query_logs_from_backend(start_ts, end_ts, workflow_id).await {
+                Ok(logs) => {
+                    log::info!("Successfully queried {} log entries", logs.len());
+                    dispatcher.dispatch(Action::QueryLogsResult(logs));
+                }
+                Err(e) => {
+                    log::error!("Failed to query logs: {}", e);
+                    dispatcher.dispatch(Action::QueryLogsError(e));
+                }
+            }
+        });
+    }
+}
+
+/// Query logs from the backend (ZMQ call to PrincipalAPI)
+async fn query_logs_from_backend(
+    start_ts: u64,
+    end_ts: u64,
+    workflow_id: Option<String>,
+) -> Result<Vec<String>, String> {
+    let api_msg = PrincipalAPI::QueryLogs(
+        Some(end_ts),
+        Some(start_ts),
+        workflow_id, // Use the workflow_id from the viewer
+        None,        // workflow_instance_id
+        true,        // verbose
+    );
+
+    let uri = get_server_tcp_uri(
+        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
+        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
+    );
+
+    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
+
+    match api_msg.send(&uri, timeout).await {
+        Ok(response) => {
+            let payload = response.payload();
+            log::debug!("Got log query payload: {} bytes", payload.len());
+
+            match serde_json::from_str::<Vec<String>>(&payload) {
+                Ok(logs) => Ok(logs),
+                Err(e) => Err(format!("Failed to parse log data: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("ZMQ request failed: {}", e)),
+    }
 }
 
 /// Fetch workflows from the backend (ZMQ call to PrincipalAPI)
-async fn fetch_workflows_from_backend() -> Result<Vec<WorkflowMetadata>, String> {
+async fn fetch_workflows_from_backend() -> Result<Vec<Workflow>, String> {
     let api_msg = PrincipalAPI::ListWorkflowStore;
 
     let uri = get_server_tcp_uri(
@@ -73,8 +197,7 @@ async fn fetch_workflows_from_backend() -> Result<Vec<WorkflowMetadata>, String>
 
             log::debug!("Got payload from backend: {:?}", payload);
 
-            let parsed_payload =
-                serde_json::from_str::<HashMap<String, WorkflowMetadata>>(&payload);
+            let parsed_payload = serde_json::from_str::<HashMap<String, Workflow>>(&payload);
 
             // Parse JSON response
             match parsed_payload {

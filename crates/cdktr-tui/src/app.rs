@@ -4,7 +4,7 @@ use crate::dispatcher::{ActionReceiver, Dispatcher};
 use crate::effects::Effects;
 use crate::keyboard;
 use crate::logger::LogBuffer;
-use crate::stores::{AppLogsStore, LogsStore, UIStore, WorkflowsStore};
+use crate::stores::{AppLogsStore, LogViewerStore, LogsStore, UIStore, WorkflowsStore};
 use crate::ui::render_layout;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 use std::io;
@@ -27,13 +27,15 @@ pub struct App {
     /// Store for application logs
     app_logs_store: AppLogsStore,
 
+    /// Store for log viewer modal
+    log_viewer_store: LogViewerStore,
+
     /// Log buffer for capturing application logs
     log_buffer: LogBuffer,
 
     /// Effects handler for side effects
     effects: Effects,
 }
-
 impl App {
     pub fn new() -> Result<(Self, ActionReceiver), Box<dyn std::error::Error>> {
         let (dispatcher, rx) = Dispatcher::new();
@@ -45,7 +47,9 @@ impl App {
         let ui_store = UIStore::new();
         let logs_store = LogsStore::new();
         let app_logs_store = AppLogsStore::new(log_buffer.clone());
-        let effects = Effects::new(dispatcher.clone());
+        let log_viewer_store = LogViewerStore::new();
+        let mut effects = Effects::new(dispatcher.clone());
+        effects.set_log_viewer_store(log_viewer_store.clone());
 
         Ok((
             Self {
@@ -54,6 +58,7 @@ impl App {
                 ui_store,
                 logs_store,
                 app_logs_store,
+                log_viewer_store,
                 log_buffer,
                 effects,
             },
@@ -83,6 +88,7 @@ impl App {
                     &self.ui_store,
                     &self.logs_store,
                     &self.app_logs_store,
+                    &self.log_viewer_store,
                 );
             })?;
 
@@ -104,6 +110,7 @@ impl App {
                                     &self.ui_store,
                                     &self.workflows_store,
                                     &self.app_logs_store,
+                                    &self.log_viewer_store,
                                 ) {
                                     self.dispatcher.dispatch(action);
                                 }
@@ -132,6 +139,7 @@ impl App {
         self.ui_store.reduce(action);
         self.logs_store.reduce(action);
         self.app_logs_store.dispatch(action);
+        self.log_viewer_store.reduce(action);
 
         // Trigger side effects
         self.effects.handle(action);

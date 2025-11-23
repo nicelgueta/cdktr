@@ -7,6 +7,7 @@ edition = "2024"
 cdktr-core = { workspace = true }
 cdktr-ipc = { workspace = true }
 cdktr-api = { workspace = true }
+cdktr-workflow = { workspace = true }
 zeromq = { workspace = true }
 tokio = { workspace = true}
 env_logger = { workspace = true }
@@ -19,3 +20,4 @@ itertools = "0.14.0"
 unicode-width = "0.2.0"
 chrono = "0.4"
 serde = { workspace = true }
+regex = "1.11"

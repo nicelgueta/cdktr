@@ -329,6 +329,10 @@ impl Workflow {
             None => None,
         }
     }
+
+    pub fn description(&self) -> Option<&String> {
+        self.description.as_ref()
+    }
     //
 
     pub fn start_time_utc(&self) -> Result<chrono::DateTime<chrono::Utc>, GenericError> {

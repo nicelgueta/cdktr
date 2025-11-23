@@ -1,7 +1,8 @@
 /// Keyboard input handling and key mapping
 use crate::actions::{Action, PanelId, TabId};
-use crate::stores::{AppLogsStore, UIStore, WorkflowsStore};
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use crate::stores::{AppLogsStore, LogViewerStore, UIStore, WorkflowsStore};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm;
 
 /// Handle keyboard input and return the appropriate Action
 pub fn handle_key_event(
@@ -9,8 +10,15 @@ pub fn handle_key_event(
     ui_store: &UIStore,
     workflows_store: &WorkflowsStore,
     app_logs_store: &AppLogsStore,
+    log_viewer_store: &LogViewerStore,
 ) -> Option<Action> {
     let ui_state = ui_store.get_state();
+    let log_viewer_state = log_viewer_store.get_state();
+
+    // If log viewer is open, handle modal keys first
+    if log_viewer_state.is_open {
+        return handle_log_viewer_keys(key_event, log_viewer_store);
+    }
 
     match key_event.code {
         // Global keys
@@ -50,6 +58,14 @@ fn handle_workflows_tab_keys(
         }
         KeyCode::Char('k') | KeyCode::Up if *focused_panel == PanelId::Sidebar => {
             previous_workflow(workflows_store)
+        }
+
+        // Enter to open log viewer
+        KeyCode::Enter if *focused_panel == PanelId::Sidebar => {
+            let state = workflows_store.get_state();
+            state
+                .selected_workflow_id
+                .map(|id| Action::OpenLogViewer(id))
         }
 
         _ => None,
@@ -117,7 +133,7 @@ fn next_workflow(workflows_store: &WorkflowsStore) -> Option<Action> {
         current_index + 1
     };
 
-    let workflow_id = state.workflows[next_index].id.clone();
+    let workflow_id = state.workflows[next_index].id().clone();
     Some(Action::SelectWorkflow(workflow_id))
 }
 
@@ -135,6 +151,125 @@ fn previous_workflow(workflows_store: &WorkflowsStore) -> Option<Action> {
         current_index - 1
     };
 
-    let workflow_id = state.workflows[prev_index].id.clone();
+    let workflow_id = state.workflows[prev_index].id().clone();
     Some(Action::SelectWorkflow(workflow_id))
+}
+
+/// Handle keys when log viewer modal is open
+fn handle_log_viewer_keys(
+    key_event: KeyEvent,
+    log_viewer_store: &LogViewerStore,
+) -> Option<Action> {
+    let state = log_viewer_store.get_state();
+
+    // If in editing mode, handle text input
+    if state.is_editing && state.focused_field.is_some() {
+        match key_event.code {
+            KeyCode::Esc => {
+                log_viewer_store.exit_editing_mode();
+                None
+            }
+            KeyCode::Tab => {
+                if key_event
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::SHIFT)
+                {
+                    log_viewer_store.focus_prev_field();
+                } else {
+                    log_viewer_store.focus_next_field();
+                }
+                None
+            }
+            KeyCode::Backspace => {
+                log_viewer_store.delete_input();
+                None
+            }
+            KeyCode::Left => {
+                log_viewer_store.cursor_left();
+                None
+            }
+            KeyCode::Right => {
+                log_viewer_store.cursor_right();
+                None
+            }
+            KeyCode::Char(c) => {
+                log_viewer_store.update_input(c);
+                None
+            }
+            KeyCode::Enter => {
+                // Parse and execute query on Enter
+                match log_viewer_store.parse_time_inputs() {
+                    Ok(_) => Some(Action::ExecuteLogQuery),
+                    Err(e) => {
+                        log::error!("Failed to parse time inputs: {}", e);
+                        Some(Action::QueryLogsError(e))
+                    }
+                }
+            }
+            _ => None,
+        }
+    } else {
+        // Normal navigation mode
+        match key_event.code {
+            KeyCode::Esc => Some(Action::CloseLogViewer),
+            KeyCode::Char('t') | KeyCode::Char('T') => Some(Action::ToggleLogMode),
+            KeyCode::Char('e') | KeyCode::Char('E') => {
+                // Enter editing mode only in query mode
+                if !state.is_live_mode {
+                    log_viewer_store.enter_editing_mode();
+                }
+                None
+            }
+            KeyCode::Enter => {
+                // Execute query only in query mode when not editing
+                if !state.is_live_mode && !state.is_editing {
+                    match log_viewer_store.parse_time_inputs() {
+                        Ok(_) => return Some(Action::ExecuteLogQuery),
+                        Err(e) => {
+                            log::error!("Failed to parse time inputs: {}", e);
+                            return Some(Action::QueryLogsError(e));
+                        }
+                    }
+                }
+                None
+            }
+            KeyCode::Tab => {
+                if !state.is_live_mode && state.is_editing {
+                    log_viewer_store.focus_next_field();
+                }
+                None
+            }
+            KeyCode::Char('q') | KeyCode::Char('Q') => {
+                // 'q' no longer executes query - use Enter instead
+                None
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                // Only scroll if not in editing mode
+                if !state.is_editing {
+                    log_viewer_store.scroll_up(1);
+                }
+                None
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                // Only scroll if not in editing mode
+                if !state.is_editing {
+                    log_viewer_store.scroll_down(1);
+                }
+                None
+            }
+            KeyCode::PageDown => {
+                if !state.is_editing {
+                    log_viewer_store.scroll_up(10);
+                }
+                None
+            }
+            KeyCode::PageUp => {
+                if !state.is_editing {
+                    log_viewer_store.scroll_down(10);
+                }
+                None
+            }
+            _ => None,
+        }
+    }
 }

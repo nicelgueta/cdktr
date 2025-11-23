@@ -1,7 +1,8 @@
 /// Sidebar panel for displaying the workflow list
-use crate::actions::{PanelId, WorkflowMetadata};
+use crate::actions::PanelId;
 use crate::stores::ui_store::UIState;
 use crate::stores::workflows_store::WorkflowsState;
+use cdktr_workflow::Workflow;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -11,7 +12,7 @@ use ratatui::{
 };
 
 pub struct Sidebar {
-    pub workflows: Vec<WorkflowMetadata>,
+    pub workflows: Vec<Workflow>,
     pub selected_index: Option<usize>,
     pub is_focused: bool,
     pub is_loading: bool,
@@ -57,7 +58,7 @@ impl Sidebar {
         let items: Vec<Line> = self
             .workflows
             .iter()
-            .map(|wf| Line::from(format!(" {} - {}", wf.id, wf.name)))
+            .map(|wf| Line::from(format!(" {} - {}", wf.id(), wf.name())))
             .collect();
 
         let list = List::new(items)

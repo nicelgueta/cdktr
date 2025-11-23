@@ -1,6 +1,7 @@
 /// Detail panel for displaying step metadata and logs
-use crate::actions::{PanelId, WorkflowMetadata};
+use crate::actions::PanelId;
 use crate::stores::ui_store::UIState;
+use cdktr_workflow::Workflow;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -10,12 +11,12 @@ use ratatui::{
 };
 
 pub struct DetailPanel {
-    pub selected_workflow: Option<WorkflowMetadata>,
+    pub selected_workflow: Option<Workflow>,
     pub is_focused: bool,
 }
 
 impl DetailPanel {
-    pub fn new(selected_workflow: Option<WorkflowMetadata>, ui_state: &UIState) -> Self {
+    pub fn new(selected_workflow: Option<Workflow>, ui_state: &UIState) -> Self {
         Self {
             selected_workflow,
             is_focused: ui_state.focused_panel == PanelId::DetailPanel,

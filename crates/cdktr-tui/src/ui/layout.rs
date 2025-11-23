@@ -10,6 +10,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Tabs, Widget},
 };
 
+use crate::stores::LogViewerStore;
+use crate::ui::LogViewerModal;
+
 /// Render the complete application layout
 pub fn render_layout(
     frame: &mut Frame,
@@ -17,6 +20,7 @@ pub fn render_layout(
     ui_store: &UIStore,
     _logs_store: &LogsStore,
     app_logs_store: &AppLogsStore,
+    log_viewer_store: &LogViewerStore,
 ) {
     let area = frame.area();
 
@@ -50,6 +54,13 @@ pub fn render_layout(
 
     // Render footer
     render_footer(frame, vertical_chunks[3], ui_store);
+
+    // Render log viewer modal on top if open
+    let log_viewer_state = log_viewer_store.get_state();
+    if log_viewer_state.is_open {
+        let modal = LogViewerModal::new(log_viewer_state, log_viewer_store);
+        modal.render(area, frame.buffer_mut());
+    }
 }
 
 fn render_tabs(frame: &mut Frame, area: Rect, active_tab: &TabId) {
