@@ -51,6 +51,9 @@ impl App {
         let mut effects = Effects::new(dispatcher.clone());
         effects.set_log_viewer_store(log_viewer_store.clone());
 
+        // Spawn background tasks for status monitoring and workflow refresh
+        effects.spawn_background_tasks();
+
         Ok((
             Self {
                 dispatcher,

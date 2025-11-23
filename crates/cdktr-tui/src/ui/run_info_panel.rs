@@ -10,16 +10,16 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-pub struct DetailPanel {
+pub struct RunInfoPanel {
     pub selected_workflow: Option<Workflow>,
     pub is_focused: bool,
 }
 
-impl DetailPanel {
+impl RunInfoPanel {
     pub fn new(selected_workflow: Option<Workflow>, ui_state: &UIState) -> Self {
         Self {
             selected_workflow,
-            is_focused: ui_state.focused_panel == PanelId::DetailPanel,
+            is_focused: ui_state.focused_panel == PanelId::RunInfoPanel,
         }
     }
 
@@ -32,21 +32,13 @@ impl DetailPanel {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(" Step Details & Logs ")
+            .title(" Run Info ")
             .border_style(Style::default().fg(border_color));
 
         if self.selected_workflow.is_some() {
             let lines = vec![
                 Line::from(""),
-                Line::styled(
-                    "Step metadata and logs will be displayed here",
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Line::from(""),
-                Line::styled(
-                    "Future: Real-time log streaming",
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Line::styled("Run info to go here", Style::default().fg(Color::DarkGray)),
             ];
 
             Paragraph::new(lines).block(block).render(area, buf);

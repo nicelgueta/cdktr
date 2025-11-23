@@ -75,6 +75,9 @@ pub enum Action {
 
     /// Query logs failed with error
     QueryLogsError(String),
+
+    /// Principal status was updated (online/offline)
+    PrincipalStatusUpdated(bool),
 }
 
 /// Identifies different tabs in the UI
@@ -89,7 +92,7 @@ pub enum TabId {
 pub enum PanelId {
     Sidebar,
     MainPanel,
-    DetailPanel,
+    RunInfoPanel,
 }
 
 // WorkflowMetadata is now imported as Workflow from cdktr-workflow crate

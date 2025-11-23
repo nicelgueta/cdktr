@@ -1,5 +1,6 @@
 /// UIStore manages UI-specific state (focused panels, help visibility, etc.)
 use crate::actions::{Action, PanelId, TabId};
+use chrono::Utc;
 use std::sync::{Arc, RwLock};
 
 /// Internal state for UI
@@ -19,6 +20,12 @@ pub struct UIState {
 
     /// Whether the application should exit
     pub should_exit: bool,
+
+    /// Whether the principal is online (from periodic pings)
+    pub principal_online: bool,
+
+    /// Timestamp (Unix seconds) when the principal first went offline
+    pub disconnect_since: Option<i64>,
 }
 
 impl Default for UIState {
@@ -29,6 +36,8 @@ impl Default for UIState {
             show_help: false,
             error_message: None,
             should_exit: false,
+            principal_online: false,
+            disconnect_since: None,
         }
     }
 }
@@ -77,6 +86,20 @@ impl UIStore {
 
             Action::Quit => {
                 state.should_exit = true;
+            }
+
+            Action::PrincipalStatusUpdated(is_online) => {
+                let was_online = state.principal_online;
+                state.principal_online = *is_online;
+
+                if *is_online {
+                    // Reconnected - clear the disconnect timestamp
+                    state.disconnect_since = None;
+                } else if was_online {
+                    // Just disconnected - record the timestamp
+                    state.disconnect_since = Some(chrono::Utc::now().timestamp());
+                }
+                // If already disconnected, keep the original timestamp
             }
 
             _ => {

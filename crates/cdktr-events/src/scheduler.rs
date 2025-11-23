@@ -225,7 +225,7 @@ async fn refresh_loop(mut scheduler: Scheduler) -> Result<(), GenericError> {
             Ok(wfs) => {
                 if !scheduler.workflows_match(&wfs).await {
                     info!("Found workflows to refresh from principal");
-                    scheduler.update_schedule_priority_queue(wfs).await;
+                    scheduler.update_schedule_priority_queue(wfs).await?;
                     info!("Successfully refreshed workflows from principal");
                 }
             }

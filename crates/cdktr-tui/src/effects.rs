@@ -30,6 +30,51 @@ impl Effects {
     pub fn set_log_viewer_store(&mut self, store: LogViewerStore) {
         self.log_viewer_store = Some(store);
     }
+
+    /// Spawn background tasks for status monitoring and workflow refresh
+    pub fn spawn_background_tasks(&self) {
+        self.spawn_workflow_refresh();
+        self.spawn_status_monitor();
+    }
+
+    /// Spawn a background task to ping the principal and update status
+    fn spawn_status_monitor(&self) {
+        let dispatcher = self.dispatcher.clone();
+        let interval_ms = get_cdktr_setting!(CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS, usize) as u64;
+
+        task::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(interval_ms)).await;
+                let is_online = ping_principal().await;
+                dispatcher.dispatch(Action::PrincipalStatusUpdated(is_online));
+            }
+        });
+    }
+
+    /// Spawn a background task to refresh workflows periodically
+    fn spawn_workflow_refresh(&self) {
+        let dispatcher = self.dispatcher.clone();
+        let interval_secs =
+            get_cdktr_setting!(CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S, usize) as u64;
+
+        task::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(interval_secs)).await;
+
+                log::debug!("Auto-refreshing workflows from principal...");
+                match fetch_workflows_from_backend().await {
+                    Ok(workflows) => {
+                        log::debug!("Auto-refresh: loaded {} workflows", workflows.len());
+                        dispatcher.dispatch(Action::WorkflowListLoaded(workflows));
+                    }
+                    Err(e) => {
+                        log::error!("Auto-refresh failed: {}", e);
+                        // Don't dispatch error to avoid disrupting user experience
+                    }
+                }
+            }
+        });
+    }
     /// Handle an action and execute any necessary side effects
     pub fn handle(&self, action: &Action) {
         match action {
@@ -209,6 +254,22 @@ async fn fetch_workflows_from_backend() -> Result<Vec<Workflow>, String> {
             }
         }
         Err(e) => Err(format!("ZMQ request failed: {}", e)),
+    }
+}
+
+/// Ping the principal to check if it's online
+async fn ping_principal() -> bool {
+    let uri = get_server_tcp_uri(
+        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
+        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
+    );
+
+    let api_msg = PrincipalAPI::Ping;
+    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
+
+    match api_msg.send(&uri, timeout).await {
+        Ok(_) => true,
+        Err(_) => false,
     }
 }
 

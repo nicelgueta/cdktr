@@ -59,7 +59,11 @@ impl WorkflowsStore {
             }
 
             Action::WorkflowListLoaded(workflows) => {
-                state.workflows = workflows.clone();
+                state.workflows = {
+                    let mut workflows = workflows.clone();
+                    workflows.sort_by_key(|w| w.id().clone());
+                    workflows
+                };
                 state.is_loading = false;
                 state.error = None;
 

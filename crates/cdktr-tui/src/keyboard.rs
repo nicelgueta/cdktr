@@ -103,8 +103,8 @@ fn handle_admin_tab_keys(key_event: KeyEvent, app_logs_store: &AppLogsStore) -> 
 fn next_panel(current: PanelId) -> Action {
     let next = match current {
         PanelId::Sidebar => PanelId::MainPanel,
-        PanelId::MainPanel => PanelId::DetailPanel,
-        PanelId::DetailPanel => PanelId::Sidebar,
+        PanelId::MainPanel => PanelId::RunInfoPanel,
+        PanelId::RunInfoPanel => PanelId::Sidebar,
     };
     Action::FocusPanel(next)
 }
@@ -112,9 +112,9 @@ fn next_panel(current: PanelId) -> Action {
 /// Move to the previous panel
 fn previous_panel(current: PanelId) -> Action {
     let prev = match current {
-        PanelId::Sidebar => PanelId::DetailPanel,
+        PanelId::Sidebar => PanelId::RunInfoPanel,
         PanelId::MainPanel => PanelId::Sidebar,
-        PanelId::DetailPanel => PanelId::MainPanel,
+        PanelId::RunInfoPanel => PanelId::MainPanel,
     };
     Action::FocusPanel(prev)
 }

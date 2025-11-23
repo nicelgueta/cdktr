@@ -45,3 +45,6 @@ pub static CDKTR_APP_DATA_DIRECTORY: &'static str = "$HOME/.cdktr";
 
 /// Path to the location of the main database for the principal instance
 pub static CDKTR_DB_PATH: &'static str = "$HOME/.cdktr/app.db";
+
+/// TUI refresh interval for principal status checks (in milliseconds)
+pub static CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS: usize = 1000;

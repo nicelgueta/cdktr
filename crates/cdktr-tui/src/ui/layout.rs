@@ -1,7 +1,8 @@
 /// Layout manager for the TUI application
 use crate::actions::TabId;
 use crate::stores::{AppLogsStore, LogsStore, UIStore, WorkflowsStore};
-use crate::ui::{AdminPanel, DetailPanel, MainPanel, Sidebar};
+use crate::ui::{AdminPanel, MainPanel, RunInfoPanel, Sidebar};
+use chrono;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -112,13 +113,13 @@ fn render_workflows_content(
     let main_panel = MainPanel::new(selected_workflow.clone(), &ui_state);
     main_panel.render(content_chunks[1], frame.buffer_mut());
 
-    let detail_panel = DetailPanel::new(selected_workflow, &ui_state);
-    detail_panel.render(content_chunks[2], frame.buffer_mut());
+    let run_info_panel = RunInfoPanel::new(selected_workflow, &ui_state);
+    run_info_panel.render(content_chunks[2], frame.buffer_mut());
 }
 
 fn render_admin_content(frame: &mut Frame, area: Rect, app_logs_store: &AppLogsStore) {
     let app_logs_state = app_logs_store.get_state();
-    let mut admin_panel = AdminPanel::from_state(&app_logs_state);
+    let admin_panel = AdminPanel::from_state(&app_logs_state);
     admin_panel.render(area, frame.buffer_mut());
 }
 
@@ -126,14 +127,24 @@ fn render_header(
     frame: &mut Frame,
     area: Rect,
     workflows_store: &WorkflowsStore,
-    _ui_store: &UIStore,
+    ui_store: &UIStore,
 ) {
     let workflows_state = workflows_store.get_state();
+    let ui_state = ui_store.get_state();
 
+    let status_string;
     let status = if workflows_state.is_loading {
         "Loading..."
     } else if let Some(err) = &workflows_state.error {
         err.as_str()
+    } else if !ui_state.principal_online {
+        if let Some(disconnect_ts) = ui_state.disconnect_since {
+            let elapsed = chrono::Utc::now().timestamp() - disconnect_ts;
+            status_string = format!("Disconnected ({}s)", elapsed);
+            &status_string
+        } else {
+            "Disconnected"
+        }
     } else {
         "Connected"
     };
@@ -142,6 +153,8 @@ fn render_header(
         Color::Red
     } else if workflows_state.is_loading {
         Color::Yellow
+    } else if !ui_state.principal_online {
+        Color::Red
     } else {
         Color::Green
     };
@@ -153,10 +166,9 @@ fn render_header(
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" | Status: "),
+        Span::raw(" | Principal Status: "),
         Span::styled(status, Style::default().fg(status_color)),
         Span::raw(" | "),
-        Span::styled("Press 2 for logs", Style::default().fg(Color::DarkGray)),
     ]);
 
     Paragraph::new(header_text)

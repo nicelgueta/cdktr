@@ -1,6 +1,6 @@
 name: Example 3
 description: Example workflow with multiple tasks and dependencies
-cron: "1 * * * * *" # every 1 min
+cron: "*/10 * * * * *" # every 1 min
 start_time: 2025-01-20T12:30:00+00:00
 tasks:
   task1:
