@@ -1,0 +1,29 @@
+
+name: Publish to Crates.io
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+    paths:
+      - src/*
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/publish.yml
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_test_publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo build --verbose --release
+      - run: cargo test --verbose
+      - run: cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
+      - run:
+          cargo publish --features cli
