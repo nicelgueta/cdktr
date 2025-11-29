@@ -14,7 +14,7 @@ commit:
 	git add $(shell git diff --name-only --cached | grep '.rs$$')
 push: test
 
-build:
+release:
 	cargo build --release
 principal:
 	cargo run start principal
