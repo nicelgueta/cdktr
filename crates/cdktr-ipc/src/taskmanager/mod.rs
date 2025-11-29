@@ -107,11 +107,26 @@ impl TaskManager {
             return Err(e);
         }
 
+        // Spawn heartbeat task to keep agent registered
+        let heartbeat_client = self.principal_client.clone();
+        let heartbeat_handle = tokio::spawn(async move {
+            loop {
+                sleep(Duration::from_secs(5)).await;
+                if let Err(e) = heartbeat_client.send_heartbeat().await {
+                    error!("Failed to send heartbeat to principal: {}", e.to_string());
+                }
+            }
+        });
+
         info!(
             "TASKMANAGER-{}: Beginning task execution loop",
             self.instance_id
         );
         let loop_res = self.workflow_execution_loop().await;
+
+        // Abort heartbeat task when workflow loop exits
+        heartbeat_handle.abort();
+
         if let Err(e) = loop_res {
             //TODO: currently just aborts on errors - maybe split errors up into those that we should fully
             // abort on and others that are fine to re-engage the loop on?

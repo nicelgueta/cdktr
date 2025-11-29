@@ -1,7 +1,7 @@
 /// Layout manager for the TUI application
 use crate::actions::TabId;
 use crate::stores::{AppLogsStore, LogsStore, UIStore, WorkflowsStore};
-use crate::ui::{AdminPanel, MainPanel, RunInfoPanel, Sidebar};
+use crate::ui::{AdminPanel, AgentListPanel, MainPanel, RunInfoPanel, Sidebar};
 use chrono;
 use ratatui::{
     Frame,
@@ -126,12 +126,26 @@ fn render_workflows_with_tabs(
     let sidebar = Sidebar::from_state(&workflows_state, &ui_state, selected_index);
     sidebar.render(content_chunks[0], frame.buffer_mut());
 
+    // Split the main panel area vertically: top = workflow details, bottom = agent list
+    let main_panel_vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(60), // Workflow Details (top 60%)
+            Constraint::Percentage(40), // Agent List (bottom 40%)
+        ])
+        .split(content_chunks[1]);
+
     let main_panel = MainPanel::new(
         selected_workflow.clone(),
         &ui_state,
         workflows_state.main_panel_scroll_offset,
     );
-    main_panel.render(content_chunks[1], frame.buffer_mut());
+    main_panel.render(main_panel_vertical[0], frame.buffer_mut());
+
+    // Render agent list panel
+    let agent_list_panel =
+        AgentListPanel::new(workflows_state.registered_agents.clone(), &ui_state);
+    agent_list_panel.render(main_panel_vertical[1], frame.buffer_mut());
 
     // Render right panel (Recent Workflow Runs) - spans full height
     let run_info_panel = RunInfoPanel::new(

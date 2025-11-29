@@ -42,6 +42,29 @@ impl Effects {
         self.spawn_workflow_refresh();
         self.spawn_status_monitor();
         self.spawn_workflow_status_monitor();
+        self.spawn_agent_monitor();
+    }
+
+    /// Spawn a background task to monitor registered agents
+    fn spawn_agent_monitor(&self) {
+        let dispatcher = self.dispatcher.clone();
+        let interval_ms = get_cdktr_setting!(CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS, usize) as u64;
+
+        task::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(interval_ms)).await;
+
+                match fetch_registered_agents().await {
+                    Ok(agents) => {
+                        dispatcher.dispatch(Action::RegisteredAgentsUpdated(agents));
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to fetch registered agents: {}", e);
+                        // Don't dispatch error to avoid disrupting user experience
+                    }
+                }
+            }
+        });
     }
 
     /// Spawn a background task to monitor recent workflow statuses
@@ -83,12 +106,11 @@ impl Effects {
     /// Spawn a background task to refresh workflows periodically
     fn spawn_workflow_refresh(&self) {
         let dispatcher = self.dispatcher.clone();
-        let interval_secs =
-            get_cdktr_setting!(CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S, usize) as u64;
+        let interval_ms = get_cdktr_setting!(CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS, usize) as u64;
 
         task::spawn(async move {
             loop {
-                tokio::time::sleep(Duration::from_secs(interval_secs)).await;
+                tokio::time::sleep(Duration::from_millis(interval_ms)).await;
 
                 log::debug!("Auto-refreshing workflows from principal...");
                 match fetch_workflows_from_backend().await {
@@ -320,6 +342,30 @@ async fn fetch_recent_workflow_statuses() -> Result<Vec<StatusUpdate>, String> {
             match serde_json::from_str::<Vec<StatusUpdate>>(&payload) {
                 Ok(status_updates) => Ok(status_updates),
                 Err(e) => Err(format!("Failed to parse status updates: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("ZMQ request failed: {}", e)),
+    }
+}
+
+/// Fetch the list of registered agents
+async fn fetch_registered_agents() -> Result<Vec<cdktr_api::models::AgentInfo>, String> {
+    let api_msg = PrincipalAPI::GetRegisteredAgents;
+
+    let uri = get_server_tcp_uri(
+        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
+        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
+    );
+
+    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
+
+    match api_msg.send(&uri, timeout).await {
+        Ok(response) => {
+            let payload = response.payload();
+
+            match serde_json::from_str::<Vec<cdktr_api::models::AgentInfo>>(&payload) {
+                Ok(agents) => Ok(agents),
+                Err(e) => Err(format!("Failed to parse agent info: {}", e)),
             }
         }
         Err(e) => Err(format!("ZMQ request failed: {}", e)),

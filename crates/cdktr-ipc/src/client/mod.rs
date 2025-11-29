@@ -7,6 +7,7 @@ use tokio::time::sleep;
 
 /// This client is used to house utility functions at a slightly higher level than the raw API
 /// implemented by the PrincipalAPI.
+#[derive(Clone)]
 pub struct PrincipalClient {
     /// ID of the principal currently subscribed to
     instance_id: String,
@@ -62,6 +63,31 @@ impl PrincipalClient {
         }
 
         Ok(())
+    }
+
+    /// Sends a heartbeat to the principal to keep this agent registered
+    pub async fn send_heartbeat(&self) -> Result<(), GenericError> {
+        let cdktr_default_timeout: Duration =
+            Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
+
+        let request = PrincipalAPI::RegisterAgent(self.instance_id.clone());
+        match request
+            .send(&self.principal_uri, cdktr_default_timeout)
+            .await
+        {
+            Ok(ClientResponseMessage::Success) => {
+                debug!("Heartbeat sent successfully");
+                Ok(())
+            }
+            Ok(other) => {
+                warn!("Unexpected heartbeat response: {}", other.to_string());
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to send heartbeat: {}", e.to_string());
+                Err(e)
+            }
+        }
     }
 
     pub fn get_uri(&self) -> String {

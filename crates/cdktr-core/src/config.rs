@@ -48,3 +48,7 @@ pub static CDKTR_DB_PATH: &'static str = "$HOME/.cdktr/app.db";
 
 /// TUI refresh interval for principal status checks (in milliseconds)
 pub static CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS: usize = 1000;
+
+/// Agent heartbeat timeout in milliseconds. If an agent hasn't sent a heartbeat
+/// within this duration, any running workflows will be marked as CRASHED
+pub static CDKTR_AGENT_HEARTBEAT_TIMEOUT_MS: usize = 60_000;

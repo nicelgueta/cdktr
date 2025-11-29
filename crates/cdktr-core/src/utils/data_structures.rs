@@ -250,6 +250,39 @@ impl AgentPriorityQueue {
             None => return Err(GenericError::MissingAgents),
         }
     }
+
+    /// Check if an agent's last heartbeat timestamp is older than the given threshold
+    /// Returns Ok(true) if timed out, Ok(false) if still alive, Err if agent not found
+    pub async fn is_agent_timed_out(
+        &self,
+        agent_id: &str,
+        timeout_micros: i64,
+        now_micros: i64,
+    ) -> Result<bool, GenericError> {
+        let u_map = self.u_map.lock().await;
+        match u_map.get(agent_id) {
+            Some(unique_id) => {
+                let node_map = self.node_map.lock().await;
+                match node_map.get(unique_id) {
+                    Some(agent_meta) => {
+                        let last_ping = agent_meta.get_last_ping_ts();
+                        let elapsed = now_micros - last_ping;
+                        Ok(elapsed > timeout_micros)
+                    }
+                    None => Err(GenericError::MissingAgents),
+                }
+            }
+            None => Err(GenericError::MissingAgents),
+        }
+    }
+
+    /// Get all registered agents. Returns a vector of cloned AgentMeta objects.
+    /// This is useful for reporting/monitoring purposes.
+    pub async fn get_all_agents(&self) -> Vec<AgentMeta> {
+        let node_map = self.node_map.lock().await;
+        node_map.values().cloned().collect()
+    }
+
     /// O(log n) ID lookup to update agent utilisation which directly affects its position in the queue. This is
     /// time complexity can be acheived because we use the hashmap to mutably access the AgentMeta, make the update
     /// and then push back using .push() which is a O(log n) insert.
@@ -562,5 +595,145 @@ mod tests {
             // above
             assert_ne!(am.agent_id(), "localhost-9997".to_string())
         }
+    }
+
+    #[tokio::test]
+    async fn test_is_agent_timed_out_not_timed_out() {
+        let mut pq = AgentPriorityQueue::new();
+        let now = 1000000; // 1 second in microseconds
+        let agent_meta = AgentMeta::new("localhost-9999".to_string(), now);
+        pq.push(agent_meta).await;
+
+        let timeout_micros = 30_000_000; // 30 seconds in microseconds
+        let check_time = now + 10_000_000; // 10 seconds later
+
+        let result = pq
+            .is_agent_timed_out("localhost-9999", timeout_micros, check_time)
+            .await;
+        assert_eq!(result.unwrap(), false); // Not timed out
+    }
+
+    #[tokio::test]
+    async fn test_is_agent_timed_out_is_timed_out() {
+        let mut pq = AgentPriorityQueue::new();
+        let now = 1000000; // 1 second in microseconds
+        let agent_meta = AgentMeta::new("localhost-9999".to_string(), now);
+        pq.push(agent_meta).await;
+
+        let timeout_micros = 30_000_000; // 30 seconds in microseconds
+        let check_time = now + 40_000_000; // 40 seconds later
+
+        let result = pq
+            .is_agent_timed_out("localhost-9999", timeout_micros, check_time)
+            .await;
+        assert_eq!(result.unwrap(), true); // Timed out
+    }
+
+    #[tokio::test]
+    async fn test_is_agent_timed_out_exact_timeout() {
+        let mut pq = AgentPriorityQueue::new();
+        let now = 1000000;
+        let agent_meta = AgentMeta::new("localhost-9999".to_string(), now);
+        pq.push(agent_meta).await;
+
+        let timeout_micros = 30_000_000;
+        let check_time = now + timeout_micros; // Exactly at timeout
+
+        let result = pq
+            .is_agent_timed_out("localhost-9999", timeout_micros, check_time)
+            .await;
+        assert_eq!(result.unwrap(), false); // Not timed out (equal, not greater)
+    }
+
+    #[tokio::test]
+    async fn test_is_agent_timed_out_agent_not_found() {
+        let pq = AgentPriorityQueue::new();
+        let timeout_micros = 30_000_000;
+        let now = 1000000;
+
+        let result = pq
+            .is_agent_timed_out("nonexistent-agent", timeout_micros, now)
+            .await;
+        assert!(result.is_err()); // Should return MissingAgents error
+    }
+
+    #[tokio::test]
+    async fn test_is_agent_timed_out_after_timestamp_update() {
+        let mut pq = AgentPriorityQueue::new();
+        let initial_time = 1000000;
+        let agent_meta = AgentMeta::new("localhost-9999".to_string(), initial_time);
+        pq.push(agent_meta).await;
+
+        let timeout_micros = 30_000_000;
+
+        // First check - would be timed out
+        let check_time_1 = initial_time + 40_000_000;
+        let result_1 = pq
+            .is_agent_timed_out("localhost-9999", timeout_micros, check_time_1)
+            .await;
+        assert_eq!(result_1.unwrap(), true);
+
+        // Update timestamp (simulating heartbeat)
+        let new_time = check_time_1 - 5_000_000; // 5 seconds before check_time_1
+        pq.update_timestamp("localhost-9999", new_time)
+            .await
+            .unwrap();
+
+        // Second check - should not be timed out now
+        let result_2 = pq
+            .is_agent_timed_out("localhost-9999", timeout_micros, check_time_1)
+            .await;
+        assert_eq!(result_2.unwrap(), false);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_agents_empty_queue() {
+        let pq = AgentPriorityQueue::new();
+        let agents = pq.get_all_agents().await;
+        assert_eq!(agents.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_agents_with_agents() {
+        let mut pq = AgentPriorityQueue::new();
+
+        // Add 3 agents
+        let agent1 = AgentMeta::new("agent-1".to_string(), 1000);
+        let agent2 = AgentMeta::new("agent-2".to_string(), 2000);
+        let agent3 = AgentMeta::new("agent-3".to_string(), 3000);
+
+        pq.push(agent1).await;
+        pq.push(agent2).await;
+        pq.push(agent3).await;
+
+        let agents = pq.get_all_agents().await;
+        assert_eq!(agents.len(), 3);
+
+        // Verify all agent IDs are present
+        let agent_ids: Vec<String> = agents.iter().map(|a| a.agent_id()).collect();
+        assert!(agent_ids.contains(&"agent-1".to_string()));
+        assert!(agent_ids.contains(&"agent-2".to_string()));
+        assert!(agent_ids.contains(&"agent-3".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_all_agents_after_removal() {
+        let mut pq = AgentPriorityQueue::new();
+
+        // Add 3 agents
+        pq.push(AgentMeta::new("agent-1".to_string(), 1000)).await;
+        pq.push(AgentMeta::new("agent-2".to_string(), 2000)).await;
+        pq.push(AgentMeta::new("agent-3".to_string(), 3000)).await;
+
+        // Remove one agent
+        pq.remove("agent-2").await.unwrap();
+
+        let agents = pq.get_all_agents().await;
+        assert_eq!(agents.len(), 2);
+
+        let agent_ids: Vec<String> = agents.iter().map(|a| a.agent_id()).collect();
+        assert!(agent_ids.contains(&"agent-1".to_string()));
+        assert!(agent_ids.contains(&"agent-3".to_string()));
+        assert!(!agent_ids.contains(&"agent-2".to_string()));
     }
 }

@@ -8,7 +8,8 @@ pub static DDL: [&'static str; 4] = [
         'RUNNING',
         'WAITING',
         'COMPLETED',
-        'FAILED'
+        'FAILED',
+        'CRASHED'
     )
     ",
     // type of run

@@ -1,4 +1,5 @@
 pub mod admin_panel;
+pub mod agent_list_panel;
 pub mod dag_viz;
 pub mod layout;
 pub mod log_viewer_modal;
@@ -8,6 +9,7 @@ pub mod run_info_panel;
 pub mod sidebar;
 
 pub use admin_panel::AdminPanel;
+pub use agent_list_panel::AgentListPanel;
 pub use layout::render_layout;
 pub use log_viewer_modal::LogViewerModal;
 pub use main_panel::MainPanel;

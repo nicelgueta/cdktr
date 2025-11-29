@@ -101,11 +101,11 @@ impl MainPanel {
         let dag = workflow.get_dag();
 
         // Render task summary
-        let mut all_lines = dag_viz::render_task_summary(dag);
-        all_lines.push(Line::from(""));
+        let all_lines = dag_viz::render_task_summary(dag);
 
         // Render DAG tree
-        all_lines.extend(dag_viz::render_dag(dag));
+        // leave this out for now - TODO: move to another panel
+        // all_lines.extend(dag_viz::render_dag(dag));
 
         // Skip lines based on scroll offset
         let visible_lines: Vec<_> = all_lines

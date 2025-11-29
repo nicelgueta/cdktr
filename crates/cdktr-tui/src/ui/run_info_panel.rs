@@ -26,7 +26,7 @@ impl RunInfoPanel {
         scroll_offset: usize,
     ) -> Self {
         let mut scroll_state = TableState::default();
-        scroll_state.select(Some(scroll_offset));
+        // scroll_state.select(Some(scroll_offset));
 
         Self {
             recent_statuses,

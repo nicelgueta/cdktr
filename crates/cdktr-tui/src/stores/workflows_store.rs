@@ -1,6 +1,6 @@
 /// WorkflowsStore manages the state of workflows in the application
 use crate::actions::Action;
-use cdktr_api::models::StatusUpdate;
+use cdktr_api::models::{AgentInfo, StatusUpdate};
 use cdktr_workflow::Workflow;
 use std::sync::{Arc, RwLock};
 
@@ -22,6 +22,9 @@ pub struct WorkflowsState {
     /// Recent workflow status updates (last 10)
     pub recent_statuses: Vec<StatusUpdate>,
 
+    /// List of registered agents
+    pub registered_agents: Vec<AgentInfo>,
+
     /// Scroll offset for RunInfo panel
     pub run_info_scroll_offset: usize,
 
@@ -40,6 +43,7 @@ impl Default for WorkflowsState {
             is_loading: false,
             error: None,
             recent_statuses: Vec::new(),
+            registered_agents: Vec::new(),
             run_info_scroll_offset: 0,
             run_info_filter: String::new(),
             main_panel_scroll_offset: 0,
@@ -101,6 +105,10 @@ impl WorkflowsStore {
 
             Action::RecentWorkflowStatusesUpdated(status_updates) => {
                 state.recent_statuses = status_updates.clone();
+            }
+
+            Action::RegisteredAgentsUpdated(agents) => {
+                state.registered_agents = agents.clone();
             }
 
             Action::ScrollRunInfo(delta) => {

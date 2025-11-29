@@ -5,6 +5,23 @@ use zeromq::ZmqMessage;
 use cdktr_core::models::ZMQArgs;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct AgentInfo {
+    pub agent_id: String,
+    pub last_ping_timestamp: i64,
+    pub running_tasks: usize,
+}
+
+impl AgentInfo {
+    pub fn new(agent_id: String, last_ping_timestamp: i64, running_tasks: usize) -> Self {
+        Self {
+            agent_id,
+            last_ping_timestamp,
+            running_tasks,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct StatusUpdate {
     object_id: String,
     object_instance_id: String,
@@ -155,7 +172,34 @@ impl Into<ZmqMessage> for ClientResponseMessage {
 mod tests {
     use zeromq::ZmqMessage;
 
-    use super::ClientResponseMessage;
+    use super::{AgentInfo, ClientResponseMessage};
+
+    #[test]
+    fn test_agent_info_serialization() {
+        let agent = AgentInfo::new("test-agent-001".to_string(), 1234567890, 5);
+
+        let json = serde_json::to_string(&agent).unwrap();
+        let deserialized: AgentInfo = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.agent_id, "test-agent-001");
+        assert_eq!(deserialized.last_ping_timestamp, 1234567890);
+        assert_eq!(deserialized.running_tasks, 5);
+    }
+
+    #[test]
+    fn test_agent_info_vec_serialization() {
+        let agents = vec![
+            AgentInfo::new("agent-1".to_string(), 1000, 2),
+            AgentInfo::new("agent-2".to_string(), 2000, 0),
+        ];
+
+        let json = serde_json::to_string(&agents).unwrap();
+        let deserialized: Vec<AgentInfo> = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.len(), 2);
+        assert_eq!(deserialized[0].agent_id, "agent-1");
+        assert_eq!(deserialized[1].agent_id, "agent-2");
+    }
 
     #[test]
     fn test_client_message_success_payload() {

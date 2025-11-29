@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::time::SystemTime;
 
-use cdktr_api::models::{ClientResponseMessage, StatusUpdate};
+use cdktr_api::models::{AgentInfo, ClientResponseMessage, StatusUpdate};
 use cdktr_core::{
     exceptions::GenericError,
     models::{RunStatus, RunType},
@@ -151,6 +152,32 @@ pub async fn handle_get_recent_workflow_statuses(
     }
 }
 
+/// Handler to get all registered agents with their metadata
+pub async fn handle_get_registered_agents(
+    live_agents: AgentPriorityQueue,
+) -> (ClientResponseMessage, usize) {
+    let agents = live_agents.get_all_agents().await;
+
+    let agent_infos: Vec<AgentInfo> = agents
+        .into_iter()
+        .map(|agent| {
+            AgentInfo::new(
+                agent.agent_id(),
+                agent.get_last_ping_ts(),
+                agent.utilisation(),
+            )
+        })
+        .collect();
+
+    match serde_json::to_string(&agent_infos) {
+        Ok(json) => (ClientResponseMessage::SuccessWithPayload(json), 0),
+        Err(e) => (
+            ClientResponseMessage::ServerError(format!("Failed to serialize agent info: {:?}", e)),
+            0,
+        ),
+    }
+}
+
 /// handler for the principal to place a workflow task on the queue ready for pick-up by a worker
 pub async fn handle_run_task(
     workflow_id: &str,
@@ -194,6 +221,73 @@ pub async fn handle_fetch_task(
         trace!("No task found - sending empty success to client");
         (ClientResponseMessage::Success, 0)
     }
+}
+
+/// Helper function to batch update workflows to CRASHED status when agent dies
+pub async fn mark_workflows_as_crashed(
+    db_client: DBClient,
+    workflow_instance_ids: HashSet<String>,
+) -> Result<(), GenericError> {
+    if workflow_instance_ids.is_empty() {
+        return Ok(());
+    }
+
+    let timestamp_ms = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    // We need to insert new status records for each workflow instance
+    // Since we don't have the workflow_id readily available, we'll query it first
+    // For each workflow_instance_id, find the latest workflow_id from existing records
+
+    for wf_instance_id in workflow_instance_ids {
+        // Query to get the workflow_id for this instance
+        let query = format!(
+            "SELECT object_id FROM run_status
+             WHERE object_instance_id = '{}' AND run_type = 'Workflow'
+             LIMIT 1",
+            wf_instance_id
+        );
+
+        let workflow_id: Option<String> = {
+            let lock = db_client.lock_inner_client().await;
+            let mut stmt = lock
+                .prepare(&query)
+                .map_err(|e| GenericError::DBError(e.to_string()))?;
+
+            let result: Option<String> = stmt.query_row([], |row| row.get(0)).ok();
+            drop(stmt);
+            drop(lock);
+            result
+        };
+
+        if let Some(wf_id) = workflow_id {
+            let item = StatusUpdate::new(
+                wf_id,
+                wf_instance_id.clone(),
+                RunType::Workflow.to_string(),
+                RunStatus::CRASHED.to_string(),
+                timestamp_ms,
+            );
+            let batch = vec![item.clone()];
+
+            match db_client.batch_load("run_status", batch).await {
+                Ok(()) => {}
+                Err(_failed_batch) => {
+                    log::error!(
+                        "Failed to mark workflow instance {} as CRASHED",
+                        wf_instance_id
+                    );
+                    // Continue processing other workflows even if one fails
+                }
+            }
+        } else {
+            log::warn!("Could not find workflow_id for instance {}", wf_instance_id);
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -308,5 +402,24 @@ mod tests {
         }
     }
 
-    // TODO: more tests needed
+    #[tokio::test]
+    async fn test_mark_workflows_as_crashed_empty_set() {
+        let db_client = DBClient::new(None).unwrap();
+        let empty_set = HashSet::new();
+
+        let result = mark_workflows_as_crashed(db_client, empty_set).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mark_workflows_as_crashed_nonexistent_workflow() {
+        let db_client = DBClient::new(None).unwrap();
+
+        let mut workflow_set = HashSet::new();
+        workflow_set.insert("nonexistent-instance".to_string());
+
+        // Should not error even if workflow doesn't exist
+        let result = mark_workflows_as_crashed(db_client, workflow_set).await;
+        assert!(result.is_ok());
+    }
 }

@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -10,14 +11,14 @@ use cdktr_workflow::{Workflow, WorkflowStore};
 use chrono::Utc;
 
 use cdktr_api::PrincipalAPI;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 
 use crate::log_manager::read_logs;
 
 use super::traits::Server;
 use cdktr_api::models::ClientResponseMessage;
 
-mod helpers;
+pub mod helpers;
 
 pub struct PrincipalServer {
     instance_id: String,
@@ -25,6 +26,8 @@ pub struct PrincipalServer {
     task_queue: AsyncQueue<Workflow>,
     workflows: WorkflowStore,
     db_client: DBClient,
+    /// Maps agent_id to set of workflow_instance_ids currently running on that agent
+    agent_workflows: Arc<tokio::sync::Mutex<HashMap<String, HashSet<String>>>>,
 }
 
 impl PrincipalServer {
@@ -35,6 +38,7 @@ impl PrincipalServer {
             task_queue: AsyncQueue::new(),
             workflows,
             db_client,
+            agent_workflows: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         }
     }
 
@@ -52,6 +56,21 @@ impl PrincipalServer {
             }
         };
         (ClientResponseMessage::Success, 0)
+    }
+
+    /// Returns references to the agent tracking structures for heartbeat monitoring
+    pub fn get_agent_tracking(
+        &self,
+    ) -> (
+        AgentPriorityQueue,
+        Arc<tokio::sync::Mutex<HashMap<String, HashSet<String>>>>,
+        DBClient,
+    ) {
+        (
+            self.live_agents.clone(),
+            self.agent_workflows.clone(),
+            self.db_client.clone(),
+        )
     }
 }
 
@@ -76,7 +95,55 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 workflow_instance_id,
                 status,
             ) => {
-                // TODO do something with agent id
+                // Track agent-to-workflow mapping for heartbeat monitoring
+                let mut agent_wf_map = self.agent_workflows.lock().await;
+                match status {
+                    cdktr_core::models::RunStatus::RUNNING => {
+                        // Add workflow to agent's active set
+                        agent_wf_map
+                            .entry(agent_id.clone())
+                            .or_insert_with(HashSet::new)
+                            .insert(workflow_instance_id.clone());
+
+                        // Increment running tasks counter for this agent
+                        if let Err(e) = self.live_agents.update_running_tasks(&agent_id, true).await
+                        {
+                            warn!(
+                                "Failed to increment running tasks for agent {}: {}",
+                                agent_id,
+                                e.to_string()
+                            );
+                        }
+                    }
+                    cdktr_core::models::RunStatus::COMPLETED
+                    | cdktr_core::models::RunStatus::FAILED
+                    | cdktr_core::models::RunStatus::CRASHED => {
+                        // Remove workflow from agent's active set
+                        if let Some(workflows) = agent_wf_map.get_mut(&agent_id) {
+                            workflows.remove(&workflow_instance_id);
+                            // Clean up empty entries
+                            if workflows.is_empty() {
+                                agent_wf_map.remove(&agent_id);
+                            }
+                        }
+
+                        // Decrement running tasks counter for this agent
+                        if let Err(e) = self
+                            .live_agents
+                            .update_running_tasks(&agent_id, false)
+                            .await
+                        {
+                            warn!(
+                                "Failed to decrement running tasks for agent {}: {}",
+                                agent_id,
+                                e.to_string()
+                            );
+                        }
+                    }
+                    _ => {} // PENDING, WAITING, etc - no tracking needed
+                }
+                drop(agent_wf_map);
+
                 helpers::handle_agent_workflow_status_update(
                     self.db_client.clone(),
                     workflow_id,
@@ -131,6 +198,9 @@ impl Server<PrincipalAPI> for PrincipalServer {
             }
             PrincipalAPI::GetRecentWorkflowStatuses => {
                 helpers::handle_get_recent_workflow_statuses(self.db_client.clone()).await
+            }
+            PrincipalAPI::GetRegisteredAgents => {
+                helpers::handle_get_registered_agents(self.live_agents.clone()).await
             }
         };
         trace!("Returning ({}): {}", result.1, result.0.to_string());
@@ -233,5 +303,259 @@ mod tests {
         assert!(new_timestamp > old_timestamp);
         assert!(resp == ClientResponseMessage::Success);
         assert!(exit_code == 0)
+    }
+
+    #[tokio::test]
+    async fn test_workflow_tracking_on_running_status() {
+        let mut server = PrincipalServer::new(
+            "fake_ins".to_string(),
+            get_workflowstore().await,
+            DBClient::new(None).unwrap(),
+        );
+
+        let agent_id = "test-agent-001".to_string();
+        let workflow_id = "test-workflow".to_string();
+        let workflow_instance_id = "test-instance-001".to_string();
+
+        // Send RUNNING status update
+        let msg = PrincipalAPI::WorkflowStatusUpdate(
+            agent_id.clone(),
+            workflow_id.clone(),
+            workflow_instance_id.clone(),
+            cdktr_core::models::RunStatus::RUNNING,
+        );
+
+        server.handle_client_message(msg).await;
+
+        // Verify workflow is tracked
+        let agent_wf_map = server.agent_workflows.lock().await;
+        assert!(agent_wf_map.contains_key(&agent_id));
+        assert!(
+            agent_wf_map
+                .get(&agent_id)
+                .unwrap()
+                .contains(&workflow_instance_id)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_workflow_tracking_multiple_workflows() {
+        let mut server = PrincipalServer::new(
+            "fake_ins".to_string(),
+            get_workflowstore().await,
+            DBClient::new(None).unwrap(),
+        );
+
+        let agent_id = "test-agent-001".to_string();
+        let workflow_id = "test-workflow".to_string();
+
+        // Add multiple workflow instances
+        for i in 1..=3 {
+            let msg = PrincipalAPI::WorkflowStatusUpdate(
+                agent_id.clone(),
+                workflow_id.clone(),
+                format!("test-instance-00{}", i),
+                cdktr_core::models::RunStatus::RUNNING,
+            );
+            server.handle_client_message(msg).await;
+        }
+
+        // Verify all workflows are tracked
+        let agent_wf_map = server.agent_workflows.lock().await;
+        assert_eq!(agent_wf_map.get(&agent_id).unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_tracking_removal_on_completed() {
+        let mut server = PrincipalServer::new(
+            "fake_ins".to_string(),
+            get_workflowstore().await,
+            DBClient::new(None).unwrap(),
+        );
+
+        let agent_id = "test-agent-001".to_string();
+        let workflow_id = "test-workflow".to_string();
+        let workflow_instance_id = "test-instance-001".to_string();
+
+        // Add workflow
+        let msg_running = PrincipalAPI::WorkflowStatusUpdate(
+            agent_id.clone(),
+            workflow_id.clone(),
+            workflow_instance_id.clone(),
+            cdktr_core::models::RunStatus::RUNNING,
+        );
+        server.handle_client_message(msg_running).await;
+
+        // Complete workflow
+        let msg_completed = PrincipalAPI::WorkflowStatusUpdate(
+            agent_id.clone(),
+            workflow_id.clone(),
+            workflow_instance_id.clone(),
+            cdktr_core::models::RunStatus::COMPLETED,
+        );
+        server.handle_client_message(msg_completed).await;
+
+        // Verify workflow is removed and agent entry is cleaned up
+        let agent_wf_map = server.agent_workflows.lock().await;
+        assert!(!agent_wf_map.contains_key(&agent_id));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_tracking_removal_on_failed() {
+        let mut server = PrincipalServer::new(
+            "fake_ins".to_string(),
+            get_workflowstore().await,
+            DBClient::new(None).unwrap(),
+        );
+
+        let agent_id = "test-agent-001".to_string();
+        let workflow_id = "test-workflow".to_string();
+        let workflow_instance_id = "test-instance-001".to_string();
+
+        // Add workflow
+        let msg_running = PrincipalAPI::WorkflowStatusUpdate(
+            agent_id.clone(),
+            workflow_id.clone(),
+            workflow_instance_id.clone(),
+            cdktr_core::models::RunStatus::RUNNING,
+        );
+        server.handle_client_message(msg_running).await;
+
+        // Fail workflow
+        let msg_failed = PrincipalAPI::WorkflowStatusUpdate(
+            agent_id.clone(),
+            workflow_id.clone(),
+            workflow_instance_id.clone(),
+            cdktr_core::models::RunStatus::FAILED,
+        );
+        server.handle_client_message(msg_failed).await;
+
+        // Verify workflow is removed
+        let agent_wf_map = server.agent_workflows.lock().await;
+        assert!(!agent_wf_map.contains_key(&agent_id));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_tracking_partial_cleanup() {
+        let mut server = PrincipalServer::new(
+            "fake_ins".to_string(),
+            get_workflowstore().await,
+            DBClient::new(None).unwrap(),
+        );
+
+        let agent_id = "test-agent-001".to_string();
+        let workflow_id = "test-workflow".to_string();
+
+        // Add two workflows
+        for i in 1..=2 {
+            let msg = PrincipalAPI::WorkflowStatusUpdate(
+                agent_id.clone(),
+                workflow_id.clone(),
+                format!("test-instance-00{}", i),
+                cdktr_core::models::RunStatus::RUNNING,
+            );
+            server.handle_client_message(msg).await;
+        }
+
+        // Complete one workflow
+        let msg_completed = PrincipalAPI::WorkflowStatusUpdate(
+            agent_id.clone(),
+            workflow_id.clone(),
+            "test-instance-001".to_string(),
+            cdktr_core::models::RunStatus::COMPLETED,
+        );
+        server.handle_client_message(msg_completed).await;
+
+        // Verify agent still exists with one workflow
+        let agent_wf_map = server.agent_workflows.lock().await;
+        assert!(agent_wf_map.contains_key(&agent_id));
+        assert_eq!(agent_wf_map.get(&agent_id).unwrap().len(), 1);
+        assert!(
+            agent_wf_map
+                .get(&agent_id)
+                .unwrap()
+                .contains("test-instance-002")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_agent_tracking_returns_correct_structures() {
+        let server = PrincipalServer::new(
+            "fake_ins".to_string(),
+            get_workflowstore().await,
+            DBClient::new(None).unwrap(),
+        );
+
+        let (live_agents, agent_workflows, db_client) = server.get_agent_tracking();
+
+        // Verify we can access the returned structures
+        tokio::spawn(async move {
+            let map = agent_workflows.lock().await;
+            assert_eq!(map.len(), 0); // Initially empty
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_registered_agents_empty() {
+        let mut server = PrincipalServer::new(
+            "fake_ins".to_string(),
+            get_workflowstore().await,
+            DBClient::new(None).unwrap(),
+        );
+
+        let (response, exit_code) = server
+            .handle_client_message(PrincipalAPI::GetRegisteredAgents)
+            .await;
+
+        assert_eq!(exit_code, 0);
+        match response {
+            ClientResponseMessage::SuccessWithPayload(payload) => {
+                let agents: Vec<cdktr_api::models::AgentInfo> =
+                    serde_json::from_str(&payload).unwrap();
+                assert_eq!(agents.len(), 0);
+            }
+            _ => panic!("Expected SuccessWithPayload"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_registered_agents_with_agents() {
+        let mut server = PrincipalServer::new(
+            "fake_ins".to_string(),
+            get_workflowstore().await,
+            DBClient::new(None).unwrap(),
+        );
+
+        // Register two agents
+        let agent1_id = "agent-test-001".to_string();
+        let agent2_id = "agent-test-002".to_string();
+
+        server
+            .handle_client_message(PrincipalAPI::RegisterAgent(agent1_id.clone()))
+            .await;
+        server
+            .handle_client_message(PrincipalAPI::RegisterAgent(agent2_id.clone()))
+            .await;
+
+        // Get registered agents
+        let (response, exit_code) = server
+            .handle_client_message(PrincipalAPI::GetRegisteredAgents)
+            .await;
+
+        assert_eq!(exit_code, 0);
+        match response {
+            ClientResponseMessage::SuccessWithPayload(payload) => {
+                let agents: Vec<cdktr_api::models::AgentInfo> =
+                    serde_json::from_str(&payload).unwrap();
+                assert_eq!(agents.len(), 2);
+
+                let agent_ids: Vec<String> = agents.iter().map(|a| a.agent_id.clone()).collect();
+                assert!(agent_ids.contains(&agent1_id));
+                assert!(agent_ids.contains(&agent2_id));
+            }
+            _ => panic!("Expected SuccessWithPayload"),
+        }
     }
 }

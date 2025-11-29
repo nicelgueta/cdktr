@@ -62,6 +62,8 @@ pub enum PrincipalAPI {
     ),
     /// Get recent workflow status updates (last 10 workflows)
     GetRecentWorkflowStatuses,
+    /// Get list of all registered agents with their metadata
+    GetRegisteredAgents,
 }
 
 impl TryFrom<ZMQArgs> for PrincipalAPI {
@@ -196,6 +198,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                 )),
             },
             "GETRECENTSTATUSES" => Ok(Self::GetRecentWorkflowStatuses),
+            "GETREGISTEREDAGENTS" => Ok(Self::GetRegisteredAgents),
             _ => Err(GenericError::ParseError(format!(
                 "Unrecognised message type: {}",
                 msg_type
@@ -206,7 +209,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
 
 impl API for PrincipalAPI {
     fn get_meta(&self) -> Vec<APIMeta> {
-        const META: [(&'static str, &'static str); 8] = [
+        const META: [(&'static str, &'static str); 9] = [
             ("PING", "Check server is online"),
             (
                 "LSWORKFLOWS",
@@ -232,6 +235,10 @@ impl API for PrincipalAPI {
             (
                 "GETLATESTSTATUS",
                 "Get latest status update for a workflow (workflow_id)",
+            ),
+            (
+                "GETREGISTEREDAGENTS",
+                "Get list of all registered agents with their metadata",
             ),
         ];
         META.iter()
@@ -278,6 +285,7 @@ impl API for PrincipalAPI {
                 )
             }
             Self::GetRecentWorkflowStatuses => "GETRECENTSTATUSES".to_string(),
+            Self::GetRegisteredAgents => "GETREGISTEREDAGENTS".to_string(),
         }
     }
 }
