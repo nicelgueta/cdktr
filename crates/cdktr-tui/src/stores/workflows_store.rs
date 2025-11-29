@@ -1,6 +1,6 @@
 /// WorkflowsStore manages the state of workflows in the application
 use crate::actions::Action;
-use cdktr_api::models::{AgentInfo, StatusUpdate};
+use cdktr_api::models::{AgentInfo, WorkflowStatusUpdate};
 use cdktr_workflow::Workflow;
 use std::sync::{Arc, RwLock};
 
@@ -20,7 +20,7 @@ pub struct WorkflowsState {
     pub error: Option<String>,
 
     /// Recent workflow status updates (last 10)
-    pub recent_statuses: Vec<StatusUpdate>,
+    pub recent_statuses: Vec<WorkflowStatusUpdate>,
 
     /// List of registered agents
     pub registered_agents: Vec<AgentInfo>,

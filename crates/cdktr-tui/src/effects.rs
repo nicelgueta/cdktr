@@ -3,7 +3,7 @@
 use crate::actions::Action;
 use crate::dispatcher::Dispatcher;
 use crate::stores::{LogViewerStore, WorkflowsStore};
-use cdktr_api::{API, PrincipalAPI, models::StatusUpdate};
+use cdktr_api::{API, PrincipalAPI, models::WorkflowStatusUpdate};
 use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use cdktr_workflow::Workflow;
@@ -325,7 +325,7 @@ async fn ping_principal() -> bool {
 }
 
 /// Fetch the latest status updates for recent workflows
-async fn fetch_recent_workflow_statuses() -> Result<Vec<StatusUpdate>, String> {
+async fn fetch_recent_workflow_statuses() -> Result<Vec<WorkflowStatusUpdate>, String> {
     let api_msg = PrincipalAPI::GetRecentWorkflowStatuses;
 
     let uri = get_server_tcp_uri(
@@ -339,7 +339,7 @@ async fn fetch_recent_workflow_statuses() -> Result<Vec<StatusUpdate>, String> {
         Ok(response) => {
             let payload = response.payload();
 
-            match serde_json::from_str::<Vec<StatusUpdate>>(&payload) {
+            match serde_json::from_str::<Vec<WorkflowStatusUpdate>>(&payload) {
                 Ok(status_updates) => Ok(status_updates),
                 Err(e) => Err(format!("Failed to parse status updates: {}", e)),
             }

@@ -1,4 +1,4 @@
-pub static DDL: [&'static str; 4] = [
+pub static DDL: [&'static str; 5] = [
     // TYPES
 
     // should match rust enum RunStatus
@@ -32,12 +32,19 @@ pub static DDL: [&'static str; 4] = [
         level TEXT,
         payload TEXT,
     );",
-    // Create the runinfo - this is an insert only table
-    "create table IF NOT EXISTS run_status
+    // Create the workflow run status table - insert only
+    "create table IF NOT EXISTS workflow_run_status
     (
-        object_id TEXT,
-        object_instance_id TEXT,
-        run_type RunType,
+        workflow_id TEXT,
+        workflow_instance_id TEXT,
+        status RunStatus,
+        timestamp_ms BIGINT,
+    );",
+    // Create the task run status table - insert only
+    "create table IF NOT EXISTS task_run_status
+    (
+        task_id TEXT,
+        task_instance_id TEXT,
         status RunStatus,
         timestamp_ms BIGINT,
     );",

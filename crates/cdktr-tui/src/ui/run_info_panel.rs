@@ -1,7 +1,7 @@
 /// Detail panel for displaying recent workflow statuses
 use crate::actions::PanelId;
 use crate::stores::ui_store::UIState;
-use cdktr_api::models::StatusUpdate;
+use cdktr_api::models::WorkflowStatusUpdate;
 use chrono::{DateTime, Local, TimeZone};
 use ratatui::{
     buffer::Buffer,
@@ -12,7 +12,7 @@ use ratatui::{
 use regex::Regex;
 
 pub struct RunInfoPanel {
-    pub recent_statuses: Vec<StatusUpdate>,
+    pub recent_statuses: Vec<WorkflowStatusUpdate>,
     pub is_focused: bool,
     pub scroll_state: TableState,
     pub filter_input: String,
@@ -20,7 +20,7 @@ pub struct RunInfoPanel {
 
 impl RunInfoPanel {
     pub fn new(
-        recent_statuses: Vec<StatusUpdate>,
+        recent_statuses: Vec<WorkflowStatusUpdate>,
         ui_state: &UIState,
         filter_input: String,
         _scroll_offset: usize,
@@ -44,7 +44,7 @@ impl RunInfoPanel {
         };
 
         // Apply regex filter
-        let filtered_statuses: Vec<&StatusUpdate> = if self.filter_input.is_empty() {
+        let filtered_statuses: Vec<&WorkflowStatusUpdate> = if self.filter_input.is_empty() {
             self.recent_statuses.iter().collect()
         } else {
             match Regex::new(&self.filter_input) {
@@ -52,8 +52,8 @@ impl RunInfoPanel {
                     .recent_statuses
                     .iter()
                     .filter(|status| {
-                        regex.is_match(status.object_id())
-                            || regex.is_match(status.object_instance_id())
+                        regex.is_match(status.workflow_id())
+                            || regex.is_match(status.workflow_instance_id())
                     })
                     .collect(),
                 Err(_) => self.recent_statuses.iter().collect(), // Invalid regex, show all
@@ -106,8 +106,8 @@ impl RunInfoPanel {
                 let formatted_time = dt.format("%Y-%m-%d %H:%M:%S").to_string();
 
                 Row::new(vec![
-                    Cell::from(status.object_id()),
-                    Cell::from(status.object_instance_id()),
+                    Cell::from(status.workflow_id()),
+                    Cell::from(status.workflow_instance_id()),
                     Cell::from(status_str).style(Style::default().fg(status_color)),
                     Cell::from(formatted_time),
                 ])

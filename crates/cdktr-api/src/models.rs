@@ -22,40 +22,33 @@ impl AgentInfo {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct StatusUpdate {
-    object_id: String,
-    object_instance_id: String,
-    run_type: String, // TODO use enum in the arrow record batch: RunType,
-    status: String,   // TODO use enum in the arrow record batch: RunStatus,
+pub struct WorkflowStatusUpdate {
+    workflow_id: String,
+    workflow_instance_id: String,
+    status: String,
     timestamp_ms: u64,
 }
-impl StatusUpdate {
+impl WorkflowStatusUpdate {
     pub fn new(
-        object_id: String,
-        object_instance_id: String,
-        run_type: String, // TODO use enum in the arrow record batch: RunType,
-        status: String,   // TODO use enum in the arrow record batch: RunStatus,
+        workflow_id: String,
+        workflow_instance_id: String,
+        status: String,
         timestamp_ms: u64,
     ) -> Self {
         Self {
-            object_id,
-            object_instance_id,
-            run_type,
+            workflow_id,
+            workflow_instance_id,
             status,
             timestamp_ms,
         }
     }
 
-    pub fn object_id(&self) -> &str {
-        &self.object_id
+    pub fn workflow_id(&self) -> &str {
+        &self.workflow_id
     }
 
-    pub fn object_instance_id(&self) -> &str {
-        &self.object_instance_id
-    }
-
-    pub fn run_type(&self) -> &str {
-        &self.run_type
+    pub fn workflow_instance_id(&self) -> &str {
+        &self.workflow_instance_id
     }
 
     pub fn status(&self) -> &str {
@@ -67,10 +60,56 @@ impl StatusUpdate {
     }
 }
 impl_dbrecordbatch!(
-    StatusUpdate, Vec<StatusUpdate>, {
-        object_id=> Utf8,
-        object_instance_id => Utf8,
-        run_type => Utf8,
+    WorkflowStatusUpdate, Vec<WorkflowStatusUpdate>, {
+        workflow_id => Utf8,
+        workflow_instance_id => Utf8,
+        status => Utf8,
+        timestamp_ms => UInt64,
+    }
+);
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct TaskStatusUpdate {
+    task_id: String,
+    task_instance_id: String,
+    status: String,
+    timestamp_ms: u64,
+}
+impl TaskStatusUpdate {
+    pub fn new(
+        task_id: String,
+        task_instance_id: String,
+        status: String,
+        timestamp_ms: u64,
+    ) -> Self {
+        Self {
+            task_id,
+            task_instance_id,
+            status,
+            timestamp_ms,
+        }
+    }
+
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
+
+    pub fn task_instance_id(&self) -> &str {
+        &self.task_instance_id
+    }
+
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
+    pub fn timestamp_ms(&self) -> u64 {
+        self.timestamp_ms
+    }
+}
+impl_dbrecordbatch!(
+    TaskStatusUpdate, Vec<TaskStatusUpdate>, {
+        task_id => Utf8,
+        task_instance_id => Utf8,
         status => Utf8,
         timestamp_ms => UInt64,
     }

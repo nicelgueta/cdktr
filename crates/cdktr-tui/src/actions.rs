@@ -1,6 +1,6 @@
 /// Core Action types for the flux architecture.
 /// All state mutations flow through Actions dispatched to the Dispatcher.
-use cdktr_api::models::{AgentInfo, StatusUpdate};
+use cdktr_api::models::{AgentInfo, WorkflowStatusUpdate};
 use cdktr_core::models::RunStatus;
 use cdktr_ipc::log_manager::model::LogMessage;
 use cdktr_workflow::Workflow;
@@ -79,7 +79,7 @@ pub enum Action {
     PrincipalStatusUpdated(bool),
 
     /// Recent workflow status updates received
-    RecentWorkflowStatusesUpdated(Vec<StatusUpdate>),
+    RecentWorkflowStatusesUpdated(Vec<WorkflowStatusUpdate>),
 
     /// Registered agents list received from backend
     RegisteredAgentsUpdated(Vec<AgentInfo>),
