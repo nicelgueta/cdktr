@@ -25,11 +25,13 @@ pub async fn handle_agent_task_status_update(
     db_client: DBClient,
     task_id: String,
     task_instance_id: String,
+    workflow_instance_id: String,
     status: RunStatus,
 ) -> (ClientResponseMessage, usize) {
     let item = TaskStatusUpdate::new(
         task_id,
         task_instance_id,
+        workflow_instance_id,
         status.to_string(),
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)

@@ -13,6 +13,7 @@ where
     fn mark_success(&mut self, task_id: &str) -> Result<(), GenericError>;
     fn mark_failed(&mut self, task_id: &str) -> Result<(), GenericError>;
     fn is_finished(&self) -> bool;
+    fn all_tasks_successful(&self) -> bool;
 }
 
 /// Struct required to manage execution dependency.
@@ -76,6 +77,10 @@ impl TaskTracker for BaseTaskTracker {
     fn is_finished(&self) -> bool {
         self.dag.node_count() == self.processed_count
     }
+
+    fn all_tasks_successful(&self) -> bool {
+        self.failed_stack.is_empty()
+    }
 }
 
 #[derive(Clone)]
@@ -103,5 +108,9 @@ impl TaskTracker for ThreadSafeTaskTracker {
 
     fn is_finished(&self) -> bool {
         (*self.tt.lock().unwrap()).is_finished()
+    }
+
+    fn all_tasks_successful(&self) -> bool {
+        (*self.tt.lock().unwrap()).all_tasks_successful()
     }
 }

@@ -1,10 +1,14 @@
 use std::time::Duration;
 
 use crate::models::{ClientResponseMessage, RepReqError};
-use cdktr_core::{exceptions::GenericError, models::ZMQArgs, zmq_helpers::send_recv_with_timeout};
+use cdktr_core::{
+    exceptions::GenericError, get_cdktr_setting, models::ZMQArgs,
+    zmq_helpers::send_recv_with_timeout,
+};
 
 use async_trait::async_trait;
-use log::trace;
+use log::{trace, warn};
+use tokio::time::sleep;
 use zeromq::ZmqMessage;
 
 pub struct APIMeta {
@@ -59,5 +63,57 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
         let cli_msg = ClientResponseMessage::from(zmq_m);
         // dbg!(&cli_msg);
         Ok(cli_msg)
+    }
+
+    /// Send a message with retry logic for PrincipalTimeoutError
+    ///
+    /// This method will retry sending the message up to max_retries times if a
+    /// PrincipalTimeoutError occurs. Other errors are returned immediately.
+    ///
+    /// # Arguments
+    /// * `tcp_uri` - The URI to send the message to
+    /// * `timeout` - Timeout for each individual send attempt
+    /// * `max_retries` - Maximum number of retry attempts (defaults to CDKTR_RETRY_ATTEMPTS if None)
+    /// * `retry_delay` - Delay between retry attempts (defaults to timeout if None)
+    async fn send_with_retry(
+        self,
+        tcp_uri: &str,
+        timeout: Duration,
+        max_retries: Option<usize>,
+        retry_delay: Option<Duration>,
+    ) -> Result<ClientResponseMessage, GenericError>
+    where
+        Self: Sized + Clone,
+    {
+        let max_attempts =
+            max_retries.unwrap_or_else(|| get_cdktr_setting!(CDKTR_RETRY_ATTEMPTS, usize));
+        let delay = retry_delay.unwrap_or(timeout);
+        let mut attempts = 0;
+
+        loop {
+            let result = self.clone().send(tcp_uri, timeout).await;
+
+            match result {
+                Ok(response) => return Ok(response),
+                Err(GenericError::PrincipalTimeoutError) => {
+                    attempts += 1;
+                    if attempts >= max_attempts {
+                        warn!(
+                            "Max retry attempts ({}) reached - connection with principal has been lost",
+                            max_attempts
+                        );
+                        return Err(GenericError::PrincipalTimeoutError);
+                    }
+                    warn!(
+                        "Failed to communicate to principal - trying again in {} ms (attempt {} of {})",
+                        delay.as_millis(),
+                        attempts,
+                        max_attempts
+                    );
+                    sleep(delay).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 }

@@ -225,7 +225,15 @@ impl TaskManager {
                     );
                     let task_execution_id = { name_gen_cl.lock().await.next() };
                     let task_name = task.name().to_string();
-
+                    PrincipalAPI::TaskStatusUpdate(
+                        agent_id.clone(),
+                        task_id.clone(),
+                        task_execution_id.clone(),
+                        workflow_instance_id.clone(),
+                        RunStatus::PENDING,
+                    )
+                    .send(&principal_uri, get_default_timeout())
+                    .await?;
                     let mut task_exe = loop {
                         let task_exe_result = run_in_executor(
                             task_tracker.clone(),
@@ -233,6 +241,7 @@ impl TaskManager {
                             task_id.clone(),
                             task.clone(),
                             task_execution_id.clone(),
+                            workflow_instance_id.clone(),
                         )
                         .await;
                         match task_exe_result {
@@ -313,21 +322,52 @@ impl TaskManager {
                     workflow.name(),
                     workflow_instance_id,
                 );
-                if PrincipalAPI::WorkflowStatusUpdate(
-                    agent_id.clone(),
-                    workflow_id.clone(),
-                    workflow_instance_id.clone(),
-                    RunStatus::COMPLETED,
-                )
-                .send(&principal_uri, get_default_timeout())
-                .await
-                .is_err()
-                {
-                    error!(
-                        "Failed to send status update of COMPLETED to principal for: {workflow_id}/{workflow_instance_id}"
-                    )
-                };
-                Ok(())
+                match task_tracker.all_tasks_successful() {
+                    true => {
+                        info!(
+                            "Workflow {}->{} completed successfully",
+                            workflow.name(),
+                            workflow_instance_id,
+                        );
+                        if PrincipalAPI::WorkflowStatusUpdate(
+                            agent_id.clone(),
+                            workflow_id.clone(),
+                            workflow_instance_id.clone(),
+                            RunStatus::COMPLETED,
+                        )
+                        .send(&principal_uri, get_default_timeout())
+                        .await
+                        .is_err()
+                        {
+                            error!(
+                                "Failed to send status update of COMPLETED to principal for: {workflow_id}/{workflow_instance_id}"
+                            )
+                        };
+                        Ok(())
+                    }
+                    false => {
+                        warn!(
+                            "Workflow {}->{} completed with failures",
+                            workflow.name(),
+                            workflow_instance_id,
+                        );
+                        if PrincipalAPI::WorkflowStatusUpdate(
+                            agent_id.clone(),
+                            workflow_id.clone(),
+                            workflow_instance_id.clone(),
+                            RunStatus::FAILED,
+                        )
+                        .send(&principal_uri, get_default_timeout())
+                        .await
+                        .is_err()
+                        {
+                            error!(
+                                "Failed to send status update of FAILED to principal for: {workflow_id}/{workflow_instance_id}"
+                            )
+                        };
+                        Ok(())
+                    }
+                }
             });
         }
     }
@@ -341,6 +381,7 @@ async fn run_in_executor(
     task_id: String,
     task: Task,
     task_execution_id: String,
+    workflow_instance_id: String,
 ) -> Result<TaskExecutionHandle, TaskManagerError> {
     let (handle, stdout_rx, stderr_rx) = {
         let principal_uri = get_principal_uri();
@@ -348,12 +389,14 @@ async fn run_in_executor(
         let (stderr_tx, stderr_rx) = mpsc::channel(32);
         let executable_task = task.get_exe_task();
         let task_exe_id_clone = task_execution_id.clone();
+        let workflow_ins_id_clone = workflow_instance_id.clone();
         let handle = tokio::spawn(async move {
             info!("Spawning task {task_exe_id_clone}");
             if PrincipalAPI::TaskStatusUpdate(
                 agent_id.clone(),
                 task_id.clone(),
                 task_execution_id.clone(),
+                workflow_ins_id_clone.clone(),
                 RunStatus::RUNNING,
             )
             .send(&principal_uri, get_default_timeout())
@@ -375,6 +418,7 @@ async fn run_in_executor(
                         agent_id.clone(),
                         task_id.clone(),
                         task_execution_id.clone(),
+                        workflow_ins_id_clone.clone(),
                         RunStatus::COMPLETED,
                     )
                     .send(&principal_uri, get_default_timeout())
@@ -402,6 +446,7 @@ async fn run_in_executor(
                         agent_id.clone(),
                         task_id.clone(),
                         task_execution_id.clone(),
+                        workflow_ins_id_clone.clone(),
                         RunStatus::FAILED,
                     )
                     .send(&principal_uri, get_default_timeout())
@@ -432,6 +477,7 @@ async fn run_in_executor(
                         agent_id.clone(),
                         task_id.clone(),
                         task_execution_id.clone(),
+                        workflow_ins_id_clone.clone(),
                         RunStatus::FAILED,
                     )
                     .send(&principal_uri, get_default_timeout())

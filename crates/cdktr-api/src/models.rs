@@ -72,6 +72,7 @@ impl_dbrecordbatch!(
 pub struct TaskStatusUpdate {
     task_id: String,
     task_instance_id: String,
+    workflow_instance_id: String,
     status: String,
     timestamp_ms: u64,
 }
@@ -79,12 +80,14 @@ impl TaskStatusUpdate {
     pub fn new(
         task_id: String,
         task_instance_id: String,
+        workflow_instance_id: String,
         status: String,
         timestamp_ms: u64,
     ) -> Self {
         Self {
             task_id,
             task_instance_id,
+            workflow_instance_id,
             status,
             timestamp_ms,
         }
@@ -96,6 +99,10 @@ impl TaskStatusUpdate {
 
     pub fn task_instance_id(&self) -> &str {
         &self.task_instance_id
+    }
+
+    pub fn workflow_instance_id(&self) -> &str {
+        &self.workflow_instance_id
     }
 
     pub fn status(&self) -> &str {
@@ -110,6 +117,7 @@ impl_dbrecordbatch!(
     TaskStatusUpdate, Vec<TaskStatusUpdate>, {
         task_id => Utf8,
         task_instance_id => Utf8,
+        workflow_instance_id => Utf8,
         status => Utf8,
         timestamp_ms => UInt64,
     }

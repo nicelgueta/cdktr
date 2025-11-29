@@ -45,6 +45,7 @@ pub static DDL: [&'static str; 5] = [
     (
         task_id TEXT,
         task_instance_id TEXT,
+        workflow_instance_id TEXT,
         status RunStatus,
         timestamp_ms BIGINT,
     );",

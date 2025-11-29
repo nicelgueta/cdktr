@@ -7,7 +7,7 @@ use cdktr_core::{
 };
 
 // TODO: make an extension of AgentAPI
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PrincipalAPI {
     /// Check server is online
     Ping,
@@ -33,8 +33,8 @@ pub enum PrincipalAPI {
     /// Allows an agent to update the principal with the status of a specific
     /// task
     /// Args:
-    ///     agent_id, task_id, task_execution_id, status
-    TaskStatusUpdate(String, String, String, RunStatus),
+    ///     agent_id, task_id, task_execution_id, workflow_instance_id, status
+    TaskStatusUpdate(String, String, String, String, RunStatus),
     /// An endpoint that can be polled for work by Agents. Agents provide their
     /// instance id token (agent_id) and if there is work available on the task queue
     /// then the principal will pop a task from the global queue and provide it to the agent
@@ -111,17 +111,23 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                 Some(agent_id) => match args.next() {
                     Some(task_id) => match args.next() {
                         Some(task_exe_id) => match args.next() {
-                            Some(status) => {
-                                let status = RunStatus::try_from(status)?;
-                                Ok(Self::TaskStatusUpdate(
-                                    agent_id,
-                                    task_id,
-                                    task_exe_id,
-                                    status,
-                                ))
-                            }
+                            Some(workflow_instance_id) => match args.next() {
+                                Some(status) => {
+                                    let status = RunStatus::try_from(status)?;
+                                    Ok(Self::TaskStatusUpdate(
+                                        agent_id,
+                                        task_id,
+                                        task_exe_id,
+                                        workflow_instance_id,
+                                        status,
+                                    ))
+                                }
+                                None => Err(GenericError::ParseError(
+                                    "Missing arg TASK_STATUS".to_string(),
+                                )),
+                            },
                             None => Err(GenericError::ParseError(
-                                "Missing arg TASK_STATUS".to_string(),
+                                "Missing arg WORKFLOW_INSTANCE_ID".to_string(),
                             )),
                         },
                         None => Err(GenericError::ParseError(
@@ -259,9 +265,17 @@ impl API for PrincipalAPI {
                     "AGENTWORKFLOWSTATUS\x01{agent_id}\x01{task_id}\x01{task_exe_id}\x01{status}"
                 )
             }
-            Self::TaskStatusUpdate(agent_id, task_id, task_exe_id, status) => {
+            Self::TaskStatusUpdate(
+                agent_id,
+                task_id,
+                task_exe_id,
+                workflow_instance_id,
+                status,
+            ) => {
                 let status = status.to_string();
-                format!("AGENTTASKSTATUS\x01{agent_id}\x01{task_id}\x01{task_exe_id}\x01{status}")
+                format!(
+                    "AGENTTASKSTATUS\x01{agent_id}\x01{task_id}\x01{task_exe_id}\x01{workflow_instance_id}\x01{status}"
+                )
             }
             Self::FetchWorkflow(agent_id) => {
                 format!("FETCHWORKFLOW\x01{agent_id}")

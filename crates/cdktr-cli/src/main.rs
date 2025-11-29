@@ -48,6 +48,9 @@ struct StartArgs {
 
     #[arg(long, short)]
     config: Option<std::path::PathBuf>,
+
+    #[arg(long, short)]
+    suffix: Option<String>,
 }
 
 fn setup() {
@@ -94,7 +97,11 @@ async fn _main(cli_instance: CdktrCli) {
             let instance_type = args.instance_type;
             match instance_type {
                 InstanceType::AGENT => {
-                    let instance_id = format!("{}/AG", utils::get_instance_id());
+                    let instance_id = format!(
+                        "{}/AG{}",
+                        utils::get_instance_id(),
+                        args.suffix.unwrap_or("".to_string())
+                    );
                     info!("Starting AGENT instance: {}", &instance_id);
                     let max_concurrent_workflows = args
                         .max_concurrent_workflows

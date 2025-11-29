@@ -153,12 +153,19 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 )
                 .await
             }
-            PrincipalAPI::TaskStatusUpdate(_agent_id, task_id, task_instance_id, status) => {
+            PrincipalAPI::TaskStatusUpdate(
+                _agent_id,
+                task_id,
+                task_instance_id,
+                workflow_instance_id,
+                status,
+            ) => {
                 // TODO do something with agent id
                 helpers::handle_agent_task_status_update(
                     self.db_client.clone(),
                     task_id,
                     task_instance_id,
+                    workflow_instance_id,
                     status,
                 )
                 .await
