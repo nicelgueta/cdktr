@@ -17,9 +17,9 @@ push: test
 build:
 	cargo build --release
 principal:
-	cargo run start -i principal
+	cargo run start principal
 agent:
-	cargo run start -i agent
+	cargo run start agent
 ui:
 	cargo run ui
 pycli:

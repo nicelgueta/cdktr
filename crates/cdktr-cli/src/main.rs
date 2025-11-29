@@ -37,7 +37,7 @@ enum CdktrCli {
 #[derive(clap::Args)]
 #[command(version, about, long_about = None)]
 struct StartArgs {
-    #[arg(long, short)]
+    /// Instance type: principal or agent
     instance_type: models::InstanceType,
 
     #[arg(long, short)]
