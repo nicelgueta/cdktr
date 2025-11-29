@@ -54,12 +54,16 @@ struct StartArgs {
 }
 
 fn setup() {
-    let path_str = &get_cdktr_setting!(CDKTR_APP_DATA_DIRECTORY);
-    let path_str = path_str.replace("$HOME", &env::var("HOME").expect(
-        format!(
-            "CDKTR_APP_DATA_DIRECTORY not set so attempted to create app data directory at {path_str} but cannot determine home directory from env vars."
-        ).as_str()
-    ));
+    let path_str_setting = &get_cdktr_setting!(CDKTR_APP_DATA_DIRECTORY);
+    let path_str = if path_str_setting.contains("$HOME") {
+        &path_str_setting.replace("$HOME", &env::var("HOME").expect(
+            format!(
+                "$HOME in app dir path so attempted to create app data directory at {path_str_setting} but cannot determine home directory from env vars."
+            ).as_str()
+        ))
+    } else {
+        path_str_setting
+    };
     let app_data_dir = Path::new(&path_str);
 
     debug!("Using application data directory: {:?}", app_data_dir);

@@ -25,4 +25,4 @@ ui:
 pycli:
 	cd python-cdktr && uv run cli_zmq.py
 run:
-	./target/release/cdktr-cli
+	./target/release/cdktr
