@@ -1,7 +1,7 @@
 /// Keyboard input handling and key mapping
 use crate::actions::{Action, PanelId, TabId};
 use crate::stores::{AppLogsStore, LogViewerStore, UIStore, WorkflowsStore};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::crossterm;
 
 /// Handle keyboard input and return the appropriate Action
@@ -378,14 +378,4 @@ fn handle_log_viewer_keys(
             _ => None,
         }
     }
-}
-
-/// Handle mouse events (currently only for calendar date selection)
-pub fn handle_mouse_event(
-    _mouse_event: MouseEvent,
-    _log_viewer_store: &LogViewerStore,
-) -> Option<Action> {
-    // Mouse support for calendar can be enhanced here in the future
-    // For now, keyboard navigation is primary interaction method
-    None
 }
