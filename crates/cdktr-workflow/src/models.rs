@@ -465,7 +465,6 @@ tasks:
             "echo".to_string(),
             match &workflow.get_task("task1").unwrap().config {
                 ExecutableTask::Subprocess(cfg) => cfg.cmd.clone(),
-                _ => panic!("Wrong enum type"),
             }
         );
 
@@ -473,7 +472,6 @@ tasks:
             vec!["hello", "world"],
             match &workflow.get_task("task1").unwrap().config {
                 ExecutableTask::Subprocess(cfg) => cfg.args.clone(),
-                _ => panic!("Wrong enum type"),
             }
         );
 

@@ -214,7 +214,7 @@ mod tests {
     use std::{thread::sleep, time::Duration};
 
     use cdktr_core::zmq_helpers::format_zmq_msg_str;
-    use zeromq::{Socket, ZmqMessage};
+    use zeromq::ZmqMessage;
 
     use super::*;
 
@@ -487,7 +487,7 @@ mod tests {
             DBClient::new(None).unwrap(),
         );
 
-        let (live_agents, agent_workflows, db_client) = server.get_agent_tracking();
+        let (_live_agents, agent_workflows, _db_client) = server.get_agent_tracking();
 
         // Verify we can access the returned structures
         tokio::spawn(async move {

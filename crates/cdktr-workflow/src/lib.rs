@@ -178,7 +178,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_workflow_map_with_nested_yaml_files() {
-        let (wf_dir, tmp_dir) = get_tmp_dir();
+        let (wf_dir, _tmp_dir) = get_tmp_dir();
 
         // Call function
         let result = get_yaml_map::<MockYamlContent>(wf_dir.to_str().unwrap()).await;
