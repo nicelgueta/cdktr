@@ -3,7 +3,7 @@ use cdktr_api::models::ClientResponseMessage;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::zmq_helpers::{get_server_tcp_uri, get_zmq_rep};
 use log::info;
-use std::error::Error;
+
 use zeromq::ZmqMessage;
 use zeromq::{SocketRecv, SocketSend};
 
@@ -40,7 +40,7 @@ where
             match msg_res {
                 Ok(cli_msg) => {
                     let (response, exit_code) = self.handle_client_message(cli_msg).await;
-                    rep_socket.send(response.into()).await;
+                    let _ = rep_socket.send(response.into()).await;
                     if exit_code > 0 {
                         // received a non-zero exit code from the message handling function
                         // which means the server should perform some other kind of action

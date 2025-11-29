@@ -11,7 +11,7 @@ use cdktr_workflow::{Workflow, WorkflowStore};
 use chrono::Utc;
 
 use cdktr_api::PrincipalAPI;
-use log::{debug, info, trace, warn};
+use log::{info, trace, warn};
 
 use crate::log_manager::read_logs;
 
@@ -21,6 +21,7 @@ use cdktr_api::models::ClientResponseMessage;
 pub mod helpers;
 
 pub struct PrincipalServer {
+    #[allow(dead_code)]
     instance_id: String,
     live_agents: AgentPriorityQueue,
     task_queue: AsyncQueue<Workflow>,
@@ -152,7 +153,7 @@ impl Server<PrincipalAPI> for PrincipalServer {
                 )
                 .await
             }
-            PrincipalAPI::TaskStatusUpdate(agent_id, task_id, task_instance_id, status) => {
+            PrincipalAPI::TaskStatusUpdate(_agent_id, task_id, task_instance_id, status) => {
                 // TODO do something with agent id
                 helpers::handle_agent_task_status_update(
                     self.db_client.clone(),

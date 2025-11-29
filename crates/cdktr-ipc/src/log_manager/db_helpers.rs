@@ -1,8 +1,7 @@
 use std::time::{Duration, SystemTime};
 
 use cdktr_core::exceptions::GenericError;
-use cdktr_db::{DBClient, DBRecordBatch};
-use duckdb::Connection;
+use cdktr_db::DBClient;
 use log::{debug, warn};
 
 use crate::log_manager::model::LogMessage;
@@ -68,12 +67,9 @@ pub async fn read_logs<'a>(
     Ok(msgs)
 }
 
+#[cfg(test)]
 mod tests {
-    use cdktr_core::utils::data_structures::AsyncQueue;
-    use cdktr_db::DBClient;
-
     use super::*;
-    use crate::log_manager::model::LogMessage;
 
     #[tokio::test]
     async fn test_read_logs() {

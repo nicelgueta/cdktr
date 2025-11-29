@@ -8,7 +8,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
 };
-use time::OffsetDateTime;
 
 pub struct LogViewerModal<'a> {
     state: LogViewerState,
@@ -230,6 +229,7 @@ impl<'a> LogViewerModal<'a> {
             .render(inner_area, buf);
     }
 
+    #[allow(dead_code)]
     fn render_input_field(
         &self,
         area: Rect,

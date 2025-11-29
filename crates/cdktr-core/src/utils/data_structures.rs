@@ -7,7 +7,7 @@ use std::{
     },
 };
 use tokio::{
-    sync::{Mutex, MutexGuard},
+    sync::Mutex,
     time::{Duration, sleep},
 };
 

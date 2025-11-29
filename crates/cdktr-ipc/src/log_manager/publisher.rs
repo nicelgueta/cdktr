@@ -1,6 +1,5 @@
-use log::warn;
+use std::collections::VecDeque;
 use std::time::SystemTime;
-use std::{collections::VecDeque, env};
 
 use cdktr_core::{
     exceptions::GenericError,
@@ -115,7 +114,7 @@ impl LogsPublisher {
         match self.push_socket.send(log_msg.into()).await {
             // failed to push to socket so log internally
             // needs to create msg again
-            Err(e) => self.log_queue.push_back(LogMessage::new(
+            Err(_e) => self.log_queue.push_back(LogMessage::new(
                 self.workflow_id.clone(),
                 self.workflow_name.clone(),
                 self.workflow_instance_id.clone(),
@@ -142,7 +141,7 @@ impl LogsPublisher {
                     .expect("Message queue is > 0 but pop front fails");
                 match self.push_socket.send(log_msg.clone().into()).await {
                     Ok(()) => (),
-                    Err(e) => self.log_queue.push_front(log_msg),
+                    Err(_e) => self.log_queue.push_front(log_msg),
                 }
             }
         }
@@ -155,15 +154,8 @@ impl LogsPublisher {
     }
 }
 
+#[cfg(test)]
 mod tests {
-    use std::thread::sleep;
-
-    use super::*;
-    use cdktr_core::zmq_helpers::get_zmq_pull;
-    use tokio::sync::mpsc;
-    use tokio::time::{Duration, timeout};
-    use zeromq::SocketRecv;
-
     // TODO
     #[tokio::test]
     async fn test_pub_msg_success() {}

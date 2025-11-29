@@ -23,9 +23,9 @@ impl RunInfoPanel {
         recent_statuses: Vec<StatusUpdate>,
         ui_state: &UIState,
         filter_input: String,
-        scroll_offset: usize,
+        _scroll_offset: usize,
     ) -> Self {
-        let mut scroll_state = TableState::default();
+        let scroll_state = TableState::default();
         // scroll_state.select(Some(scroll_offset));
 
         Self {

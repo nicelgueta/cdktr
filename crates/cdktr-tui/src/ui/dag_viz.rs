@@ -1,12 +1,13 @@
 /// DAG visualization component using box-drawing characters
-use cdktr_workflow::{Task, WorkFlowDAG};
+use cdktr_workflow::WorkFlowDAG;
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
 };
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 /// Renders a DAG as text lines using box-drawing characters
+#[allow(dead_code)]
 pub fn render_dag(dag: &WorkFlowDAG) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
@@ -56,7 +57,7 @@ pub fn render_dag(dag: &WorkFlowDAG) -> Vec<Line<'static>> {
         }
 
         let connector = if is_last { "└── " } else { "├── " };
-        let line_text = format!("{}{}{} ({})", prefix, connector, task_name, task_id);
+        let _line_text = format!("{}{}{} ({})", prefix, connector, task_name, task_id);
 
         lines.push(Line::from(vec![
             Span::styled(prefix.clone(), Style::default().fg(Color::DarkGray)),

@@ -1,15 +1,9 @@
-use std::sync::Arc;
-
 use cdktr_core::{
     exceptions::{GenericError, ZMQParseError, cdktr_result},
-    models::{RunStatus, RunType, ZMQArgs},
+    models::ZMQArgs,
     zmq_helpers::format_zmq_msg_str,
 };
 use cdktr_db::impl_dbrecordbatch;
-use duckdb::arrow::{
-    array::RecordBatch,
-    datatypes::{Field, Schema},
-};
 use zeromq::ZmqMessage;
 
 #[derive(Clone, PartialEq, Debug)]

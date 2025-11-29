@@ -57,6 +57,7 @@ impl LogBuffer {
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn get_recent_logs(&self, count: usize) -> Vec<String> {
         let logs = self.logs.read().unwrap();
         let start = logs.len().saturating_sub(count);
@@ -115,6 +116,7 @@ pub fn init_memory_logger() -> Result<LogBuffer, SetLoggerError> {
 }
 
 /// Initialize the buffered logger with a provided buffer
+#[allow(dead_code)]
 pub fn init_buffered_logger(buffer: LogBuffer) -> Result<(), SetLoggerError> {
     let logger = BufferedLogger::new(buffer);
     log::set_boxed_logger(Box::new(logger))?;

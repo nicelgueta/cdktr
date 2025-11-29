@@ -3,11 +3,8 @@ use cdktr_core;
 use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use log::error;
-use log::{info, warn};
-use std::{
-    env,
-    time::{Duration, SystemTime},
-};
+use log::info;
+use std::time::{Duration, SystemTime};
 
 /// Log management CLI
 /// This allows you to tail logs from the principal log manager

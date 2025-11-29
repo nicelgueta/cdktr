@@ -7,6 +7,7 @@ pub enum InstanceType {
     AGENT,
 }
 impl InstanceType {
+    #[allow(dead_code)]
     pub fn to_string(&self) -> String {
         match self {
             Self::AGENT => String::from("AGENT"),

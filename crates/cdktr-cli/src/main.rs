@@ -124,7 +124,7 @@ async fn _main(cli_instance: CdktrCli) {
             let _ = tui_main().await;
             ()
         }
-        CdktrCli::Task(args) => todo!(),
+        CdktrCli::Task(_args) => todo!(),
         CdktrCli::Logs(args) => handle_logs(args).await,
     }
 }

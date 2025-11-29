@@ -75,7 +75,7 @@ impl CalendarWidget {
         // Get first day of month and total days
         let first_of_month = time::Date::from_calendar_date(year, month, 1).unwrap();
         let first_weekday = first_of_month.weekday().number_days_from_sunday();
-        let days_in_month = time::util::days_in_year_month(year, month);
+        let days_in_month = month.length(year);
 
         // Build calendar grid
         let mut current_line = vec![];

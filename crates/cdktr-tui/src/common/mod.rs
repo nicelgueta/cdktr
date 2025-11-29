@@ -5,5 +5,3 @@ pub mod calendar;
 mod data_pane;
 #[allow(dead_code)]
 mod input;
-
-pub use calendar::{CalendarWidget, centered_rect, render_calendar_below, render_calendar_popup};

@@ -1,6 +1,6 @@
 /// Store for log viewer modal state
 use crate::actions::Action;
-use cdktr_ipc::log_manager::model::LogMessage;
+
 use chrono::{DateTime, Duration, Timelike, Utc};
 use regex::Regex;
 use std::sync::{Arc, RwLock};
@@ -214,6 +214,7 @@ impl LogViewerStore {
     }
 
     /// Add a log line (for live tail mode)
+    #[allow(dead_code)]
     pub fn add_log(&self, log: String) {
         let mut state = self.state.write().unwrap();
         state.logs.push(log);
@@ -225,6 +226,7 @@ impl LogViewerStore {
     }
 
     /// Set logs (for query mode)
+    #[allow(dead_code)]
     pub fn set_logs(&self, logs: Vec<String>) {
         let mut state = self.state.write().unwrap();
         state.logs = logs;
@@ -329,6 +331,7 @@ impl LogViewerStore {
     }
 
     /// Clear focus from input fields
+    #[allow(dead_code)]
     pub fn clear_focus(&self) {
         let mut state = self.state.write().unwrap();
         state.focused_field = None;
@@ -375,12 +378,14 @@ impl LogViewerStore {
     }
 
     /// Parse input strings to DateTime and update state
+    #[allow(dead_code)]
     pub fn set_error(&self, error: String) {
         let mut state = self.state.write().unwrap();
         state.error_message = Some(error);
         state.logs.clear();
     }
 
+    #[allow(dead_code)]
     pub fn clear_error(&self) {
         let mut state = self.state.write().unwrap();
         state.error_message = None;

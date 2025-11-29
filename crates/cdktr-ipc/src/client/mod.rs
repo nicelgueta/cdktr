@@ -2,7 +2,7 @@ use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
 use cdktr_core::{exceptions::GenericError, get_cdktr_setting};
 use cdktr_workflow::Workflow;
 use log::{debug, error, info, trace, warn};
-use std::{env, time::Duration};
+use std::time::Duration;
 use tokio::time::sleep;
 
 /// This client is used to house utility functions at a slightly higher level than the raw API
@@ -109,7 +109,6 @@ impl PrincipalClient {
                 Ok(workflow) => {
                     if reconnection_attempts > 0 {
                         info!("Successfully reconnected with principal");
-                        reconnection_attempts = 0
                     };
                     workflow
                 }

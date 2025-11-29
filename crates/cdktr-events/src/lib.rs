@@ -1,5 +1,5 @@
 use cdktr_core::exceptions::GenericError;
-use log::{debug, info};
+use log::info;
 
 use crate::traits::EventListener;
 

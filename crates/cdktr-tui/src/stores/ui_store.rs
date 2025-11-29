@@ -1,6 +1,6 @@
 /// UIStore manages UI-specific state (focused panels, help visibility, etc.)
 use crate::actions::{Action, PanelId, TabId};
-use chrono::Utc;
+
 use std::sync::{Arc, RwLock};
 
 /// Internal state for UI

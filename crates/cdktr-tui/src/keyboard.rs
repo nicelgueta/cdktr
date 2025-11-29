@@ -1,7 +1,7 @@
 /// Keyboard input handling and key mapping
 use crate::actions::{Action, PanelId, TabId};
 use crate::stores::{AppLogsStore, LogViewerStore, UIStore, WorkflowsStore};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::crossterm;
 
 /// Handle keyboard input and return the appropriate Action

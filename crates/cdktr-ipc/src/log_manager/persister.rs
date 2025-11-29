@@ -1,4 +1,4 @@
-use std::{env, time::Duration};
+use std::time::Duration;
 
 use crate::log_manager::model::LogMessage;
 use cdktr_core::{

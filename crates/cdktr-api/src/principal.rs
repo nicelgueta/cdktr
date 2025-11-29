@@ -139,7 +139,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
             "QUERYLOGS" => match args.next() {
                 Some(end_ts) => {
                     let end_ts_opt = if end_ts.len() > 0 {
-                        Some(end_ts.parse().map_err(|e| {
+                        Some(end_ts.parse().map_err(|_e| {
                             GenericError::ParseError("Not a valid end timestamp".to_string())
                         })?)
                     } else {
@@ -148,7 +148,7 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
                     match args.next() {
                         Some(start_ts) => {
                             let start_ts_opt = if start_ts.len() > 0 {
-                                Some(start_ts.parse().map_err(|e| {
+                                Some(start_ts.parse().map_err(|_e| {
                                     GenericError::ParseError(
                                         "Not a valid end timestamp".to_string(),
                                     )

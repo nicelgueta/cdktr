@@ -2,7 +2,6 @@ use std::{collections::VecDeque, env, time::Duration};
 
 use crate::{
     ZMQ_MESSAGE_DELIMITER,
-    exceptions::GenericError,
     macros::internal_get_cdktr_setting,
     zmq_helpers::{format_zmq_msg_str, get_server_tcp_uri},
 };

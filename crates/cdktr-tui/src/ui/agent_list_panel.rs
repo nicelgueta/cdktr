@@ -3,7 +3,7 @@ use crate::actions::PanelId;
 use crate::stores::ui_store::UIState;
 use cdktr_api::models::AgentInfo;
 use cdktr_core::get_cdktr_setting;
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{Local, TimeZone};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Rect},

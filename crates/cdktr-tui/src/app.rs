@@ -31,6 +31,7 @@ pub struct App {
     log_viewer_store: LogViewerStore,
 
     /// Log buffer for capturing application logs
+    #[allow(dead_code)]
     log_buffer: LogBuffer,
 
     /// Effects handler for side effects

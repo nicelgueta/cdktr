@@ -9,6 +9,7 @@ use zeromq::ZmqMessage;
 
 pub struct APIMeta {
     action: String,
+    #[allow(dead_code)]
     description: String,
 }
 impl APIMeta {

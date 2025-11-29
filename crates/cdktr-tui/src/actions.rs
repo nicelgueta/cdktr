@@ -4,8 +4,6 @@ use cdktr_api::models::{AgentInfo, StatusUpdate};
 use cdktr_core::models::RunStatus;
 use cdktr_ipc::log_manager::model::LogMessage;
 use cdktr_workflow::Workflow;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Represents all possible user intents and system events in the application
 #[derive(Debug, Clone)]

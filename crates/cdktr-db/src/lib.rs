@@ -144,7 +144,7 @@ impl DBClient {
         }
     }
 
-    pub async fn lock_inner_client(&self) -> MutexGuard<Connection> {
+    pub async fn lock_inner_client(&self) -> MutexGuard<'_, Connection> {
         self.cnxn.lock().await
     }
 }

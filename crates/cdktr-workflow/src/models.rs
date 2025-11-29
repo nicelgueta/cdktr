@@ -228,7 +228,7 @@ impl WorkFlowDAG {
         };
         let mut deps = Vec::new();
         let mut walker = self.inner.children(*nix);
-        while let Some((edge_i, node_i)) = walker.walk_next(&self.inner) {
+        while let Some((_edge_i, node_i)) = walker.walk_next(&self.inner) {
             deps.push(
                 self.inner
                     .node_weight(node_i)

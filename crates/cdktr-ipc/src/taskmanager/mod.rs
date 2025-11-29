@@ -6,8 +6,8 @@ use cdktr_core::{exceptions::GenericError, models::traits::Executor};
 use cdktr_workflow::Task;
 use log::{debug, error, info, warn};
 use rustyrs::EternalSlugGenerator;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{env, sync::Arc};
 use task_tracker::TaskTracker;
 use task_tracker::ThreadSafeTaskTracker;
 use tokio::sync::Mutex;
@@ -24,6 +24,7 @@ const WAIT_TASK_SLEEP_INTERVAL_MS: Duration = Duration::from_millis(500);
 
 #[derive(Debug)]
 pub struct TaskExecutionHandle {
+    #[allow(dead_code)]
     join_handle: JoinHandle<Result<(), TaskManagerError>>,
     stdout_receiver: mpsc::Receiver<String>,
     stderr_receiver: mpsc::Receiver<String>,
@@ -51,10 +52,12 @@ impl TaskExecutionHandle {
 
 #[derive(Debug, PartialEq)]
 pub enum TaskManagerError {
+    #[allow(dead_code)]
     TooManyThreadsError,
     FailedTaskError(String),
 }
 impl TaskManagerError {
+    #[allow(dead_code)]
     pub fn to_string(&self) -> String {
         match self {
             Self::TooManyThreadsError => "Max threads reached".to_string(),
@@ -183,7 +186,7 @@ impl TaskManager {
             // spawn workflow thread so we can return to request another workflow
             let agent_id = self.instance_id.clone();
             let workflow_id = workflow.id().clone();
-            let wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
+            let _wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
                 let workflow_instance_id = { name_gen_cl.lock().await.next() };
                 let principal_uri = get_principal_uri();
                 if PrincipalAPI::WorkflowStatusUpdate(

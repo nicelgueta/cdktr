@@ -1,8 +1,4 @@
-use std::{
-    collections::HashSet,
-    env::{self, home_dir},
-    time::Duration,
-};
+use std::{collections::HashSet, env::home_dir, time::Duration};
 
 use crate::{
     log_manager::{
