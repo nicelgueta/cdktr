@@ -16,6 +16,7 @@ log = { workspace = true }
 ratatui = { version = "0.29.0", features = ["all-widgets"] }
 color-eyre = "0.6.5"
 crossterm = "0.29.0"
+time = "0.3"
 itertools = "0.14.0"
 unicode-width = "0.2.0"
 chrono = "0.4"

@@ -1,9 +1,10 @@
 /// Store for log viewer modal state
 use crate::actions::Action;
 use cdktr_ipc::log_manager::model::LogMessage;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Timelike, Utc};
 use regex::Regex;
 use std::sync::{Arc, RwLock};
+use time::{Date, OffsetDateTime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputField {
@@ -62,6 +63,15 @@ pub struct LogViewerState {
 
     /// Whether auto-scroll is enabled in live mode
     pub auto_scroll: bool,
+
+    /// Whether a calendar popup is open for start date
+    pub start_calendar_open: bool,
+
+    /// Whether a calendar popup is open for end date
+    pub end_calendar_open: bool,
+
+    /// Selected date in calendar (for navigation)
+    pub selected_date: Date,
 }
 
 impl Default for LogViewerState {
@@ -90,6 +100,9 @@ impl Default for LogViewerState {
             error_message: None,
             is_editing: false,
             auto_scroll: true,
+            start_calendar_open: false,
+            end_calendar_open: false,
+            selected_date: OffsetDateTime::now_utc().date(),
         }
     }
 }
@@ -429,6 +442,127 @@ impl LogViewerStore {
                     .cloned()
                     .collect()
             }
+        }
+    }
+
+    /// Open calendar for start date
+    pub fn open_start_calendar(&self) {
+        let mut state = self.state.write().unwrap();
+        state.start_calendar_open = true;
+        state.end_calendar_open = false;
+        // Initialize selected_date to current start_time date
+        state.selected_date =
+            time::OffsetDateTime::from_unix_timestamp(state.start_time.timestamp())
+                .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
+                .date();
+    }
+
+    /// Open calendar for end date
+    pub fn open_end_calendar(&self) {
+        let mut state = self.state.write().unwrap();
+        state.end_calendar_open = true;
+        state.start_calendar_open = false;
+        // Initialize selected_date to current end_time date
+        state.selected_date = time::OffsetDateTime::from_unix_timestamp(state.end_time.timestamp())
+            .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
+            .date();
+    }
+
+    /// Close calendar popups
+    pub fn close_calendar(&self) {
+        let mut state = self.state.write().unwrap();
+        state.start_calendar_open = false;
+        state.end_calendar_open = false;
+    }
+
+    /// Navigate calendar to next day
+    pub fn calendar_next_day(&self) {
+        let mut state = self.state.write().unwrap();
+        if let Some(next) = state.selected_date.checked_add(time::Duration::days(1)) {
+            state.selected_date = next;
+        }
+    }
+
+    /// Navigate calendar to previous day
+    pub fn calendar_prev_day(&self) {
+        let mut state = self.state.write().unwrap();
+        if let Some(prev) = state.selected_date.checked_sub(time::Duration::days(1)) {
+            state.selected_date = prev;
+        }
+    }
+
+    /// Navigate calendar to next week
+    pub fn calendar_next_week(&self) {
+        let mut state = self.state.write().unwrap();
+        if let Some(next) = state.selected_date.checked_add(time::Duration::days(7)) {
+            state.selected_date = next;
+        }
+    }
+
+    /// Navigate calendar to previous week
+    pub fn calendar_prev_week(&self) {
+        let mut state = self.state.write().unwrap();
+        if let Some(prev) = state.selected_date.checked_sub(time::Duration::days(7)) {
+            state.selected_date = prev;
+        }
+    }
+
+    /// Navigate calendar to next month
+    pub fn calendar_next_month(&self) {
+        let mut state = self.state.write().unwrap();
+        if let Some(next) = state.selected_date.checked_add(time::Duration::days(30)) {
+            state.selected_date = next;
+        }
+    }
+
+    /// Navigate calendar to previous month
+    pub fn calendar_prev_month(&self) {
+        let mut state = self.state.write().unwrap();
+        if let Some(prev) = state.selected_date.checked_sub(time::Duration::days(30)) {
+            state.selected_date = prev;
+        }
+    }
+
+    /// Select the currently highlighted date in the calendar
+    pub fn calendar_select_date(&self) {
+        let mut state = self.state.write().unwrap();
+
+        if state.start_calendar_open {
+            // Update start time to the selected date (preserving time component)
+            let hour = state.start_time.hour();
+            let minute = state.start_time.minute();
+            let second = state.start_time.second();
+
+            let new_datetime = time::PrimitiveDateTime::new(
+                state.selected_date,
+                time::Time::from_hms(hour as u8, minute as u8, second as u8)
+                    .unwrap_or(time::Time::MIDNIGHT),
+            );
+
+            let timestamp = new_datetime.assume_utc().unix_timestamp();
+            state.start_time = chrono::DateTime::from_timestamp(timestamp, 0)
+                .unwrap_or_else(|| Utc::now())
+                .with_timezone(&Utc);
+            state.start_time_input = state.start_time.format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+            state.start_calendar_open = false;
+        } else if state.end_calendar_open {
+            // Update end time to the selected date (preserving time component)
+            let hour = state.end_time.hour();
+            let minute = state.end_time.minute();
+            let second = state.end_time.second();
+
+            let new_datetime = time::PrimitiveDateTime::new(
+                state.selected_date,
+                time::Time::from_hms(hour as u8, minute as u8, second as u8)
+                    .unwrap_or(time::Time::MIDNIGHT),
+            );
+
+            let timestamp = new_datetime.assume_utc().unix_timestamp();
+            state.end_time = chrono::DateTime::from_timestamp(timestamp, 0)
+                .unwrap_or_else(|| Utc::now())
+                .with_timezone(&Utc);
+            state.end_time_input = state.end_time.format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+            state.end_calendar_open = false;
         }
     }
 }

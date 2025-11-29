@@ -1,7 +1,7 @@
 /// Keyboard input handling and key mapping
 use crate::actions::{Action, PanelId, TabId};
 use crate::stores::{AppLogsStore, LogViewerStore, UIStore, WorkflowsStore};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::crossterm;
 
 /// Handle keyboard input and return the appropriate Action
@@ -212,8 +212,45 @@ fn handle_log_viewer_keys(
 ) -> Option<Action> {
     let state = log_viewer_store.get_state();
 
-    // If in editing mode, handle text input
-    if state.is_editing && state.focused_field.is_some() {
+    // If calendar is open, handle calendar navigation
+    if state.start_calendar_open || state.end_calendar_open {
+        match key_event.code {
+            KeyCode::Esc => {
+                log_viewer_store.close_calendar();
+                None
+            }
+            KeyCode::Left => {
+                log_viewer_store.calendar_prev_day();
+                None
+            }
+            KeyCode::Right => {
+                log_viewer_store.calendar_next_day();
+                None
+            }
+            KeyCode::Up => {
+                log_viewer_store.calendar_prev_week();
+                None
+            }
+            KeyCode::Down => {
+                log_viewer_store.calendar_next_week();
+                None
+            }
+            KeyCode::PageUp => {
+                log_viewer_store.calendar_prev_month();
+                None
+            }
+            KeyCode::PageDown => {
+                log_viewer_store.calendar_next_month();
+                None
+            }
+            KeyCode::Enter => {
+                log_viewer_store.calendar_select_date();
+                None
+            }
+            _ => None,
+        }
+    } else if state.is_editing && state.focused_field.is_some() {
+        // If in editing mode, handle text input
         match key_event.code {
             KeyCode::Esc => {
                 log_viewer_store.exit_editing_mode();
@@ -240,6 +277,20 @@ fn handle_log_viewer_keys(
             }
             KeyCode::Right => {
                 log_viewer_store.cursor_right();
+                None
+            }
+            KeyCode::Char(' ') => {
+                // Open calendar for date fields
+                use crate::stores::log_viewer_store::InputField;
+                match state.focused_field {
+                    Some(InputField::StartTime) => {
+                        log_viewer_store.open_start_calendar();
+                    }
+                    Some(InputField::EndTime) => {
+                        log_viewer_store.open_end_calendar();
+                    }
+                    _ => {}
+                }
                 None
             }
             KeyCode::Char(c) => {
@@ -322,4 +373,14 @@ fn handle_log_viewer_keys(
             _ => None,
         }
     }
+}
+
+/// Handle mouse events (currently only for calendar date selection)
+pub fn handle_mouse_event(
+    _mouse_event: MouseEvent,
+    _log_viewer_store: &LogViewerStore,
+) -> Option<Action> {
+    // Mouse support for calendar can be enhanced here in the future
+    // For now, keyboard navigation is primary interaction method
+    None
 }

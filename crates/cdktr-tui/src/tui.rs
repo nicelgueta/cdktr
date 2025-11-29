@@ -5,6 +5,7 @@ use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     crossterm::{
+        event::{DisableMouseCapture, EnableMouseCapture},
         execute,
         terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
@@ -22,14 +23,14 @@ pub fn init() -> io::Result<Tui> {
         original_hook(panic_info);
     }));
 
-    execute!(stdout(), EnterAlternateScreen)?;
+    execute!(stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     enable_raw_mode()?;
     Terminal::new(CrosstermBackend::new(stdout()))
 }
 
 /// Restore the terminal to its original state
 pub fn restore() -> io::Result<()> {
-    execute!(stdout(), LeaveAlternateScreen)?;
+    execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
     disable_raw_mode()?;
     Ok(())
 }

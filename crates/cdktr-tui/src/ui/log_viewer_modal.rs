@@ -7,6 +7,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
 };
+use time::OffsetDateTime;
 
 pub struct LogViewerModal<'a> {
     state: LogViewerState,
@@ -86,6 +87,11 @@ impl<'a> LogViewerModal<'a> {
         } else {
             self.render_logs(chunks[0], buf);
             self.render_help(chunks[1], buf);
+        }
+
+        // Render calendar popups on top if open
+        if self.state.start_calendar_open || self.state.end_calendar_open {
+            self.render_calendar_popup(area, buf);
         }
     }
 
@@ -167,6 +173,7 @@ impl<'a> LogViewerModal<'a> {
         field: InputField,
     ) {
         let is_focused = self.state.focused_field == Some(field);
+        let is_date_field = matches!(field, InputField::StartTime | InputField::EndTime);
 
         let border_style = if is_focused {
             Style::default()
@@ -176,8 +183,14 @@ impl<'a> LogViewerModal<'a> {
             Style::default().fg(Color::White)
         };
 
+        let title = if is_date_field && is_focused {
+            format!("{} [📅 Space: Calendar]", label)
+        } else {
+            label.to_string()
+        };
+
         let block = Block::default()
-            .title(label)
+            .title(title)
             .borders(Borders::ALL)
             .border_style(border_style);
 
@@ -298,8 +311,10 @@ impl<'a> LogViewerModal<'a> {
     }
 
     fn render_help(&self, area: Rect, buf: &mut Buffer) {
-        let help_text = if self.state.is_editing {
-            "** EDITING ** | Esc:Exit Edit | Tab:Next Field | Enter:Execute | ←→:Move Cursor"
+        let help_text = if self.state.start_calendar_open || self.state.end_calendar_open {
+            "📅 CALENDAR | ←→:Day | ↑↓:Week | PgUp/PgDn:Month | Enter:Select | Esc:Cancel"
+        } else if self.state.is_editing {
+            "** EDITING ** | Esc:Exit Edit | Tab:Next Field | Enter:Execute | ←→:Move Cursor | Space:Calendar (date fields)"
         } else if self.state.is_live_mode {
             let auto_scroll_text = if self.state.auto_scroll {
                 "s:Auto-scroll (on)"
@@ -316,13 +331,115 @@ impl<'a> LogViewerModal<'a> {
 
         Paragraph::new(Line::from(vec![Span::styled(
             help_text,
-            Style::default().fg(if self.state.is_editing {
-                Color::Yellow
-            } else {
-                Color::DarkGray
-            }),
+            Style::default().fg(
+                if self.state.is_editing
+                    || self.state.start_calendar_open
+                    || self.state.end_calendar_open
+                {
+                    Color::Yellow
+                } else {
+                    Color::DarkGray
+                },
+            ),
         )]))
         .render(area, buf);
+    }
+
+    fn render_calendar_popup(&self, area: Rect, buf: &mut Buffer) {
+        // Create a centered popup for the calendar
+        let popup_area = centered_rect(60, 60, area);
+
+        // Clear background
+        Clear.render(popup_area, buf);
+
+        let title = if self.state.start_calendar_open {
+            " Select Start Date "
+        } else {
+            " Select End Date "
+        };
+
+        let block = Block::default()
+            .title(title)
+            .title_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan));
+
+        let inner_area = block.inner(popup_area);
+        block.render(popup_area, buf);
+
+        // Render a simple calendar view using text
+        let selected_date = self.state.selected_date;
+        let year = selected_date.year();
+        let month = selected_date.month();
+        let day = selected_date.day();
+
+        let mut lines = vec![];
+
+        // Month/Year header
+        lines.push(Line::from(vec![Span::styled(
+            format!("{:?} {}", month, year),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]));
+        lines.push(Line::from(""));
+
+        // Weekday headers
+        lines.push(Line::from(vec![Span::styled(
+            "Su Mo Tu We Th Fr Sa",
+            Style::default().fg(Color::Yellow),
+        )]));
+
+        // Get first day of month and total days
+        let first_of_month = time::Date::from_calendar_date(year, month, 1).unwrap();
+        let first_weekday = first_of_month.weekday().number_days_from_sunday();
+        let days_in_month = time::util::days_in_year_month(year, month);
+
+        // Build calendar grid
+        let mut current_line = vec![];
+
+        // Add leading spaces
+        for _ in 0..first_weekday {
+            current_line.push(Span::raw("   "));
+        }
+
+        // Add days
+        for d in 1..=days_in_month {
+            let style = if d == day {
+                // Highlight selected day
+                Style::default()
+                    .fg(Color::Yellow)
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD)
+            } else if d == time::OffsetDateTime::now_utc().day()
+                && month == time::OffsetDateTime::now_utc().month()
+                && year == time::OffsetDateTime::now_utc().year()
+            {
+                // Highlight today
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            current_line.push(Span::styled(format!("{:>2} ", d), style));
+
+            // Start new line on Sunday
+            if (first_weekday + d as u8) % 7 == 0 {
+                lines.push(Line::from(current_line.clone()));
+                current_line.clear();
+            }
+        }
+
+        // Add remaining line if not empty
+        if !current_line.is_empty() {
+            lines.push(Line::from(current_line));
+        }
+
+        Paragraph::new(lines).render(inner_area, buf);
     }
 }
 

@@ -6,7 +6,7 @@ use crate::keyboard;
 use crate::logger::LogBuffer;
 use crate::stores::{AppLogsStore, LogViewerStore, LogsStore, UIStore, WorkflowsStore};
 use crate::ui::render_layout;
-use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use ratatui::crossterm::event::{self, Event, KeyEventKind, MouseEventKind};
 use std::io;
 use std::time::Duration;
 
@@ -103,22 +103,36 @@ impl App {
 
             // Use tokio::select to handle both UI events and actions
             tokio::select! {
-                // Poll for keyboard events
+                // Poll for keyboard and mouse events
                 _ = tokio::time::sleep(Duration::from_millis(16)) => {
                     if event::poll(Duration::from_millis(0))? {
-                        if let Event::Key(key_event) = event::read()? {
-                            // Only process key press events (not release)
-                            if key_event.kind == KeyEventKind::Press {
-                                if let Some(action) = keyboard::handle_key_event(
-                                    key_event,
-                                    &self.ui_store,
-                                    &self.workflows_store,
-                                    &self.app_logs_store,
-                                    &self.log_viewer_store,
-                                ) {
-                                    self.dispatcher.dispatch(action);
+                        match event::read()? {
+                            Event::Key(key_event) => {
+                                // Only process key press events (not release)
+                                if key_event.kind == KeyEventKind::Press {
+                                    if let Some(action) = keyboard::handle_key_event(
+                                        key_event,
+                                        &self.ui_store,
+                                        &self.workflows_store,
+                                        &self.app_logs_store,
+                                        &self.log_viewer_store,
+                                    ) {
+                                        self.dispatcher.dispatch(action);
+                                    }
                                 }
                             }
+                            Event::Mouse(mouse_event) => {
+                                // Handle mouse clicks for calendar date selection
+                                if mouse_event.kind == MouseEventKind::Down(ratatui::crossterm::event::MouseButton::Left) {
+                                    if let Some(action) = keyboard::handle_mouse_event(
+                                        mouse_event,
+                                        &self.log_viewer_store,
+                                    ) {
+                                        self.dispatcher.dispatch(action);
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }

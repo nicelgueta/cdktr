@@ -1,5 +1,7 @@
 [workspace]
 name = "cdktr"
+authors = ["nicelgueta"]
+repository = "https://github.com/nicelgueta/cdktr"
 members = ["crates/*"]
 resolver = "2"
 package.version = "0.1.1"
