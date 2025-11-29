@@ -67,7 +67,6 @@ jobs:
         uses: "taiki-e/upload-rust-binary-action@v1"
         with:
           bin: "cdktr"
-          features: cli
           target: ${{ matrix.target }}
           archive: $bin-${{ matrix.target }}
           ref: refs/tags/v${{ needs.get-tag.outputs.pkg-version }}
