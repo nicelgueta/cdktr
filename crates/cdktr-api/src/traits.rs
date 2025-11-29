@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use crate::models::{ClientResponseMessage, RepReqError};
 use cdktr_core::{
-    exceptions::GenericError, get_cdktr_setting, models::ZMQArgs,
+    exceptions::{GenericError, ZMQParseError},
+    get_cdktr_setting,
+    models::ZMQArgs,
     zmq_helpers::send_recv_with_timeout,
 };
 
@@ -106,6 +108,28 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
                     }
                     warn!(
                         "Failed to communicate to principal - trying again in {} ms (attempt {} of {})",
+                        delay.as_millis(),
+                        attempts,
+                        max_attempts
+                    );
+                    sleep(delay).await;
+                }
+                Err(GenericError::ZMQParseError(ZMQParseError::ParseError(ref msg)))
+                    if msg.contains("Connection reset by peer") || msg.contains("Codec Error") =>
+                {
+                    attempts += 1;
+                    if attempts >= max_attempts {
+                        warn!(
+                            "Max retry attempts ({}) reached - connection with principal has been lost",
+                            max_attempts
+                        );
+                        return Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
+                            msg.clone(),
+                        )));
+                    }
+                    warn!(
+                        "Connection error ({}), trying again in {} ms (attempt {} of {})",
+                        msg,
                         delay.as_millis(),
                         attempts,
                         max_attempts
