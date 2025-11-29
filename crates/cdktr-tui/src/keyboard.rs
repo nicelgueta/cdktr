@@ -280,18 +280,23 @@ fn handle_log_viewer_keys(
                 None
             }
             KeyCode::Char(' ') => {
-                // Open calendar for date fields
+                // Open calendar for date fields only
                 use crate::stores::log_viewer_store::InputField;
                 match state.focused_field {
                     Some(InputField::StartTime) => {
                         log_viewer_store.open_start_calendar();
+                        None
                     }
                     Some(InputField::EndTime) => {
                         log_viewer_store.open_end_calendar();
+                        None
                     }
-                    _ => {}
+                    _ => {
+                        // For non-date fields, treat space as a regular character
+                        log_viewer_store.update_input(' ');
+                        None
+                    }
                 }
-                None
             }
             KeyCode::Char(c) => {
                 log_viewer_store.update_input(c);

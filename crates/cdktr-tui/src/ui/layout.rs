@@ -55,7 +55,7 @@ pub fn render_layout(
     // Render log viewer modal on top if open
     let log_viewer_state = log_viewer_store.get_state();
     if log_viewer_state.is_open {
-        let modal = LogViewerModal::new(log_viewer_state, log_viewer_store);
+        let mut modal = LogViewerModal::new(log_viewer_state, log_viewer_store);
         modal.render(area, frame.buffer_mut());
     }
 }

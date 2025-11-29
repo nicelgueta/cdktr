@@ -1,4 +1,5 @@
 /// Log viewer modal overlay for viewing workflow logs
+use crate::common::calendar::render_calendar_below;
 use crate::stores::log_viewer_store::{InputField, LogViewerState, LogViewerStore};
 use ratatui::{
     buffer::Buffer,
@@ -12,14 +13,22 @@ use time::OffsetDateTime;
 pub struct LogViewerModal<'a> {
     state: LogViewerState,
     store: &'a LogViewerStore,
+    // Track input field areas for calendar positioning
+    start_time_area: Option<Rect>,
+    end_time_area: Option<Rect>,
 }
 
 impl<'a> LogViewerModal<'a> {
     pub fn new(state: LogViewerState, store: &'a LogViewerStore) -> Self {
-        Self { state, store }
+        Self {
+            state,
+            store,
+            start_time_area: None,
+            end_time_area: None,
+        }
     }
 
-    pub fn render(&self, area: Rect, buf: &mut Buffer) {
+    pub fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if !self.state.is_open {
             return;
         }
@@ -95,7 +104,7 @@ impl<'a> LogViewerModal<'a> {
         }
     }
 
-    fn render_query_filters(&self, area: Rect, buf: &mut Buffer) {
+    fn render_query_filters(&mut self, area: Rect, buf: &mut Buffer) {
         // Create horizontal layout for filters and status
         let filter_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -106,6 +115,10 @@ impl<'a> LogViewerModal<'a> {
                 Constraint::Percentage(20), // Status
             ])
             .split(area);
+
+        // Store areas for calendar positioning
+        self.start_time_area = Some(filter_chunks[0]);
+        self.end_time_area = Some(filter_chunks[1]);
 
         // Render start time with border
         self.render_bordered_input(
@@ -345,121 +358,15 @@ impl<'a> LogViewerModal<'a> {
         .render(area, buf);
     }
 
-    fn render_calendar_popup(&self, area: Rect, buf: &mut Buffer) {
-        // Create a centered popup for the calendar
-        let popup_area = centered_rect(60, 60, area);
-
-        // Clear background
-        Clear.render(popup_area, buf);
-
-        let title = if self.state.start_calendar_open {
-            " Select Start Date "
+    fn render_calendar_popup(&self, screen_area: Rect, buf: &mut Buffer) {
+        let (title, below_area) = if self.state.start_calendar_open {
+            (" Select Start Date ", self.start_time_area)
         } else {
-            " Select End Date "
+            (" Select End Date ", self.end_time_area)
         };
 
-        let block = Block::default()
-            .title(title)
-            .title_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
-
-        let inner_area = block.inner(popup_area);
-        block.render(popup_area, buf);
-
-        // Render a simple calendar view using text
-        let selected_date = self.state.selected_date;
-        let year = selected_date.year();
-        let month = selected_date.month();
-        let day = selected_date.day();
-
-        let mut lines = vec![];
-
-        // Month/Year header
-        lines.push(Line::from(vec![Span::styled(
-            format!("{:?} {}", month, year),
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )]));
-        lines.push(Line::from(""));
-
-        // Weekday headers
-        lines.push(Line::from(vec![Span::styled(
-            "Su Mo Tu We Th Fr Sa",
-            Style::default().fg(Color::Yellow),
-        )]));
-
-        // Get first day of month and total days
-        let first_of_month = time::Date::from_calendar_date(year, month, 1).unwrap();
-        let first_weekday = first_of_month.weekday().number_days_from_sunday();
-        let days_in_month = time::util::days_in_year_month(year, month);
-
-        // Build calendar grid
-        let mut current_line = vec![];
-
-        // Add leading spaces
-        for _ in 0..first_weekday {
-            current_line.push(Span::raw("   "));
+        if let Some(area) = below_area {
+            render_calendar_below(screen_area, area, buf, self.state.selected_date, title);
         }
-
-        // Add days
-        for d in 1..=days_in_month {
-            let style = if d == day {
-                // Highlight selected day
-                Style::default()
-                    .fg(Color::Yellow)
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD)
-            } else if d == time::OffsetDateTime::now_utc().day()
-                && month == time::OffsetDateTime::now_utc().month()
-                && year == time::OffsetDateTime::now_utc().year()
-            {
-                // Highlight today
-                Style::default().fg(Color::Green)
-            } else {
-                Style::default().fg(Color::White)
-            };
-
-            current_line.push(Span::styled(format!("{:>2} ", d), style));
-
-            // Start new line on Sunday
-            if (first_weekday + d as u8) % 7 == 0 {
-                lines.push(Line::from(current_line.clone()));
-                current_line.clear();
-            }
-        }
-
-        // Add remaining line if not empty
-        if !current_line.is_empty() {
-            lines.push(Line::from(current_line));
-        }
-
-        Paragraph::new(lines).render(inner_area, buf);
     }
-}
-
-/// Helper function to create a centered rectangle
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
