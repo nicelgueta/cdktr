@@ -164,6 +164,15 @@ impl AgentPriorityQueue {
         {
             let mut node_map = self.node_map.lock().await;
             (*node_map).insert(next_id, agent_meta);
+
+            // remove the now stale entry if it exists to avoid mem leak
+            (*node_map).remove(&{
+                let u_map = self.u_map.lock().await;
+                match u_map.get(&agent_id) {
+                    Some(id) => *id,
+                    None => 0, // no stale entry to remove
+                }
+            });
         }
         // move agent id to uniqueness map
         {
@@ -298,6 +307,20 @@ impl AgentPriorityQueue {
         };
         self.push(agent_meta).await;
         Ok(())
+    }
+
+    pub async fn get_agent(&self, agent_id: &str) -> Result<AgentMeta, GenericError> {
+        let u_map = self.u_map.lock().await;
+        match u_map.get(agent_id) {
+            Some(unique_id) => {
+                let node_map = self.node_map.lock().await;
+                match node_map.get(unique_id) {
+                    Some(agent_meta) => Ok(agent_meta.clone()),
+                    None => Err(GenericError::MissingAgents),
+                }
+            }
+            None => Err(GenericError::MissingAgents),
+        }
     }
 }
 
@@ -735,5 +758,47 @@ mod tests {
         assert!(agent_ids.contains(&"agent-1".to_string()));
         assert!(agent_ids.contains(&"agent-3".to_string()));
         assert!(!agent_ids.contains(&"agent-2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_agent_exists() {
+        let mut pq = AgentPriorityQueue::new();
+        let agent_meta = AgentMeta::new("existing-agent".to_string(), 12345);
+        pq.push(agent_meta.clone()).await;
+
+        let retrieved_agent = pq.get_agent("existing-agent").await.unwrap();
+        assert_eq!(retrieved_agent.agent_id(), "existing-agent");
+        assert_eq!(retrieved_agent.last_ping_timestamp, 12345);
+    }
+
+    #[tokio::test]
+    async fn test_no_memory_leak_on_update_running_tasks() {
+        let mut pq = AgentPriorityQueue::new();
+        let agent_id = "agent-leak-test";
+        let agent_meta = AgentMeta::new(agent_id.to_string(), 0);
+        pq.push(agent_meta).await;
+
+        // add same agent again to check one is made stale
+        pq.push(AgentMeta::new(agent_id.to_string(), 0)).await;
+
+        // After updates, only one entry should exist for this agent in both maps
+        {
+            let u_map = pq.u_map.lock().await;
+            let node_map = pq.node_map.lock().await;
+
+            // There should be only one unique_id for this agent_id
+            let unique_id = u_map.get(agent_id).expect("Agent should exist in u_map");
+            // There should be only one AgentMeta for this unique_id
+            assert!(node_map.contains_key(unique_id));
+            assert_eq!(u_map.len(), 1);
+            assert_eq!(node_map.len(), 1);
+        }
+
+        // Remove the agent and ensure both maps are empty
+        pq.remove(agent_id).await.unwrap();
+        let u_map = pq.u_map.lock().await;
+        let node_map = pq.node_map.lock().await;
+        assert!(!u_map.contains_key(agent_id));
+        assert!(!node_map.values().any(|am| am.agent_id() == agent_id));
     }
 }
