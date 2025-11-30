@@ -124,8 +124,13 @@ echo "Changed files:"
 git diff --name-only | grep "Cargo.toml"
 
 echo ""
-# Add changed Cargo.toml files and commit
-git add Cargo.toml
+# Update Cargo.lock to reflect version changes
+echo "Updating Cargo.lock..."
+cargo update --workspace
+
+echo ""
+# Add changed Cargo.toml and Cargo.lock files and commit
+git add Cargo.toml Cargo.lock
 for crate_name in "${CHANGED_CRATES[@]}"; do
     crate_toml="$CRATES_DIR/$crate_name/Cargo.toml"
     if [[ -f "$crate_toml" ]]; then
