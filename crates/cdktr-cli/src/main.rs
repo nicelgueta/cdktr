@@ -14,11 +14,12 @@ mod api;
 mod components;
 mod models;
 
-/// CDKTR Command Line Interface
+/// CDKTR Command Line Interface.
 /// You can manage your entire CDKTR setup using this CLI
 #[derive(Parser)]
 #[command(name = "cdktr")]
 #[command(bin_name = "cdktr")]
+#[command(version, about, long_about = None)]
 enum CdktrCli {
     /// Open up the main CDKTR TUI
     Ui,
