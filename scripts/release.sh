@@ -142,3 +142,5 @@ done
 NEW_MAIN_VERSION=$(awk -F ' = ' '$1 ~ /^version/ { gsub(/["]/, "", $2); print $2; exit }' Cargo.toml)
 
 git commit -m "release version $NEW_MAIN_VERSION"
+
+git push --set-upstream origin $CURRENT_BRANCH

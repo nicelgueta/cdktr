@@ -12,10 +12,10 @@ setup:
 commit:
 	git diff --name-only --cached | grep '.rs$$' | xargs -n 1 rustfmt --edition 2024
 	git add $(shell git diff --name-only --cached | grep '.rs$$')
-push: test bump
-bump:
-	bash scripts/bump_versions.sh
+push: test release
 release:
+	bash scripts/release.sh
+build-release:
 	cargo build --release
 principal:
 	cargo run start principal
