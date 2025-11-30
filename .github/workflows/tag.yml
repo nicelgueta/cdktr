@@ -1,17 +1,17 @@
 name: "Tag"
 
 on:
-  push:
+  pull_request:
     branches:
       - "main"
-    paths:
-      - Cargo.toml
-      - src/*
-      - Cargo.lock
+    types:
+      - "closed"
 
 jobs:
   create-tag:
     name: "Create tag"
+    # Only run if PR was merged (not just closed) and came from a release/* branch
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
     runs-on: "ubuntu-latest"
     steps:
       - name: "Check out the repo"
