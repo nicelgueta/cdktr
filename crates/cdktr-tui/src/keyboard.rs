@@ -22,7 +22,20 @@ pub fn handle_key_event(
 
     match key_event.code {
         // Global keys
-        KeyCode::Char('q') | KeyCode::Char('Q') => Some(Action::Quit),
+        KeyCode::Char(':') => {
+            // Start command mode
+            ui_store.set_command_input(":".to_string());
+            None
+        }
+        KeyCode::Char('q') if ui_state.command_input == ":" => {
+            // Complete :q command
+            Some(Action::Quit)
+        }
+        KeyCode::Esc if !ui_state.command_input.is_empty() => {
+            // Cancel command mode
+            ui_store.clear_command_input();
+            None
+        }
         KeyCode::Char('?') => Some(Action::ToggleHelp),
 
         // Tab switching
@@ -44,29 +57,54 @@ fn handle_workflows_tab_keys(
     focused_panel: &PanelId,
     workflows_store: &WorkflowsStore,
 ) -> Option<Action> {
-    match key_event.code {
-        KeyCode::Char('r') | KeyCode::Char('R') => Some(Action::RefreshWorkflows),
+    let state = workflows_store.get_state();
 
-        // Panel navigation (h/l or Tab)
-        KeyCode::Char('h') => Some(previous_panel(*focused_panel)),
-        KeyCode::Char('l') => Some(next_panel(*focused_panel)),
+    match key_event.code {
+        // Refresh with Shift+R
+        KeyCode::Char('R')
+            if key_event
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::SHIFT) =>
+        {
+            Some(Action::RefreshWorkflows)
+        }
+        KeyCode::Char('r')
+            if key_event
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::SHIFT) =>
+        {
+            Some(Action::RefreshWorkflows)
+        }
+
+        // Panel navigation (Tab only)
         KeyCode::Tab => Some(next_panel(*focused_panel)),
 
-        // List navigation (j/k or Up/Down) - only in sidebar
-        KeyCode::Char('j') | KeyCode::Down if *focused_panel == PanelId::Sidebar => {
-            next_workflow(workflows_store)
+        // Sidebar (Workflows) - prioritize filter input when typing
+        KeyCode::Backspace if *focused_panel == PanelId::Sidebar => {
+            let mut filter = state.workflows_filter;
+            filter.pop();
+            Some(Action::UpdateWorkflowsFilter(filter))
         }
-        KeyCode::Char('k') | KeyCode::Up if *focused_panel == PanelId::Sidebar => {
-            previous_workflow(workflows_store)
+        KeyCode::Char(c) if *focused_panel == PanelId::Sidebar && !c.is_control() => {
+            let mut filter = state.workflows_filter;
+            filter.push(c);
+            Some(Action::UpdateWorkflowsFilter(filter))
         }
+        KeyCode::Esc if *focused_panel == PanelId::Sidebar => {
+            // Clear filter
+            Some(Action::UpdateWorkflowsFilter(String::new()))
+        }
+        // List navigation with arrow keys only
+        KeyCode::Down if *focused_panel == PanelId::Sidebar => next_workflow(workflows_store),
+        KeyCode::Up if *focused_panel == PanelId::Sidebar => previous_workflow(workflows_store),
+        // Enter to open log viewer
+        KeyCode::Enter if *focused_panel == PanelId::Sidebar => state
+            .selected_workflow_id
+            .map(|id| Action::OpenLogViewer(id)),
 
-        // MainPanel scrolling (j/k or Up/Down)
-        KeyCode::Char('j') | KeyCode::Down if *focused_panel == PanelId::MainPanel => {
-            Some(Action::ScrollMainPanel(1))
-        }
-        KeyCode::Char('k') | KeyCode::Up if *focused_panel == PanelId::MainPanel => {
-            Some(Action::ScrollMainPanel(-1))
-        }
+        // MainPanel scrolling (arrow keys only)
+        KeyCode::Down if *focused_panel == PanelId::MainPanel => Some(Action::ScrollMainPanel(1)),
+        KeyCode::Up if *focused_panel == PanelId::MainPanel => Some(Action::ScrollMainPanel(-1)),
         KeyCode::PageDown if *focused_panel == PanelId::MainPanel => {
             Some(Action::ScrollMainPanel(5))
         }
@@ -74,33 +112,13 @@ fn handle_workflows_tab_keys(
             Some(Action::ScrollMainPanel(-5))
         }
 
-        // RunInfoPanel scrolling (j/k or Up/Down)
-        KeyCode::Char('j') | KeyCode::Down if *focused_panel == PanelId::RunInfoPanel => {
-            Some(Action::ScrollRunInfo(1))
-        }
-        KeyCode::Char('k') | KeyCode::Up if *focused_panel == PanelId::RunInfoPanel => {
-            Some(Action::ScrollRunInfo(-1))
-        }
-        KeyCode::PageDown if *focused_panel == PanelId::RunInfoPanel => {
-            Some(Action::ScrollRunInfo(5))
-        }
-        KeyCode::PageUp if *focused_panel == PanelId::RunInfoPanel => {
-            Some(Action::ScrollRunInfo(-5))
-        }
-
-        // RunInfoPanel filter input
-        KeyCode::Char('/') if *focused_panel == PanelId::RunInfoPanel => {
-            // Start filter mode - for now just send empty filter
-            None
-        }
+        // RunInfoPanel - prioritize filter input when typing
         KeyCode::Backspace if *focused_panel == PanelId::RunInfoPanel => {
-            let state = workflows_store.get_state();
             let mut filter = state.run_info_filter;
             filter.pop();
             Some(Action::UpdateRunInfoFilter(filter))
         }
         KeyCode::Char(c) if *focused_panel == PanelId::RunInfoPanel && !c.is_control() => {
-            let state = workflows_store.get_state();
             let mut filter = state.run_info_filter;
             filter.push(c);
             Some(Action::UpdateRunInfoFilter(filter))
@@ -109,13 +127,14 @@ fn handle_workflows_tab_keys(
             // Clear filter
             Some(Action::UpdateRunInfoFilter(String::new()))
         }
-
-        // Enter to open log viewer
-        KeyCode::Enter if *focused_panel == PanelId::Sidebar => {
-            let state = workflows_store.get_state();
-            state
-                .selected_workflow_id
-                .map(|id| Action::OpenLogViewer(id))
+        // RunInfoPanel scrolling with arrow keys only
+        KeyCode::Down if *focused_panel == PanelId::RunInfoPanel => Some(Action::ScrollRunInfo(1)),
+        KeyCode::Up if *focused_panel == PanelId::RunInfoPanel => Some(Action::ScrollRunInfo(-1)),
+        KeyCode::PageDown if *focused_panel == PanelId::RunInfoPanel => {
+            Some(Action::ScrollRunInfo(5))
+        }
+        KeyCode::PageUp if *focused_panel == PanelId::RunInfoPanel => {
+            Some(Action::ScrollRunInfo(-5))
         }
 
         _ => None,
@@ -157,16 +176,6 @@ fn next_panel(current: PanelId) -> Action {
         PanelId::RunInfoPanel => PanelId::Sidebar,
     };
     Action::FocusPanel(next)
-}
-
-/// Move to the previous panel
-fn previous_panel(current: PanelId) -> Action {
-    let prev = match current {
-        PanelId::Sidebar => PanelId::RunInfoPanel,
-        PanelId::MainPanel => PanelId::Sidebar,
-        PanelId::RunInfoPanel => PanelId::MainPanel,
-    };
-    Action::FocusPanel(prev)
 }
 
 /// Select the next workflow in the list
@@ -249,11 +258,11 @@ fn handle_log_viewer_keys(
             }
             _ => None,
         }
-    } else if state.is_editing && state.focused_field.is_some() {
-        // If in editing mode, handle text input
+    } else if state.focused_field.is_some() {
+        // If a field is focused, handle text input
         match key_event.code {
             KeyCode::Esc => {
-                log_viewer_store.exit_editing_mode();
+                log_viewer_store.clear_focus();
                 None
             }
             KeyCode::Tab => {
@@ -319,16 +328,16 @@ fn handle_log_viewer_keys(
         match key_event.code {
             KeyCode::Esc => Some(Action::CloseLogViewer),
             KeyCode::Char('t') | KeyCode::Char('T') => Some(Action::ToggleLogMode),
-            KeyCode::Char('e') | KeyCode::Char('E') => {
-                // Enter editing mode only in query mode
+            KeyCode::Tab => {
+                // Tab cycles through fields in query mode
                 if !state.is_live_mode {
-                    log_viewer_store.enter_editing_mode();
+                    log_viewer_store.focus_next_field();
                 }
                 None
             }
             KeyCode::Enter => {
-                // Execute query only in query mode when not editing
-                if !state.is_live_mode && !state.is_editing {
+                // Execute query only in query mode when no field is focused
+                if !state.is_live_mode {
                     match log_viewer_store.parse_time_inputs() {
                         Ok(_) => return Some(Action::ExecuteLogQuery),
                         Err(e) => {
@@ -339,40 +348,24 @@ fn handle_log_viewer_keys(
                 }
                 None
             }
-            KeyCode::Tab => {
-                if !state.is_live_mode && state.is_editing {
-                    log_viewer_store.focus_next_field();
-                }
-                None
-            }
             KeyCode::Char('s') | KeyCode::Char('S') => {
                 log_viewer_store.toggle_auto_scroll();
                 None
             }
             KeyCode::Char('j') | KeyCode::Down => {
-                // Only scroll if not in editing mode
-                if !state.is_editing {
-                    log_viewer_store.scroll_up(1);
-                }
+                log_viewer_store.scroll_up(1);
                 None
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                // Only scroll if not in editing mode
-                if !state.is_editing {
-                    log_viewer_store.scroll_down(1);
-                }
+                log_viewer_store.scroll_down(1);
                 None
             }
             KeyCode::PageDown => {
-                if !state.is_editing {
-                    log_viewer_store.scroll_up(10);
-                }
+                log_viewer_store.scroll_up(10);
                 None
             }
             KeyCode::PageUp => {
-                if !state.is_editing {
-                    log_viewer_store.scroll_down(10);
-                }
+                log_viewer_store.scroll_down(10);
                 None
             }
             _ => None,

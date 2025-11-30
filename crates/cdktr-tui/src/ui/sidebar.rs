@@ -10,12 +10,14 @@ use ratatui::{
     text::Line,
     widgets::{Block, Borders, List, ListState, StatefulWidget, Widget},
 };
+use regex::Regex;
 
 pub struct Sidebar {
     pub workflows: Vec<Workflow>,
     pub selected_index: Option<usize>,
     pub is_focused: bool,
     pub is_loading: bool,
+    pub filter_input: String,
 }
 
 impl Sidebar {
@@ -29,6 +31,7 @@ impl Sidebar {
             selected_index,
             is_focused: ui_state.focused_panel == PanelId::Sidebar,
             is_loading: workflows_state.is_loading,
+            filter_input: workflows_state.workflows_filter.clone(),
         }
     }
 
@@ -39,10 +42,35 @@ impl Sidebar {
             Color::White
         };
 
-        let title = if self.is_loading {
-            " Workflows (Loading...) "
+        // Apply regex filter
+        let filtered_workflows: Vec<&Workflow> = if self.filter_input.is_empty() {
+            self.workflows.iter().collect()
         } else {
-            " Workflows "
+            match Regex::new(&self.filter_input) {
+                Ok(regex) => self
+                    .workflows
+                    .iter()
+                    .filter(|wf| regex.is_match(wf.id()) || regex.is_match(wf.name()))
+                    .collect(),
+                Err(_) => self.workflows.iter().collect(), // Invalid regex, show all
+            }
+        };
+
+        let title = if self.is_loading {
+            " Workflows (Loading...) ".to_string()
+        } else if self.filter_input.is_empty() {
+            format!(
+                " Workflows ({}/{}) [Filter: _] ",
+                filtered_workflows.len(),
+                self.workflows.len()
+            )
+        } else {
+            format!(
+                " Workflows ({}/{}) [Filter: {}] ",
+                filtered_workflows.len(),
+                self.workflows.len(),
+                self.filter_input
+            )
         };
 
         let block = Block::default()
@@ -50,13 +78,12 @@ impl Sidebar {
             .title(title)
             .border_style(Style::default().fg(border_color));
 
-        if self.workflows.is_empty() {
+        if filtered_workflows.is_empty() {
             block.render(area, buf);
             return;
         }
 
-        let items: Vec<Line> = self
-            .workflows
+        let items: Vec<Line> = filtered_workflows
             .iter()
             .map(|wf| Line::from(format!(" {} - {}", wf.id(), wf.name())))
             .collect();

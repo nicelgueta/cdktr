@@ -88,7 +88,13 @@ impl AgentListPanel {
                 Row::new(vec![
                     Cell::from(agent.agent_id.to_string()),
                     Cell::from(status).style(Style::default().fg(status_color)),
-                    Cell::from(agent.running_tasks.to_string()),
+                    Cell::from(agent.running_tasks.to_string()).style(Style::default().fg(
+                        if agent.running_tasks > 0 {
+                            Color::Cyan
+                        } else {
+                            Color::White
+                        },
+                    )),
                     Cell::from(last_ping_str),
                 ])
             })
