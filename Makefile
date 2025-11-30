@@ -12,7 +12,7 @@ setup:
 commit:
 	git diff --name-only --cached | grep '.rs$$' | xargs -n 1 rustfmt --edition 2024
 	git add $(shell git diff --name-only --cached | grep '.rs$$')
-push: test release
+push: test
 release:
 	bash scripts/release.sh
 build-release:
