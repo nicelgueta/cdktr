@@ -224,9 +224,9 @@ fn render_footer(frame: &mut Frame, area: Rect, ui_store: &UIStore) {
     } else {
         match ui_state.active_tab {
             TabId::Workflows => {
-                "q:Quit | 1/2:Switch Tab | j/k:Navigate | h/l:Panel | r:Refresh | ?:Help"
+                ":q:Quit | 1/2:Switch Tab | Tab:Panel | ↑/↓:Navigate | Shift+R:Refresh | Esc:Clear Filter | ?:Help"
             }
-            TabId::Admin => "q:Quit | 1/2:Switch Tab | j/k:Scroll | ?:Help",
+            TabId::Admin => ":q:Quit | 1/2:Switch Tab | ↑/↓:Scroll | ?:Help",
         }
     };
 

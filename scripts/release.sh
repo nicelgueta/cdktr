@@ -11,6 +11,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+
 # Get current branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -20,6 +21,9 @@ if [[ ! "$CURRENT_BRANCH" =~ ^release/.* ]]; then
     echo -e "${YELLOW}Current branch: $CURRENT_BRANCH${NC}"
     exit 0
 fi
+
+# run tests first
+make test
 
 echo -e "${GREEN}✓ On release branch: $CURRENT_BRANCH${NC}"
 
@@ -142,5 +146,5 @@ done
 NEW_MAIN_VERSION=$(awk -F ' = ' '$1 ~ /^version/ { gsub(/["]/, "", $2); print $2; exit }' Cargo.toml)
 
 git commit -m "release version $NEW_MAIN_VERSION"
-
 git push --set-upstream origin $CURRENT_BRANCH
+git checkout develop

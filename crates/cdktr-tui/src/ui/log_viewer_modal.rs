@@ -326,8 +326,8 @@ impl<'a> LogViewerModal<'a> {
     fn render_help(&self, area: Rect, buf: &mut Buffer) {
         let help_text = if self.state.start_calendar_open || self.state.end_calendar_open {
             "📅 CALENDAR | ←→:Day | ↑↓:Week | PgUp/PgDn:Month | Enter:Select | Esc:Cancel"
-        } else if self.state.is_editing {
-            "** EDITING ** | Esc:Exit Edit | Tab:Next Field | Enter:Execute | ←→:Move Cursor | Space:Calendar (date fields)"
+        } else if self.state.focused_field.is_some() {
+            "Tab:Next Field | Shift+Tab:Prev Field | Enter:Execute | ←→:Move Cursor | Space:Calendar (date fields) | Esc:Unfocus"
         } else if self.state.is_live_mode {
             let auto_scroll_text = if self.state.auto_scroll {
                 "s:Auto-scroll (on)"
@@ -339,13 +339,13 @@ impl<'a> LogViewerModal<'a> {
                 auto_scroll_text
             )
         } else {
-            "Esc:Close | t:Toggle tail/query mode | e:Edit | Enter:Query | j/k:Scroll | PgUp/PgDn:Page"
+            "Esc:Close | t:Toggle tail/query mode | Tab:Focus fields | Enter:Query | j/k:Scroll | PgUp/PgDn:Page"
         };
 
         Paragraph::new(Line::from(vec![Span::styled(
             help_text,
             Style::default().fg(
-                if self.state.is_editing
+                if self.state.focused_field.is_some()
                     || self.state.start_calendar_open
                     || self.state.end_calendar_open
                 {

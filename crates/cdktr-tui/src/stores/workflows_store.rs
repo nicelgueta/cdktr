@@ -31,6 +31,9 @@ pub struct WorkflowsState {
     /// Filter input for RunInfo panel
     pub run_info_filter: String,
 
+    /// Filter input for Workflows panel (Sidebar)
+    pub workflows_filter: String,
+
     /// Scroll offset for MainPanel DAG visualization
     pub main_panel_scroll_offset: u16,
 }
@@ -46,6 +49,7 @@ impl Default for WorkflowsState {
             registered_agents: Vec::new(),
             run_info_scroll_offset: 0,
             run_info_filter: String::new(),
+            workflows_filter: String::new(),
             main_panel_scroll_offset: 0,
         }
     }
@@ -119,6 +123,10 @@ impl WorkflowsStore {
             Action::UpdateRunInfoFilter(filter) => {
                 state.run_info_filter = filter.clone();
                 state.run_info_scroll_offset = 0; // Reset scroll when filter changes
+            }
+
+            Action::UpdateWorkflowsFilter(filter) => {
+                state.workflows_filter = filter.clone();
             }
 
             Action::ScrollMainPanel(delta) => {

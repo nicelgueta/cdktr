@@ -90,6 +90,9 @@ pub enum Action {
     /// Update RunInfo filter input
     UpdateRunInfoFilter(String),
 
+    /// Update Workflows filter input
+    UpdateWorkflowsFilter(String),
+
     /// Scroll MainPanel DAG visualization
     ScrollMainPanel(i16), // positive = down, negative = up
 }

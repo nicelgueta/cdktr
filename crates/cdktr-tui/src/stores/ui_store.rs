@@ -26,6 +26,9 @@ pub struct UIState {
 
     /// Timestamp (Unix seconds) when the principal first went offline
     pub disconnect_since: Option<i64>,
+
+    /// Command input for colon commands like :q
+    pub command_input: String,
 }
 
 impl Default for UIState {
@@ -38,6 +41,7 @@ impl Default for UIState {
             should_exit: false,
             principal_online: false,
             disconnect_since: None,
+            command_input: String::new(),
         }
     }
 }
@@ -58,6 +62,18 @@ impl UIStore {
     /// Get a read-only snapshot of the current state
     pub fn get_state(&self) -> UIState {
         self.state.read().unwrap().clone()
+    }
+
+    /// Set command input
+    pub fn set_command_input(&self, input: String) {
+        let mut state = self.state.write().unwrap();
+        state.command_input = input;
+    }
+
+    /// Clear command input
+    pub fn clear_command_input(&self) {
+        let mut state = self.state.write().unwrap();
+        state.command_input.clear();
     }
 
     /// Reducer: handle an action and update state accordingly

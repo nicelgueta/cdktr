@@ -58,9 +58,6 @@ pub struct LogViewerState {
     /// Error message from last query (if any)
     pub error_message: Option<String>,
 
-    /// Whether in editing mode (focused on input fields)
-    pub is_editing: bool,
-
     /// Whether auto-scroll is enabled in live mode
     pub auto_scroll: bool,
 
@@ -98,7 +95,6 @@ impl Default for LogViewerState {
             focused_field: None,
             cursor_position: 0,
             error_message: None,
-            is_editing: false,
             auto_scroll: true,
             start_calendar_open: false,
             end_calendar_open: false,
@@ -136,7 +132,6 @@ impl LogViewerStore {
                 state.is_live_mode = false;
                 state.cursor_position = 0;
                 state.error_message = None;
-                state.is_editing = false;
             }
 
             Action::CloseLogViewer => {
@@ -152,7 +147,6 @@ impl LogViewerStore {
                 state.logs.clear();
                 state.scroll_offset = 0;
                 state.error_message = None;
-                state.is_editing = false;
                 state.focused_field = None;
                 state.cursor_position = 0;
 
@@ -290,14 +284,14 @@ impl LogViewerStore {
         }
     }
 
-    /// Focus next input field (Tab key)
+    /// Focus next input field (Tab key) - cycles through fields and unfocuses after last field
     pub fn focus_next_field(&self) {
         let mut state = self.state.write().unwrap();
         state.focused_field = match state.focused_field {
             None => Some(InputField::StartTime),
             Some(InputField::StartTime) => Some(InputField::EndTime),
             Some(InputField::EndTime) => Some(InputField::Grep),
-            Some(InputField::Grep) => Some(InputField::StartTime),
+            Some(InputField::Grep) => None, // Unfocus after last field
         };
 
         // Set cursor to end of new field
@@ -307,6 +301,8 @@ impl LogViewerStore {
                 InputField::EndTime => state.end_time_input.len(),
                 InputField::Grep => state.grep_filter.len(),
             };
+        } else {
+            state.cursor_position = 0;
         }
     }
 
@@ -331,24 +327,8 @@ impl LogViewerStore {
     }
 
     /// Clear focus from input fields
-    #[allow(dead_code)]
     pub fn clear_focus(&self) {
         let mut state = self.state.write().unwrap();
-        state.focused_field = None;
-        state.cursor_position = 0;
-    }
-
-    pub fn enter_editing_mode(&self) {
-        let mut state = self.state.write().unwrap();
-        state.is_editing = true;
-        // Auto-focus on first field when entering edit mode
-        state.focused_field = Some(InputField::StartTime);
-        state.cursor_position = state.start_time_input.len();
-    }
-
-    pub fn exit_editing_mode(&self) {
-        let mut state = self.state.write().unwrap();
-        state.is_editing = false;
         state.focused_field = None;
         state.cursor_position = 0;
     }
