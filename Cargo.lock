@@ -679,7 +679,7 @@ dependencies = [
 
 [[package]]
 name = "cdktr-cli"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "cdktr-api",
  "cdktr-core",
@@ -699,7 +699,7 @@ dependencies = [
 
 [[package]]
 name = "cdktr-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "dotenv",
