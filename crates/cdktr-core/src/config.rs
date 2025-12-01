@@ -2,6 +2,10 @@
 /// All can be overridden by either an ENV var of the same name. Some can also be overridden
 /// from the command line. These should only be primitive types
 ///
+///
+
+/// default log level
+pub static CDKTR_LOG_LEVEL: &'static str = "INFO";
 
 /// default max number of concurrent workflows an agent can handle
 pub static CDKTR_AGENT_MAX_CONCURRENCY: usize = 5;

@@ -8,7 +8,10 @@ use models::InstanceType;
 use std::env;
 use std::path::Path;
 
-use crate::components::logs::{LogArgs, handle_logs};
+use crate::components::{
+    init::{InitArgs, handle_init},
+    logs::{LogArgs, handle_logs},
+};
 
 mod api;
 mod components;
@@ -33,6 +36,9 @@ enum CdktrCli {
 
     /// Log management CLI
     Logs(LogArgs),
+
+    /// Init a baseline project structure with example workflow
+    Init(InitArgs),
 }
 
 #[derive(clap::Args)]
@@ -86,9 +92,19 @@ async fn main() {
     // Only initialize env_logger for non-TUI commands
     // TUI will use its own custom in-memory logger
     if !matches!(cli_instance, CdktrCli::Ui) {
-        env_logger::init();
+        let log_level = match get_cdktr_setting!(CDKTR_LOG_LEVEL).as_str() {
+            "TRACE" => log::LevelFilter::Trace,
+            "DEBUG" => log::LevelFilter::Debug,
+            "INFO" => log::LevelFilter::Info,
+            "WARN" => log::LevelFilter::Warn,
+            "ERROR" => log::LevelFilter::Error,
+            _ => log::LevelFilter::Info,
+        };
+        env_logger::builder()
+            .filter_level(log_level)
+            .format_target(true)
+            .init();
     }
-
     setup();
     _main(cli_instance).await;
 }
@@ -138,5 +154,6 @@ async fn _main(cli_instance: CdktrCli) {
         }
         CdktrCli::Task(_args) => todo!(),
         CdktrCli::Logs(args) => handle_logs(args).await,
+        CdktrCli::Init(args) => handle_init(args),
     }
 }
