@@ -10,7 +10,7 @@ use cdktr_core::{
 };
 
 use async_trait::async_trait;
-use log::{trace, warn};
+use log::{info, trace, warn};
 use tokio::time::sleep;
 use zeromq::ZmqMessage;
 
@@ -95,7 +95,15 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
             let result = self.clone().send().await;
 
             match result {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    if attempts > 0 {
+                        info!(
+                            "Successfully re-connected with principal after {} attempt(s)",
+                            attempts
+                        );
+                    }
+                    return Ok(response);
+                }
                 Err(GenericError::PrincipalTimeoutError) => {
                     attempts += 1;
                     if attempts >= max_attempts {
