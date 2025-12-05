@@ -22,15 +22,10 @@ impl PrincipalClient {
         }
     }
     pub async fn register_with_principal(&mut self) -> Result<(), GenericError> {
-        let cdktr_default_timeout: Duration =
-            Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
         debug!("Registering agent with principal @ {}", &self.principal_uri);
 
         let request = PrincipalAPI::RegisterAgent(self.instance_id.clone());
-        let cli_msg = request
-            .send_with_retry(&self.principal_uri, cdktr_default_timeout, None, None)
-            .await?;
+        let cli_msg = request.send_with_retry(None, None).await?;
 
         match cli_msg {
             ClientResponseMessage::Success => {
@@ -46,14 +41,8 @@ impl PrincipalClient {
 
     /// Sends a heartbeat to the principal to keep this agent registered
     pub async fn send_heartbeat(&self) -> Result<(), GenericError> {
-        let cdktr_default_timeout: Duration =
-            Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
         let request = PrincipalAPI::RegisterAgent(self.instance_id.clone());
-        match request
-            .send_with_retry(&self.principal_uri, cdktr_default_timeout, None, None)
-            .await
-        {
+        match request.send_with_retry(None, None).await {
             Ok(ClientResponseMessage::Success) => {
                 debug!("Heartbeat sent successfully");
                 Ok(())
@@ -76,10 +65,9 @@ impl PrincipalClient {
     pub async fn wait_next_workflow(
         &self,
         sleep_interval: Duration,
-        timeout: Duration,
     ) -> Result<Workflow, GenericError> {
         loop {
-            let workflow_res = self.fetch_next_workflow(timeout).await;
+            let workflow_res = self.fetch_next_workflow().await;
             let workflow = match workflow_res {
                 Ok(workflow) => workflow,
                 Err(e) => match e {
@@ -95,12 +83,9 @@ impl PrincipalClient {
         }
     }
 
-    pub async fn fetch_next_workflow(&self, timeout: Duration) -> Result<Workflow, GenericError> {
+    pub async fn fetch_next_workflow(&self) -> Result<Workflow, GenericError> {
         let request = PrincipalAPI::FetchWorkflow(self.instance_id.clone());
-        match request
-            .send_with_retry(&self.principal_uri, timeout, None, None)
-            .await
-        {
+        match request.send_with_retry(None, None).await {
             Ok(cli_resp) => match cli_resp {
                 ClientResponseMessage::Success => {
                     Err(GenericError::NoDataException("Queue empty".to_string()))

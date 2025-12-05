@@ -58,6 +58,9 @@ struct StartArgs {
 
     #[arg(long, short)]
     suffix: Option<String>,
+
+    #[arg(long, short)]
+    no_scheduler: bool,
 }
 
 fn setup() {
@@ -140,8 +143,13 @@ async fn _main(cli_instance: CdktrCli) {
                 InstanceType::PRINCIPAL => {
                     let instance_id = format!("{}/PRIN", utils::get_instance_id());
                     info!("Starting PRINCIPAL instance: {}", &instance_id);
-                    if let Err(e) =
-                        start_principal(principal_host, principal_port, instance_id).await
+                    if let Err(e) = start_principal(
+                        principal_host,
+                        principal_port,
+                        instance_id,
+                        args.no_scheduler,
+                    )
+                    .await
                     {
                         println!("{}", e.to_string())
                     }

@@ -4,9 +4,9 @@ use zeromq::ZmqMessage;
 use cdktr_core::{
     exceptions::GenericError,
     models::{RunStatus, ZMQArgs},
+    utils::get_principal_uri,
 };
 
-// TODO: make an extension of AgentAPI
 #[derive(Debug, Clone)]
 pub enum PrincipalAPI {
     /// Check server is online
@@ -214,6 +214,9 @@ impl TryFrom<ZMQArgs> for PrincipalAPI {
 }
 
 impl API for PrincipalAPI {
+    fn get_tcp_uri(&self) -> String {
+        get_principal_uri()
+    }
     fn get_meta(&self) -> Vec<APIMeta> {
         const META: [(&'static str, &'static str); 9] = [
             ("PING", "Check server is online"),

@@ -255,14 +255,7 @@ async fn query_logs_from_backend(
         true,        // verbose
     );
 
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(response) => {
             let payload = response.payload();
             log::debug!("Got log query payload: {} bytes", payload.len());
@@ -280,14 +273,7 @@ async fn query_logs_from_backend(
 async fn fetch_workflows_from_backend() -> Result<Vec<Workflow>, String> {
     let api_msg = PrincipalAPI::ListWorkflowStore;
 
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(response) => {
             let payload = response.payload();
 
@@ -310,15 +296,8 @@ async fn fetch_workflows_from_backend() -> Result<Vec<Workflow>, String> {
 
 /// Ping the principal to check if it's online
 async fn ping_principal() -> bool {
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
     let api_msg = PrincipalAPI::Ping;
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(_) => true,
         Err(_) => false,
     }
@@ -327,15 +306,7 @@ async fn ping_principal() -> bool {
 /// Fetch the latest status updates for recent workflows
 async fn fetch_recent_workflow_statuses() -> Result<Vec<WorkflowStatusUpdate>, String> {
     let api_msg = PrincipalAPI::GetRecentWorkflowStatuses;
-
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(response) => {
             let payload = response.payload();
 
@@ -351,15 +322,7 @@ async fn fetch_recent_workflow_statuses() -> Result<Vec<WorkflowStatusUpdate>, S
 /// Fetch the list of registered agents
 async fn fetch_registered_agents() -> Result<Vec<cdktr_api::models::AgentInfo>, String> {
     let api_msg = PrincipalAPI::GetRegisteredAgents;
-
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(response) => {
             let payload = response.payload();
 

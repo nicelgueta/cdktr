@@ -43,8 +43,8 @@ pub fn get_principal_uri() -> String {
     )
 }
 
-pub fn get_default_timeout() -> Duration {
-    Duration::from_millis(internal_get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64)
+pub fn get_default_zmq_timeout() -> Duration {
+    Duration::from_millis(internal_get_cdktr_setting!(CDKTR_DEFAULT_ZMQ_TIMEOUT_MS, usize) as u64)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use cdktr_core::{
     exceptions::{GenericError, ZMQParseError},
     get_cdktr_setting,
     models::ZMQArgs,
+    utils::get_default_zmq_timeout,
     zmq_helpers::send_recv_with_timeout,
 };
 
@@ -45,13 +46,13 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
     /// Convert the message to a string to pass on ZMQ
     fn to_string(&self) -> String;
 
+    fn get_tcp_uri(&self) -> String;
+
     /// Default implementation for sending the message to a destination REP socket
-    async fn send(
-        self,
-        tcp_uri: &str,
-        timeout: Duration,
-    ) -> Result<ClientResponseMessage, GenericError> {
+    async fn send(self) -> Result<ClientResponseMessage, GenericError> {
+        let tcp_uri = self.get_tcp_uri();
         trace!("Requesting @ {} with msg: {}", tcp_uri, self.to_string());
+        let timeout = get_default_zmq_timeout();
         let zmq_m = send_recv_with_timeout(tcp_uri.to_string(), self.into(), timeout)
             .await
             .map_err(|e| {
@@ -79,8 +80,6 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
     /// * `retry_delay` - Delay between retry attempts (defaults to timeout if None)
     async fn send_with_retry(
         self,
-        tcp_uri: &str,
-        timeout: Duration,
         max_retries: Option<usize>,
         retry_delay: Option<Duration>,
     ) -> Result<ClientResponseMessage, GenericError>
@@ -89,11 +88,11 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
     {
         let max_attempts =
             max_retries.unwrap_or_else(|| get_cdktr_setting!(CDKTR_RETRY_ATTEMPTS, usize));
-        let delay = retry_delay.unwrap_or(timeout);
+        let delay = retry_delay.unwrap_or(get_default_zmq_timeout());
         let mut attempts = 0;
 
         loop {
-            let result = self.clone().send(tcp_uri, timeout).await;
+            let result = self.clone().send().await;
 
             match result {
                 Ok(response) => return Ok(response),

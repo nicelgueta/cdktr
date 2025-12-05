@@ -14,7 +14,7 @@ pub static CDKTR_AGENT_MAX_CONCURRENCY: usize = 5;
 pub static CDKTR_RETRY_ATTEMPTS: usize = 20;
 
 /// default timeout for a zmq request
-pub static CDKTR_DEFAULT_TIMEOUT_MS: usize = 3_000;
+pub static CDKTR_DEFAULT_ZMQ_TIMEOUT_MS: usize = 3_000;
 
 /// hostname of the principal instance
 pub static CDKTR_PRINCIPAL_HOST: &'static str = "0.0.0.0";
@@ -55,4 +55,4 @@ pub static CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS: usize = 1000;
 
 /// Agent heartbeat timeout in milliseconds. If an agent hasn't sent a heartbeat
 /// within this duration, any running workflows will be marked as CRASHED
-pub static CDKTR_AGENT_HEARTBEAT_TIMEOUT_MS: usize = 60_000;
+pub static CDKTR_AGENT_HEARTBEAT_TIMEOUT_MS: usize = 30_000;

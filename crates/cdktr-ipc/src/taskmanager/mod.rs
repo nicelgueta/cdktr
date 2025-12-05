@@ -1,7 +1,7 @@
 use cdktr_api::{API, PrincipalAPI};
 use cdktr_core::get_cdktr_setting;
 use cdktr_core::models::{FlowExecutionResult, RunStatus};
-use cdktr_core::utils::{get_default_timeout, get_principal_uri};
+use cdktr_core::utils::{get_default_zmq_timeout, get_principal_uri};
 use cdktr_core::{exceptions::GenericError, models::traits::Executor};
 use cdktr_workflow::Task;
 use log::{debug, error, info, warn};
@@ -159,12 +159,7 @@ impl TaskManager {
             let workflow_counter = self.workflow_counter.clone();
             let workflow_result = self
                 .principal_client
-                .wait_next_workflow(
-                    WAIT_TASK_SLEEP_INTERVAL_MS,
-                    Duration::from_millis(
-                        get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64
-                    ),
-                )
+                .wait_next_workflow(WAIT_TASK_SLEEP_INTERVAL_MS)
                 .await;
             let workflow: cdktr_workflow::Workflow = {
                 let mut counter = workflow_counter.lock().await;
@@ -195,7 +190,7 @@ impl TaskManager {
                     workflow_instance_id.clone(),
                     RunStatus::RUNNING,
                 )
-                .send(&principal_uri, get_default_timeout())
+                .send()
                 .await
                 .is_err()
                 {
@@ -232,7 +227,7 @@ impl TaskManager {
                         workflow_instance_id.clone(),
                         RunStatus::PENDING,
                     )
-                    .send(&principal_uri, get_default_timeout())
+                    .send()
                     .await?;
                     let mut task_exe = loop {
                         let task_exe_result = run_in_executor(
@@ -271,7 +266,7 @@ impl TaskManager {
                                                 workflow_instance_id.clone(),
                                                 RunStatus::CRASHED,
                                             )
-                                            .send(&principal_uri, get_default_timeout())
+                                            .send()
                                             .await
                                             .is_err()
                                             {
@@ -335,7 +330,7 @@ impl TaskManager {
                             workflow_instance_id.clone(),
                             RunStatus::COMPLETED,
                         )
-                        .send(&principal_uri, get_default_timeout())
+                        .send()
                         .await
                         .is_err()
                         {
@@ -357,7 +352,7 @@ impl TaskManager {
                             workflow_instance_id.clone(),
                             RunStatus::FAILED,
                         )
-                        .send(&principal_uri, get_default_timeout())
+                        .send()
                         .await
                         .is_err()
                         {
@@ -399,7 +394,7 @@ async fn run_in_executor(
                 workflow_ins_id_clone.clone(),
                 RunStatus::RUNNING,
             )
-            .send(&principal_uri, get_default_timeout())
+            .send()
             .await
             .is_err()
             {
@@ -421,7 +416,7 @@ async fn run_in_executor(
                         workflow_ins_id_clone.clone(),
                         RunStatus::COMPLETED,
                     )
-                    .send(&principal_uri, get_default_timeout())
+                    .send()
                     .await
                     .is_err()
                     {
@@ -449,7 +444,7 @@ async fn run_in_executor(
                         workflow_ins_id_clone.clone(),
                         RunStatus::FAILED,
                     )
-                    .send(&principal_uri, get_default_timeout())
+                    .send()
                     .await
                     .is_err()
                     {
@@ -480,7 +475,7 @@ async fn run_in_executor(
                         workflow_ins_id_clone.clone(),
                         RunStatus::FAILED,
                     )
-                    .send(&principal_uri, get_default_timeout())
+                    .send()
                     .await
                     .is_err()
                     {

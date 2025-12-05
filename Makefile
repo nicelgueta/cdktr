@@ -19,6 +19,8 @@ build-release:
 	cargo build --release
 principal:
 	cargo run start principal
+principal-no-scheduler:
+	cargo run start principal --no-scheduler
 agent:
 	cargo run start agent
 ui:
@@ -27,3 +29,8 @@ pycli:
 	cd python-cdktr && uv run cli_zmq.py
 run:
 	./target/release/cdktr
+sync-main:
+	git checkout main
+	git pull origin main
+	git checkout develop
+	git merge main

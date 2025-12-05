@@ -112,12 +112,7 @@ async fn query_logs(args: LogArgs) {
         args.workflow_instance_id,
         args.verbose,
     );
-    let api_result = api
-        .send(
-            &principal_uri,
-            Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64),
-        )
-        .await;
+    let api_result = api.send().await;
     match api_result {
         Ok(msg) => match msg {
             ClientResponseMessage::SuccessWithPayload(payload) => {
