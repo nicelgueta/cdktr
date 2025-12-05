@@ -4,7 +4,7 @@ use crate::actions::Action;
 use crate::dispatcher::Dispatcher;
 use crate::stores::{LogViewerStore, WorkflowsStore};
 use cdktr_api::{API, PrincipalAPI, models::WorkflowStatusUpdate};
-use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
+use cdktr_core::get_cdktr_setting;
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use cdktr_workflow::Workflow;
 use chrono::Utc;

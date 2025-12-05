@@ -1,7 +1,6 @@
 use cdktr_api::{API, PrincipalAPI};
-use cdktr_core::get_cdktr_setting;
 use cdktr_core::models::{FlowExecutionResult, RunStatus};
-use cdktr_core::utils::{get_default_zmq_timeout, get_principal_uri};
+use cdktr_core::utils::get_principal_uri;
 use cdktr_core::{exceptions::GenericError, models::traits::Executor};
 use cdktr_workflow::Task;
 use log::{debug, error, info, warn};
@@ -85,12 +84,8 @@ pub struct TaskManager {
 }
 
 impl TaskManager {
-    pub async fn new(
-        instance_id: String,
-        max_concurrent_workflows: usize,
-        principal_uri: String,
-    ) -> Self {
-        let principal_client = PrincipalClient::new(instance_id.clone(), principal_uri);
+    pub async fn new(instance_id: String, max_concurrent_workflows: usize) -> Self {
+        let principal_client = PrincipalClient::new(instance_id.clone());
         Self {
             instance_id,
             max_concurrent_workflows,
@@ -105,7 +100,7 @@ impl TaskManager {
         if let Err(e) = register_result {
             error!(
                 "Failed to register with principal host {}. Check host is available",
-                self.principal_client.get_uri()
+                get_principal_uri()
             );
             return Err(e);
         }
@@ -183,7 +178,6 @@ impl TaskManager {
             let workflow_id = workflow.id().clone();
             let _wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
                 let workflow_instance_id = { name_gen_cl.lock().await.next() };
-                let principal_uri = get_principal_uri();
                 if PrincipalAPI::WorkflowStatusUpdate(
                     agent_id.clone(),
                     workflow_id.clone(),
@@ -379,7 +373,6 @@ async fn run_in_executor(
     workflow_instance_id: String,
 ) -> Result<TaskExecutionHandle, TaskManagerError> {
     let (handle, stdout_rx, stderr_rx) = {
-        let principal_uri = get_principal_uri();
         let (stdout_tx, stdout_rx) = mpsc::channel(32);
         let (stderr_tx, stderr_rx) = mpsc::channel(32);
         let executable_task = task.get_exe_task();

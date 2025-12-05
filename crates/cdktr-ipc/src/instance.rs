@@ -15,7 +15,6 @@ use cdktr_core::{
     exceptions::GenericError,
     get_cdktr_setting,
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
-    zmq_helpers::get_server_tcp_uri,
 };
 use cdktr_db::DBClient;
 use cdktr_events::start_scheduler;
@@ -25,15 +24,8 @@ use log::{error, info, warn};
 use tokio::{task::JoinSet, time::sleep};
 
 /// Starts the main agent loop
-pub async fn start_agent(
-    instance_id: String,
-    principal_host: String,
-    principal_port: usize,
-    max_concurrent_workflows: usize,
-) {
-    let principal_uri = get_server_tcp_uri(&principal_host, principal_port);
-    let mut tm =
-        taskmanager::TaskManager::new(instance_id, max_concurrent_workflows, principal_uri).await;
+pub async fn start_agent(instance_id: String, max_concurrent_workflows: usize) {
+    let mut tm = taskmanager::TaskManager::new(instance_id, max_concurrent_workflows).await;
     let loop_res = tm.start().await;
     if let Err(e) = loop_res {
         error!("{}", e.to_string());

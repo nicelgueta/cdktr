@@ -16,13 +16,7 @@ mod tests {
     #[ignore]
     #[tokio::test]
     async fn test_agent() {
-        start_agent(
-            "fake-instance-id".to_string(),
-            "0.0.0.0".to_string(),
-            5561,
-            1,
-        )
-        .await
+        start_agent("fake-instance-id".to_string(), 1).await
     }
 
     #[ignore]

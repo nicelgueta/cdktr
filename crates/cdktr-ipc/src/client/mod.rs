@@ -1,5 +1,5 @@
 use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
-use cdktr_core::{exceptions::GenericError, get_cdktr_setting};
+use cdktr_core::exceptions::GenericError;
 use cdktr_workflow::Workflow;
 use log::{debug, error, info, trace, warn};
 use std::time::Duration;
@@ -11,18 +11,17 @@ use tokio::time::sleep;
 pub struct PrincipalClient {
     /// ID of the principal currently subscribed to
     instance_id: String,
-    principal_uri: String,
 }
 
 impl PrincipalClient {
-    pub fn new(instance_id: String, principal_uri: String) -> Self {
-        Self {
-            instance_id,
-            principal_uri,
-        }
+    pub fn new(instance_id: String) -> Self {
+        Self { instance_id }
     }
     pub async fn register_with_principal(&mut self) -> Result<(), GenericError> {
-        debug!("Registering agent with principal @ {}", &self.principal_uri);
+        debug!(
+            "Registering agent with principal with {}",
+            &self.instance_id
+        );
 
         let request = PrincipalAPI::RegisterAgent(self.instance_id.clone());
         let cli_msg = request.send_with_retry(None, None).await?;
@@ -58,9 +57,6 @@ impl PrincipalClient {
         }
     }
 
-    pub fn get_uri(&self) -> String {
-        self.principal_uri.clone()
-    }
     /// waits indefinitely for a workflow from the principal
     pub async fn wait_next_workflow(
         &self,

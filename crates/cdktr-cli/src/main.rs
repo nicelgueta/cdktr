@@ -131,13 +131,7 @@ async fn _main(cli_instance: CdktrCli) {
                         .max_concurrent_workflows
                         .unwrap_or(get_cdktr_setting!(CDKTR_AGENT_MAX_CONCURRENCY, usize));
                     info!("Agent max concurrency: {}", max_concurrent_workflows);
-                    start_agent(
-                        instance_id,
-                        principal_host,
-                        principal_port,
-                        max_concurrent_workflows,
-                    )
-                    .await
+                    start_agent(instance_id, max_concurrent_workflows).await
                 }
 
                 InstanceType::PRINCIPAL => {
