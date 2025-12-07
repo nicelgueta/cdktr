@@ -2,6 +2,7 @@ use std::process::Stdio;
 
 use async_trait::async_trait;
 use cdktr_core::models::{FlowExecutionResult, traits};
+use log::info;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -18,6 +19,7 @@ pub struct UvPythonTask {
     pub is_uv_project: Option<bool>,
     pub packages: Option<Vec<String>>,
     pub uv_path: Option<String>,
+    pub working_directory: Option<String>,
 }
 
 #[async_trait]
@@ -38,12 +40,12 @@ impl traits::Executor for UvPythonTask {
         cmd.stderr(Stdio::piped());
 
         // add packages if not a uv project
-        if self.is_uv_project.unwrap_or(false) {
+        if !self.is_uv_project.unwrap_or(false) {
             match &self.packages {
                 Some(pkgs) => {
                     for pkg in pkgs {
                         cmd.arg("--with");
-                        cmd.arg(format!("'{}'", pkg));
+                        cmd.arg(format!("{}", pkg));
                     }
                 }
                 None => {}
@@ -52,7 +54,13 @@ impl traits::Executor for UvPythonTask {
 
         cmd.arg(&self.script_path);
 
+        if let Some(dir) = &self.working_directory {
+            cmd.current_dir(dir);
+        }
+
         let child_process = cmd.spawn();
+
+        info!("Starting UV Python process: {:?}", cmd);
 
         match child_process {
             Ok(mut child) => {

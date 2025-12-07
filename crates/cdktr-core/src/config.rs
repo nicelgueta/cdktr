@@ -36,7 +36,7 @@ pub static CDKTR_WORKFLOW_DIR: &'static str = "workflows";
 /// having to bounce any services
 pub static CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S: usize = 60;
 
-/// (low-level config) Interval at which the Scheduler should check whether
+/// Interval at which the Scheduler should check whether
 /// a workflow is ready to start
 pub static CDKTR_SCHEDULER_START_POLL_FREQUENCY_MS: usize = 500;
 
