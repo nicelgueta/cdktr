@@ -328,6 +328,7 @@ fn handle_log_viewer_keys(
         match key_event.code {
             KeyCode::Esc => Some(Action::CloseLogViewer),
             KeyCode::Char('t') | KeyCode::Char('T') => Some(Action::ToggleLogMode),
+            KeyCode::Char('v') | KeyCode::Char('V') => Some(Action::ToggleVerboseLogging),
             KeyCode::Tab => {
                 // Tab cycles through fields in query mode
                 if !state.is_live_mode {

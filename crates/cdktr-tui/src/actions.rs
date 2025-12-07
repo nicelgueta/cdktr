@@ -63,6 +63,9 @@ pub enum Action {
     /// Toggle between live tail and query mode in log viewer
     ToggleLogMode,
 
+    /// Toggle verbose logging mode in log viewer
+    ToggleVerboseLogging,
+
     /// A log message was received from the log stream
     LogReceived(LogMessage),
 

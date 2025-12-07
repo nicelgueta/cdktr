@@ -142,6 +142,10 @@ impl Effects {
             Action::ExecuteLogQuery => {
                 self.query_logs();
             }
+            Action::ToggleVerboseLogging => {
+                // When toggling verbose logging, re-execute the log query
+                self.query_logs();
+            }
 
             // Future: handle other actions that require side effects
             // Action::StartWorkflow(id) => self.start_workflow(id),
@@ -208,26 +212,28 @@ impl Effects {
         let dispatcher = self.dispatcher.clone();
 
         // Get time range and workflow_id from log viewer store
-        let (start_ts, end_ts, workflow_id) = if let Some(ref store) = self.log_viewer_store {
-            let state = store.get_state();
-            let start_ts = state.start_time.timestamp_millis() as u64;
-            let end_ts = state.end_time.timestamp_millis() as u64;
-            (start_ts, end_ts, state.workflow_id.clone())
-        } else {
-            // Fallback to default if store not set
-            let end_time = Utc::now();
-            let start_time = end_time - chrono::Duration::days(2);
-            (
-                start_time.timestamp_millis() as u64,
-                end_time.timestamp_millis() as u64,
-                None,
-            )
-        };
+        let (start_ts, end_ts, workflow_id, verbose) =
+            if let Some(ref store) = self.log_viewer_store {
+                let state = store.get_state();
+                let start_ts = state.start_time.timestamp_millis() as u64;
+                let end_ts = state.end_time.timestamp_millis() as u64;
+                (start_ts, end_ts, state.workflow_id.clone(), state.verbose)
+            } else {
+                // Fallback to default if store not set
+                let end_time = Utc::now();
+                let start_time = end_time - chrono::Duration::days(2);
+                (
+                    start_time.timestamp_millis() as u64,
+                    end_time.timestamp_millis() as u64,
+                    None,
+                    false,
+                )
+            };
 
         task::spawn(async move {
             log::info!("Querying logs from {} to {}", start_ts, end_ts);
 
-            match query_logs_from_backend(start_ts, end_ts, workflow_id).await {
+            match query_logs_from_backend(start_ts, end_ts, workflow_id, verbose).await {
                 Ok(logs) => {
                     log::info!("Successfully queried {} log entries", logs.len());
                     dispatcher.dispatch(Action::QueryLogsResult(logs));
@@ -246,13 +252,14 @@ async fn query_logs_from_backend(
     start_ts: u64,
     end_ts: u64,
     workflow_id: Option<String>,
+    verbose: bool,
 ) -> Result<Vec<String>, String> {
     let api_msg = PrincipalAPI::QueryLogs(
         Some(end_ts),
         Some(start_ts),
         workflow_id, // Use the workflow_id from the viewer
         None,        // workflow_instance_id
-        true,        // verbose
+        verbose,     // verbose
     );
 
     match api_msg.send().await {

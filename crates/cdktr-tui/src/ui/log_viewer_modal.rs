@@ -335,11 +335,15 @@ impl<'a> LogViewerModal<'a> {
                 "s:Auto-scroll (off)"
             };
             &format!(
-                "Esc:Close | t:Toggle tail/query mode | {} | PgUp/PgDn:Page",
+                "Esc:Close | t:Toggle tail/query mode | v:Verbose ({}) | {} | PgUp/PgDn:Page",
+                if self.state.verbose { "on" } else { "off" },
                 auto_scroll_text
             )
         } else {
-            "Esc:Close | t:Toggle tail/query mode | Tab:Focus fields | Enter:Query | j/k:Scroll | PgUp/PgDn:Page"
+            &format!(
+                "Esc:Close | t:Toggle tail/query mode | v:Verbose ({}) | Tab:Focus fields | Enter:Query | j/k:Scroll | PgUp/PgDn:Page",
+                if self.state.verbose { "on" } else { "off" },
+            )
         };
 
         Paragraph::new(Line::from(vec![Span::styled(
