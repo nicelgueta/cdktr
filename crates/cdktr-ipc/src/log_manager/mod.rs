@@ -44,7 +44,7 @@ mod tests {
         assert_eq!(
             formatted,
             format!(
-                "[{time_str} INFO] [test_workflow_id/test_task_instance_id] This is a test log message"
+                "[{time_str} INFO] [jumping-monkey-0/test_task_instance_id] This is a test log message"
             )
         );
     }

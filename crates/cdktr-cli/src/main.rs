@@ -1,5 +1,5 @@
 use cdktr_core::{get_cdktr_setting, utils};
-use cdktr_ipc::instance::{self, start_agent, start_principal};
+use cdktr_ipc::instance::{start_agent, start_principal};
 use cdktr_tui::tui_main;
 use clap::Parser;
 use dotenv::dotenv;
