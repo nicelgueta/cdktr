@@ -1,7 +1,6 @@
 use cdktr_api::{API, PrincipalAPI};
-use cdktr_core::get_cdktr_setting;
 use cdktr_core::models::{FlowExecutionResult, RunStatus};
-use cdktr_core::utils::{get_default_timeout, get_principal_uri};
+use cdktr_core::utils::get_principal_uri;
 use cdktr_core::{exceptions::GenericError, models::traits::Executor};
 use cdktr_workflow::Task;
 use log::{debug, error, info, warn};
@@ -85,12 +84,8 @@ pub struct TaskManager {
 }
 
 impl TaskManager {
-    pub async fn new(
-        instance_id: String,
-        max_concurrent_workflows: usize,
-        principal_uri: String,
-    ) -> Self {
-        let principal_client = PrincipalClient::new(instance_id.clone(), principal_uri);
+    pub async fn new(instance_id: String, max_concurrent_workflows: usize) -> Self {
+        let principal_client = PrincipalClient::new(instance_id.clone());
         Self {
             instance_id,
             max_concurrent_workflows,
@@ -105,7 +100,7 @@ impl TaskManager {
         if let Err(e) = register_result {
             error!(
                 "Failed to register with principal host {}. Check host is available",
-                self.principal_client.get_uri()
+                get_principal_uri()
             );
             return Err(e);
         }
@@ -159,12 +154,7 @@ impl TaskManager {
             let workflow_counter = self.workflow_counter.clone();
             let workflow_result = self
                 .principal_client
-                .wait_next_workflow(
-                    WAIT_TASK_SLEEP_INTERVAL_MS,
-                    Duration::from_millis(
-                        get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64
-                    ),
-                )
+                .wait_next_workflow(WAIT_TASK_SLEEP_INTERVAL_MS)
                 .await;
             let workflow: cdktr_workflow::Workflow = {
                 let mut counter = workflow_counter.lock().await;
@@ -188,14 +178,13 @@ impl TaskManager {
             let workflow_id = workflow.id().clone();
             let _wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
                 let workflow_instance_id = { name_gen_cl.lock().await.next() };
-                let principal_uri = get_principal_uri();
                 if PrincipalAPI::WorkflowStatusUpdate(
                     agent_id.clone(),
                     workflow_id.clone(),
                     workflow_instance_id.clone(),
                     RunStatus::RUNNING,
                 )
-                .send(&principal_uri, get_default_timeout())
+                .send()
                 .await
                 .is_err()
                 {
@@ -232,7 +221,7 @@ impl TaskManager {
                         workflow_instance_id.clone(),
                         RunStatus::PENDING,
                     )
-                    .send(&principal_uri, get_default_timeout())
+                    .send()
                     .await?;
                     let mut task_exe = loop {
                         let task_exe_result = run_in_executor(
@@ -271,7 +260,7 @@ impl TaskManager {
                                                 workflow_instance_id.clone(),
                                                 RunStatus::CRASHED,
                                             )
-                                            .send(&principal_uri, get_default_timeout())
+                                            .send()
                                             .await
                                             .is_err()
                                             {
@@ -335,7 +324,7 @@ impl TaskManager {
                             workflow_instance_id.clone(),
                             RunStatus::COMPLETED,
                         )
-                        .send(&principal_uri, get_default_timeout())
+                        .send()
                         .await
                         .is_err()
                         {
@@ -357,7 +346,7 @@ impl TaskManager {
                             workflow_instance_id.clone(),
                             RunStatus::FAILED,
                         )
-                        .send(&principal_uri, get_default_timeout())
+                        .send()
                         .await
                         .is_err()
                         {
@@ -384,7 +373,6 @@ async fn run_in_executor(
     workflow_instance_id: String,
 ) -> Result<TaskExecutionHandle, TaskManagerError> {
     let (handle, stdout_rx, stderr_rx) = {
-        let principal_uri = get_principal_uri();
         let (stdout_tx, stdout_rx) = mpsc::channel(32);
         let (stderr_tx, stderr_rx) = mpsc::channel(32);
         let executable_task = task.get_exe_task();
@@ -399,7 +387,7 @@ async fn run_in_executor(
                 workflow_ins_id_clone.clone(),
                 RunStatus::RUNNING,
             )
-            .send(&principal_uri, get_default_timeout())
+            .send()
             .await
             .is_err()
             {
@@ -421,7 +409,7 @@ async fn run_in_executor(
                         workflow_ins_id_clone.clone(),
                         RunStatus::COMPLETED,
                     )
-                    .send(&principal_uri, get_default_timeout())
+                    .send()
                     .await
                     .is_err()
                     {
@@ -449,7 +437,7 @@ async fn run_in_executor(
                         workflow_ins_id_clone.clone(),
                         RunStatus::FAILED,
                     )
-                    .send(&principal_uri, get_default_timeout())
+                    .send()
                     .await
                     .is_err()
                     {
@@ -480,7 +468,7 @@ async fn run_in_executor(
                         workflow_ins_id_clone.clone(),
                         RunStatus::FAILED,
                     )
-                    .send(&principal_uri, get_default_timeout())
+                    .send()
                     .await
                     .is_err()
                     {

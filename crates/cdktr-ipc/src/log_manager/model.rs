@@ -57,7 +57,7 @@ impl LogMessage {
             .to_rfc3339();
         format!(
             "[{} {}] [{}/{}] {}",
-            timestring, self.level, self.workflow_name, self.task_name, self.payload
+            timestring, self.level, self.workflow_instance_id, self.task_instance_id, self.payload
         )
     }
 

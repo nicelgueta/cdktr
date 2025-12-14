@@ -43,7 +43,9 @@ mod tests {
             .to_rfc3339();
         assert_eq!(
             formatted,
-            format!("[{time_str} INFO] [test_workflow/test_task_name] This is a test log message")
+            format!(
+                "[{time_str} INFO] [jumping-monkey-0/test_task_instance_id] This is a test log message"
+            )
         );
     }
 

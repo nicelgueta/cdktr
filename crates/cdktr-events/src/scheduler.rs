@@ -3,7 +3,6 @@ use cdktr_api::models::ClientResponseMessage;
 use cdktr_api::{API, PrincipalAPI};
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::get_cdktr_setting;
-use cdktr_core::utils::{get_default_timeout, get_principal_uri};
 use cdktr_workflow::{Task, Workflow};
 use chrono::{DateTime, Utc};
 use cron::Schedule;
@@ -98,8 +97,7 @@ impl EventListener<Task> for Scheduler {
 }
 impl Scheduler {
     pub async fn new() -> Result<Self, GenericError> {
-        let principal_uri: String = get_principal_uri();
-        let workflows = Self::get_workflows(&principal_uri).await?;
+        let workflows = Self::get_workflows().await?;
         let workflows_len = workflows.len();
         info!(
             "Scheduler found {} workflows with active schedules",
@@ -164,9 +162,9 @@ impl Scheduler {
         Ok(next_run)
     }
 
-    async fn get_workflows(principal_uri: &str) -> Result<HashMap<String, Workflow>, GenericError> {
+    async fn get_workflows() -> Result<HashMap<String, Workflow>, GenericError> {
         let api = PrincipalAPI::ListWorkflowStore;
-        let response = api.send(principal_uri, get_default_timeout()).await?;
+        let response = api.send().await?;
         match response {
             ClientResponseMessage::SuccessWithPayload(wfs) => {
                 serde_json::from_str(&wfs).map_err(|e| {
@@ -215,13 +213,12 @@ impl Scheduler {
 }
 
 async fn refresh_loop(mut scheduler: Scheduler) -> Result<(), GenericError> {
-    let principal_uri = get_principal_uri();
     let workflow_refresh_seconds =
         get_cdktr_setting!(CDKTR_WORKFLOW_DIR_REFRESH_FREQUENCY_S, usize) as u64;
     loop {
         let _ = sleep(Duration::from_secs(workflow_refresh_seconds)).await;
         debug!("checking internal workflow store for new workflows defs");
-        match Scheduler::get_workflows(&principal_uri).await {
+        match Scheduler::get_workflows().await {
             Ok(wfs) => {
                 if !scheduler.workflows_match(&wfs).await {
                     info!("Found workflows to refresh from principal");

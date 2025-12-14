@@ -15,7 +15,6 @@ use cdktr_core::{
     exceptions::GenericError,
     get_cdktr_setting,
     utils::data_structures::{AgentPriorityQueue, AsyncQueue},
-    zmq_helpers::get_server_tcp_uri,
 };
 use cdktr_db::DBClient;
 use cdktr_events::start_scheduler;
@@ -25,15 +24,8 @@ use log::{error, info, warn};
 use tokio::{task::JoinSet, time::sleep};
 
 /// Starts the main agent loop
-pub async fn start_agent(
-    instance_id: String,
-    principal_host: String,
-    principal_port: usize,
-    max_concurrent_workflows: usize,
-) {
-    let principal_uri = get_server_tcp_uri(&principal_host, principal_port);
-    let mut tm =
-        taskmanager::TaskManager::new(instance_id, max_concurrent_workflows, principal_uri).await;
+pub async fn start_agent(instance_id: String, max_concurrent_workflows: usize) {
+    let mut tm = taskmanager::TaskManager::new(instance_id, max_concurrent_workflows).await;
     let loop_res = tm.start().await;
     if let Err(e) = loop_res {
         error!("{}", e.to_string());
@@ -46,6 +38,7 @@ pub async fn start_principal(
     instance_host: String,
     instance_port: usize,
     instance_id: String,
+    no_scheduler: bool,
 ) -> Result<(), GenericError> {
     let db_path = get_cdktr_setting!(CDKTR_DB_PATH);
     let db_path_str = if db_path.contains("$HOME") {
@@ -89,8 +82,10 @@ pub async fn start_principal(
     let logs_queue = AsyncQueue::new();
     let lq_clone = logs_queue.clone();
     let db_clone = db_client.clone();
+
     // start logs persistence listener
     m_joined.spawn(async move { start_listener(lq_clone).await });
+
     // start logs persistence db job
     m_joined.spawn(async move {
         start_persistence_loop(db_clone, logs_queue).await;
@@ -107,11 +102,16 @@ pub async fn start_principal(
     });
 
     // start scheduler
-    m_joined.spawn(async move {
-        // give the rest of the app 2 seconds to start up before activating schedules
-        sleep(Duration::from_millis(2_000)).await;
-        start_scheduler().await
-    });
+    if no_scheduler {
+        warn!("Scheduler is disabled for this principal instance");
+    } else {
+        info!("Scheduler is enabled for this principal instance");
+        m_joined.spawn(async move {
+            // give the rest of the app 2 seconds to start up before activating schedules
+            sleep(Duration::from_millis(2_000)).await;
+            start_scheduler().await
+        });
+    }
 
     // start agent heartbeat monitor
     m_joined.spawn(async move {

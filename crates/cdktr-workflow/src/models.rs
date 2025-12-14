@@ -1,7 +1,5 @@
-use async_trait::async_trait;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::get_cdktr_setting;
-use cdktr_core::models::{FlowExecutionResult, traits};
 use daggy::{self, Dag, NodeIndex, Walker};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -9,9 +7,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::{process::Command, sync::mpsc::Sender};
+
+use super::executors::ExecutableTask;
 
 pub fn key_from_path(path: PathBuf, workflow_dir: PathBuf) -> String {
     path.strip_prefix(workflow_dir)
@@ -25,87 +22,6 @@ pub fn key_from_path(path: PathBuf, workflow_dir: PathBuf) -> String {
                 .join(".")
         })
         .unwrap()
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct SubprocessTask {
-    pub cmd: String,
-    pub args: Vec<String>,
-}
-
-#[async_trait]
-impl traits::Executor for SubprocessTask {
-    async fn run(
-        &self,
-        stdout_tx: Sender<String>,
-        stderr_tx: Sender<String>,
-    ) -> FlowExecutionResult {
-        let mut cmd = Command::new(&self.cmd);
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
-        cmd.args(self.args.clone());
-
-        let child_process = cmd.spawn();
-
-        match child_process {
-            Ok(mut child) => {
-                // handle process
-                let stdout = child.stdout.take().expect("unable to acquire stdout");
-                let stderr = child.stderr.take().expect("unable to acquire stderr");
-                let mut stdout_reader = BufReader::new(stdout).lines();
-                let mut stderr_reader = BufReader::new(stderr).lines();
-
-                while let Some(line) = stdout_reader.next_line().await.unwrap() {
-                    stdout_tx.send(line).await.unwrap();
-                }
-                while let Some(line) = stderr_reader.next_line().await.unwrap() {
-                    stderr_tx.send(line).await.unwrap()
-                }
-                match child.wait().await {
-                    Ok(exit_status) => match exit_status.success() {
-                        true => FlowExecutionResult::SUCCESS,
-                        false => FlowExecutionResult::FAILURE("Process failed".to_string()),
-                    },
-                    Err(e) => FlowExecutionResult::CRASHED(format!(
-                        "Process failed to exit cleanly - {}",
-                        e.to_string()
-                    )),
-                }
-            }
-            Err(e) => {
-                // check for errors starting up the process
-                let error_msg = e.to_string();
-                FlowExecutionResult::CRASHED(format!(
-                    "Failed to start child process: {}",
-                    &error_msg
-                ))
-            }
-        }
-    }
-}
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct PythonTask {
-    pub extra_pip_packages: Vec<String>,
-    pub sysexe: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub enum ExecutableTask {
-    Subprocess(SubprocessTask),
-    // Python(PythonTask),
-}
-
-#[async_trait]
-impl traits::Executor for ExecutableTask {
-    async fn run(
-        &self,
-        stdout_tx: Sender<String>,
-        stderr_tx: Sender<String>,
-    ) -> FlowExecutionResult {
-        match &self {
-            ExecutableTask::Subprocess(sptask) => sptask.run(stdout_tx, stderr_tx).await,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -448,15 +364,15 @@ tasks:
       args:
         - hello
         - world
-  #task2:
-  #  name: Task 2
-  #  description: Runs second task
-  #  depends: ["task1"]
-  #  config:
-  #    !Python
-  #    extra_pip_packages:
-  #      - pandas>=2.0.0, < 2.2.0
-  #    sysexe: /usr/bin/python
+  task2:
+    name: Task 2
+    description: Runs second task
+    depends: ["task1"]
+    config:
+      !UvPython
+      packages:
+        - pandas>=2.0.0, < 2.2.0
+      script_path: test.py
 
         "#;
         let workflow = Workflow::new("fake/path/my_workflow.yml".to_string(), yaml).unwrap();
@@ -465,6 +381,7 @@ tasks:
             "echo".to_string(),
             match &workflow.get_task("task1").unwrap().config {
                 ExecutableTask::Subprocess(cfg) => cfg.cmd.clone(),
+                _ => panic!("Wrong enum type"),
             }
         );
 
@@ -472,24 +389,25 @@ tasks:
             vec!["hello", "world"],
             match &workflow.get_task("task1").unwrap().config {
                 ExecutableTask::Subprocess(cfg) => cfg.args.clone(),
+                _ => panic!("Wrong enum type"),
             }
         );
 
-        // assert_eq!(
-        //     vec!["pandas>=2.0.0, < 2.2.0"],
-        //     match &workflow.get_tasks().get("task2").unwrap().config {
-        //         ExecutableTask::Python(cfg) => cfg.extra_pip_packages.clone(),
-        //         _ => panic!("Wrong enum type"),
-        //     }
-        // );
+        assert_eq!(
+            vec!["pandas>=2.0.0, < 2.2.0"],
+            match &workflow.get_task("task2").unwrap().config {
+                ExecutableTask::UvPython(cfg) => cfg.packages.clone().unwrap(),
+                _ => panic!("Wrong enum type"),
+            }
+        );
 
-        // assert_eq!(
-        //     "/usr/bin/python",
-        //     match &workflow.get_tasks().get("task2").unwrap().config {
-        //         ExecutableTask::Python(cfg) => cfg.sysexe.clone().unwrap(),
-        //         _ => panic!("Wrong enum type"),
-        //     }
-        // );
+        assert_eq!(
+            "test.py",
+            match &workflow.get_task("task2").unwrap().config {
+                ExecutableTask::UvPython(cfg) => cfg.script_path.clone(),
+                _ => panic!("Wrong enum type"),
+            }
+        );
 
         assert_eq!(
             chrono::DateTime::from_timestamp(1737376200, 0)

@@ -1,10 +1,8 @@
 use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
-use cdktr_core;
-use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use log::error;
 use log::info;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 /// Log management CLI
 /// This allows you to tail logs from the principal log manager
@@ -87,10 +85,6 @@ async fn tail_logs(args: LogArgs, print_func: impl Fn(LogMessage)) {
 }
 
 async fn query_logs(args: LogArgs) {
-    let principal_uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
     let api = PrincipalAPI::QueryLogs(
         match args.end_datetime_utc {
             Some(dt) => Some(
@@ -112,12 +106,7 @@ async fn query_logs(args: LogArgs) {
         args.workflow_instance_id,
         args.verbose,
     );
-    let api_result = api
-        .send(
-            &principal_uri,
-            Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64),
-        )
-        .await;
+    let api_result = api.send().await;
     match api_result {
         Ok(msg) => match msg {
             ClientResponseMessage::SuccessWithPayload(payload) => {

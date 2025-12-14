@@ -69,6 +69,9 @@ pub struct LogViewerState {
 
     /// Selected date in calendar (for navigation)
     pub selected_date: Date,
+
+    /// Whether verbose logging is enabled
+    pub verbose: bool,
 }
 
 impl Default for LogViewerState {
@@ -99,6 +102,7 @@ impl Default for LogViewerState {
             start_calendar_open: false,
             end_calendar_open: false,
             selected_date: OffsetDateTime::now_utc().date(),
+            verbose: false,
         }
     }
 }
@@ -166,6 +170,11 @@ impl LogViewerStore {
                     state.cursor_position = 0;
                 }
             }
+
+            Action::ToggleVerboseLogging => {
+                state.verbose = !state.verbose;
+            }
+
             Action::ExecuteLogQuery => {
                 state.is_loading = true;
                 state.logs.clear();

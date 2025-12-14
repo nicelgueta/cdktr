@@ -4,7 +4,7 @@ use crate::actions::Action;
 use crate::dispatcher::Dispatcher;
 use crate::stores::{LogViewerStore, WorkflowsStore};
 use cdktr_api::{API, PrincipalAPI, models::WorkflowStatusUpdate};
-use cdktr_core::{get_cdktr_setting, zmq_helpers::get_server_tcp_uri};
+use cdktr_core::get_cdktr_setting;
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use cdktr_workflow::Workflow;
 use chrono::Utc;
@@ -142,6 +142,10 @@ impl Effects {
             Action::ExecuteLogQuery => {
                 self.query_logs();
             }
+            Action::ToggleVerboseLogging => {
+                // When toggling verbose logging, re-execute the log query
+                self.query_logs();
+            }
 
             // Future: handle other actions that require side effects
             // Action::StartWorkflow(id) => self.start_workflow(id),
@@ -208,26 +212,28 @@ impl Effects {
         let dispatcher = self.dispatcher.clone();
 
         // Get time range and workflow_id from log viewer store
-        let (start_ts, end_ts, workflow_id) = if let Some(ref store) = self.log_viewer_store {
-            let state = store.get_state();
-            let start_ts = state.start_time.timestamp_millis() as u64;
-            let end_ts = state.end_time.timestamp_millis() as u64;
-            (start_ts, end_ts, state.workflow_id.clone())
-        } else {
-            // Fallback to default if store not set
-            let end_time = Utc::now();
-            let start_time = end_time - chrono::Duration::days(2);
-            (
-                start_time.timestamp_millis() as u64,
-                end_time.timestamp_millis() as u64,
-                None,
-            )
-        };
+        let (start_ts, end_ts, workflow_id, verbose) =
+            if let Some(ref store) = self.log_viewer_store {
+                let state = store.get_state();
+                let start_ts = state.start_time.timestamp_millis() as u64;
+                let end_ts = state.end_time.timestamp_millis() as u64;
+                (start_ts, end_ts, state.workflow_id.clone(), state.verbose)
+            } else {
+                // Fallback to default if store not set
+                let end_time = Utc::now();
+                let start_time = end_time - chrono::Duration::days(2);
+                (
+                    start_time.timestamp_millis() as u64,
+                    end_time.timestamp_millis() as u64,
+                    None,
+                    false,
+                )
+            };
 
         task::spawn(async move {
             log::info!("Querying logs from {} to {}", start_ts, end_ts);
 
-            match query_logs_from_backend(start_ts, end_ts, workflow_id).await {
+            match query_logs_from_backend(start_ts, end_ts, workflow_id, verbose).await {
                 Ok(logs) => {
                     log::info!("Successfully queried {} log entries", logs.len());
                     dispatcher.dispatch(Action::QueryLogsResult(logs));
@@ -246,23 +252,17 @@ async fn query_logs_from_backend(
     start_ts: u64,
     end_ts: u64,
     workflow_id: Option<String>,
+    verbose: bool,
 ) -> Result<Vec<String>, String> {
     let api_msg = PrincipalAPI::QueryLogs(
         Some(end_ts),
         Some(start_ts),
         workflow_id, // Use the workflow_id from the viewer
         None,        // workflow_instance_id
-        true,        // verbose
+        verbose,     // verbose
     );
 
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(response) => {
             let payload = response.payload();
             log::debug!("Got log query payload: {} bytes", payload.len());
@@ -280,14 +280,7 @@ async fn query_logs_from_backend(
 async fn fetch_workflows_from_backend() -> Result<Vec<Workflow>, String> {
     let api_msg = PrincipalAPI::ListWorkflowStore;
 
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(response) => {
             let payload = response.payload();
 
@@ -310,15 +303,8 @@ async fn fetch_workflows_from_backend() -> Result<Vec<Workflow>, String> {
 
 /// Ping the principal to check if it's online
 async fn ping_principal() -> bool {
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
     let api_msg = PrincipalAPI::Ping;
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(_) => true,
         Err(_) => false,
     }
@@ -327,15 +313,7 @@ async fn ping_principal() -> bool {
 /// Fetch the latest status updates for recent workflows
 async fn fetch_recent_workflow_statuses() -> Result<Vec<WorkflowStatusUpdate>, String> {
     let api_msg = PrincipalAPI::GetRecentWorkflowStatuses;
-
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(response) => {
             let payload = response.payload();
 
@@ -351,15 +329,7 @@ async fn fetch_recent_workflow_statuses() -> Result<Vec<WorkflowStatusUpdate>, S
 /// Fetch the list of registered agents
 async fn fetch_registered_agents() -> Result<Vec<cdktr_api::models::AgentInfo>, String> {
     let api_msg = PrincipalAPI::GetRegisteredAgents;
-
-    let uri = get_server_tcp_uri(
-        &get_cdktr_setting!(CDKTR_PRINCIPAL_HOST),
-        get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize),
-    );
-
-    let timeout = Duration::from_millis(get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize) as u64);
-
-    match api_msg.send(&uri, timeout).await {
+    match api_msg.send().await {
         Ok(response) => {
             let payload = response.payload();
 

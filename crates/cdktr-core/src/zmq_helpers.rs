@@ -61,7 +61,7 @@ pub async fn get_zmq_pull(endpoint_uri: &str) -> Result<PullSocket, GenericError
 }
 
 pub async fn get_zmq_push(endpoint_uri: &str) -> Result<PushSocket, GenericError> {
-    let cnxn_timeout = macros::internal_get_cdktr_setting!(CDKTR_DEFAULT_TIMEOUT_MS, usize);
+    let cnxn_timeout = macros::internal_get_cdktr_setting!(CDKTR_DEFAULT_ZMQ_TIMEOUT_MS, usize);
     let push_socket_res = timeout(Duration::from_millis(cnxn_timeout as u64), async {
         let mut push_socket = PushSocket::new();
         push_socket
