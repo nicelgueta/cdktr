@@ -1,5 +1,5 @@
 use cdktr_core::{get_cdktr_setting, utils};
-use cdktr_ipc::instance::{start_agent, start_principal};
+use cdktr_ipc::instance::{self, start_agent, start_principal};
 use cdktr_tui::tui_main;
 use clap::Parser;
 use dotenv::dotenv;
@@ -61,6 +61,9 @@ struct StartArgs {
 
     #[arg(long, short)]
     no_scheduler: bool,
+
+    #[arg(long, short, default_value_t = false)]
+    with_agent: bool,
 }
 
 fn setup() {
@@ -112,38 +115,49 @@ async fn main() {
     _main(cli_instance).await;
 }
 
+async fn _start_agent(instance_id: String, max_concurrent_workflows: Option<usize>) {
+    info!("Starting AGENT instance: {}", &instance_id);
+    let max_concurrent_workflows =
+        max_concurrent_workflows.unwrap_or(get_cdktr_setting!(CDKTR_AGENT_MAX_CONCURRENCY, usize));
+    info!("Agent max concurrency: {}", max_concurrent_workflows);
+    start_agent(instance_id, max_concurrent_workflows).await
+}
+
 async fn _main(cli_instance: CdktrCli) {
     let principal_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
     let principal_port: usize = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize);
 
     match cli_instance {
         CdktrCli::Start(args) => {
-            let instance_type = args.instance_type;
+            let instance_type = &args.instance_type;
             match instance_type {
                 InstanceType::AGENT => {
                     let instance_id = format!(
                         "{}/AG{}",
                         utils::get_instance_id(),
-                        args.suffix.unwrap_or("".to_string())
+                        args.suffix.unwrap_or(String::new())
                     );
-                    info!("Starting AGENT instance: {}", &instance_id);
-                    let max_concurrent_workflows = args
-                        .max_concurrent_workflows
-                        .unwrap_or(get_cdktr_setting!(CDKTR_AGENT_MAX_CONCURRENCY, usize));
-                    info!("Agent max concurrency: {}", max_concurrent_workflows);
-                    start_agent(instance_id, max_concurrent_workflows).await
+                    _start_agent(instance_id, args.max_concurrent_workflows).await;
                 }
 
                 InstanceType::PRINCIPAL => {
                     let instance_id = format!("{}/PRIN", utils::get_instance_id());
                     info!("Starting PRINCIPAL instance: {}", &instance_id);
-                    if let Err(e) = start_principal(
-                        principal_host,
-                        principal_port,
-                        instance_id,
-                        args.no_scheduler,
-                    )
-                    .await
+                    let no_scheduler = args.no_scheduler;
+                    if args.with_agent {
+                        info!("Starting AGENT alongside PRINCIPAL");
+                        let ag_instance_id = format!(
+                            "{}/AG{}",
+                            utils::get_instance_id(),
+                            args.suffix.unwrap_or(String::new())
+                        );
+                        tokio::spawn(async move {
+                            _start_agent(ag_instance_id, args.max_concurrent_workflows).await
+                        });
+                    }
+                    if let Err(e) =
+                        start_principal(principal_host, principal_port, instance_id, no_scheduler)
+                            .await
                     {
                         println!("{}", e.to_string())
                     }
