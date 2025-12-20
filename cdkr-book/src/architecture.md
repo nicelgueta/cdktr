@@ -4,14 +4,19 @@ This chapter explains the fundamental architecture of cdktr and the core concept
 
 ## Overview
 
-cdktr is a distributed workflow orchestration system built on a principal-agent architecture. It is designed to be completely stateless, using source-controllable yaml files for workflow definitions, ZeroMQ for fast, reliable communication between components and stores logs, workflow and task history in a DuckDB database for fast analytics and querying.
+cdktr is a distributed workflow orchestration system built on a principal-agent architecture. It is designed to be lightweight and scalable, using source-controllable YAML files for workflow definitions, ZeroMQ for fast, reliable communication between components, and DuckDB for storing logs and execution history with powerful query capabilities.
 
-The key concepts covered in this section are:
+## What's Covered
 
-- **System Architecture**: How the various components fit together
-- **Principals vs Agents**: The distributed computing model
-- **Workflows & Tasks**: How work is defined and executed
-- **ZeroMQ Communication**: The messaging layer that powers cdktr
+This section explores the key components and patterns that make cdktr work:
+
+- **[System Overview](./architecture/overview.md)**: The big picture—how components fit together in a distributed pull-based architecture
+- **[Principal](./architecture/principal.md)**: The central coordinator managing workflows, scheduling, work distribution, and persistent state
+- **[Agents](./architecture/agents.md)**: Execution nodes that run tasks in parallel using DAG-based topological sorting
+- **[Event Listeners & Scheduler](./architecture/events-scheduler.md)**: The event-driven architecture powering cron scheduling and custom event sources
+- **[Workflows & Tasks](./architecture/workflows-tasks.md)**: YAML workflow definitions, task types (Subprocess and UvPython), and dependency execution
+- **[Logs & Database](./architecture/logs-database.md)**: Real-time ZeroMQ log streaming and DuckDB persistence with insert-only audit trails
+- **[Examples](./architecture/workflow-examples.md)**: Practical workflow examples demonstrating common patterns
 
 ## Key Design Principles
 
