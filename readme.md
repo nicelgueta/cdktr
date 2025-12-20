@@ -4,7 +4,7 @@
 
 A lightweight, distributed workflow orchestration system designed for reliability and simplicity. Define your workflows in YAML, schedule them with cron expressions or trigger them from custom events, and monitor everything through a beautiful terminal interface.
 
-**[📖 Read the full documentation](#)** _(coming soon)_
+**[📖 Read the full documentation](https://nicelgueta.github.io/cdktr/intro.html)**
 
 ## What is CDKTR?
 
