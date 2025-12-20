@@ -1,5 +1,7 @@
 book:
 	mdbook serve ./cdkr-book --open
+build-book:
+	mdbook build ./cdkr-book -d ../../nicelgueta.github.io/cdktr
 test:
 	cargo test
 fmt:
