@@ -11,5 +11,6 @@ command = "mdbook-mermaid"
 
 [output.html]
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-css = ["custom.css"]
 default-theme = "navy"
 preferred-dark-theme = "navy"
