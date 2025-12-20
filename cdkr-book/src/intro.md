@@ -6,11 +6,11 @@ CDKTR (con-duck-tor) is a workflow automation and orchestration system written i
 
 The community is awash with different workflow automation and data orchestration tools and platforms, so why was there the need to embark on the (quite frankly) ambitious task to create another one?
 
-CDKTR was designed to solve a problem faced at many businesses which is that a fully centralised workflow automation system is not always the best solution. In many cases, some technical teams only need to automate a few critical jobs, and the overhead of setting up a full-blown workflow automation system is not worth the effort. This is ofen achieved by using a combination of cron jobs, scripts, and other ad-hoc solutions or running open-source tools like Airflow or Prefect.
+CDKTR was designed to solve a problem faced at many businesses which is that a fully centralised workflow automation system is not always the best solution. In many cases, some technical teams only need to automate a few critical jobs, and the overhead of setting up a full-blown workflow automation system is not worth the effort. This is often achieved by using a combination of cron jobs, scripts, and other ad-hoc solutions or running open-source tools like Airflow or Prefect.
 
 Another main driver behind CDKTR's development is the nature of many on-prem and cloud environments which are behind corporate firewalls and have strict security policies. This can make it difficult to use cloud platforms that abstract the server and UI away from the user. Another downside is that these services can come with a fairly hefty price tags which leave teams with little choice but to stand up their own instances of open-source tools which then come with a large maintenance overhead.
 
-To this end CDKTR is and will remain completely open-source and free to use. It designed to work efficiently in a variety of environments from a single node setup to a multi-node cluster. 
+To this end CDKTR is and will remain completely open-source and free to use. It designed to work efficiently in a variety of environments from a single node setup to a multi-node cluster.
 
 CDKTR is packaged in a single, small, completely self-contained binary that can be run on any machine even without Rust installed or any other dependencies. This makes it easy to deploy and run in a variety of environments.
 

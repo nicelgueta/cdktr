@@ -1,13 +1,79 @@
-# Components
+# Key Components
 
-Ths section describes the components of the CDKR system in detail.
+This chapter provides a deep dive into cdktr's internal architecture and components. Understanding these components helps with troubleshooting, performance tuning, and advanced usage.
 
-### Basic Architecture
+## Component Overview
 
-The basic architecture of the CDKR system is shown below. The system is split into two main types of instances: Principals and Agents. Principals are responsible for managing the state of the system and for routing tasks to the correct agents. Agents are responsible for executing tasks and reporting back to the principal. You can run as many agents as you like on as many machines as you like, and even run multiple principals if you need to provide extra fault tolerance or speed. 
+cdktr is composed of several key components:
 
-Each component shown in this diagram in broken-down in the following sections.
+1. **Principal Server** - Central coordinator and API server
+2. **Agent TaskManager** - Workflow execution engine
+3. **Scheduler** - Cron-based scheduling system
+4. **Event System** - Event listeners and triggers
+5. **Database** - DuckDB persistence layer
 
-![Architecture Diagram](./assets/images/architecture.png)
+## Architecture Diagram
 
+```mermaid
+graph TB
+    subgraph Principal
+        PS[Principal Server]
+        SCH[Scheduler]
+        EV[Event System]
+        DB[(DuckDB)]
+        PS --> DB
+        SCH --> PS
+        EV --> PS
+    end
+    
+    subgraph Agent
+        TM[TaskManager]
+        EX1[Executor]
+        EX2[Executor]
+        TM --> EX1
+        TM --> EX2
+    end
+    
+    PS <--> TM
+```
 
+## Component Responsibilities
+
+### Principal Server
+- Accept and route API requests
+- Maintain agent registry
+- Distribute workflows to agents
+- Track workflow execution state
+
+### TaskManager
+- Execute workflows on agents
+- Manage executor pool
+- Report status to principal
+- Handle task dependencies
+
+### Scheduler
+- Monitor cron schedules
+- Trigger workflows at scheduled times
+- Refresh workflow definitions
+- Priority queue management
+
+### Event System
+- Listen for external triggers
+- Process incoming events
+- Route events to workflows
+
+### Database
+- Persist execution logs
+- Store workflow history
+- Enable log queries
+- Maintain state
+
+## Deep Dives
+
+Each component is covered in detail in the following sections:
+
+- [Principal Server](./components/principal.md)
+- [Agent TaskManager](./components/taskmanager.md)
+- [Scheduler](./components/scheduler.md)
+- [Event System](./components/events.md)
+- [Database](./components/database.md)

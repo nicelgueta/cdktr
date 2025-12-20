@@ -1,16 +1,40 @@
 # Summary
 
 - [Introduction](./intro.md)
-- [Core Concepts](./concepts.md)
-    - [Principals vs Agents](./principals_vs_agents.md)
-    - [TUI](./tui.md)
-- [Low-level Component Breakdown](./components.md)
-    - [TaskRouter](./components/task_router.md)
-    - [TaskManager](./components/task_manager.md)
-- [High-level Interfaces](./interfaces.md)
-    - [Event Handlers](./components/event_handlers.md)
-    - [Executor](./components/executor.md)
-- [Tasks](./tasks.md)
-    - [Task Definition](./tasks/task_definition.md)
-    - [Task Execution](./tasks/task_execution.md)
-    - [Task Scheduling](./tasks/task_scheduling.md)
+
+- [Getting Started](./getting-started.md)
+    - [Installation](./getting-started/installation.md)
+    - [Quick Start Guide](./getting-started/quickstart.md)
+    - [Configuring cdktr](./getting-started/configuration.md)
+
+- [Architecture & Core Concepts](./architecture.md)
+    - [System Overview](./architecture/overview.md)
+    - [Principal](./architecture/principal.md)
+    - [Agents](./architecture/agents.md)
+    - [Event Listeners & Scheduler](./architecture/events-scheduler.md)
+    - [Workflows & Tasks](./architecture/workflows-tasks.md)
+    - [Examples](./architecture/workflow-examples.md)
+    - [Logs & Database](./architecture/logs-database.md)
+
+
+- [The TUI](./tui.md)
+    - [Overview](./tui/overview.md)
+    - [Navigation](./tui/navigation.md)
+    - [Workflow Management](./tui/workflows.md)
+    - [Monitoring](./tui/monitoring.md)
+    - [Agent Management](./tui/agents.md)
+
+
+- [CLI Reference](./cli.md)
+    - [Task Commands](./cli/task.md)
+    - [Start Commands](./cli/start.md)
+    - [Logs Commands](./cli/logs.md)
+    - [Init Command](./cli/init.md)
+
+- [Advanced Topics](./advanced.md)
+    - [Fault Tolerance](./advanced/fault-tolerance.md)
+    - [Concurrency Control](./advanced/concurrency.md)
+    - [Performance Tuning](./advanced/performance.md)
+    - [Security Considerations](./advanced/security.md)
+
+- [Troubleshooting & FAQ](./troubleshooting.md)
