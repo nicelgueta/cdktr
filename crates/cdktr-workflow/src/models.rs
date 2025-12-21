@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::get_cdktr_setting;
 use daggy::{self, Dag, NodeIndex, Walker};
@@ -5,8 +6,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-use std::fs;
 use std::path::{Path, PathBuf};
+use tokio::fs;
 
 use super::executors::ExecutableTask;
 
@@ -159,9 +160,10 @@ impl WorkFlowDAG {
     }
 }
 
+#[async_trait::async_trait]
 pub trait FromYaml: Sized {
     type Error: Display;
-    fn from_yaml(file_path: &str) -> Result<Self, Self::Error>;
+    async fn from_yaml(file_path: &str) -> Result<Self, Self::Error>;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -174,11 +176,12 @@ pub struct Workflow {
     cron: Option<String>,
     start_time: Option<String>,
 }
+#[async_trait]
 impl FromYaml for Workflow {
     type Error = GenericError;
-    fn from_yaml(file_path: &str) -> Result<Self, GenericError> {
+    async fn from_yaml(file_path: &str) -> Result<Self, GenericError> {
         let file = Path::new(file_path);
-        let contents = match fs::read_to_string(file) {
+        let contents = match fs::read_to_string(file).await {
             Ok(s) => s,
             Err(e) => {
                 return Err(GenericError::WorkflowError(format!(
@@ -417,11 +420,13 @@ tasks:
         )
     }
 
-    #[test]
-    fn test_get_dependents() {
+    #[tokio::test]
+    async fn test_get_dependents() {
         let dir = env::current_dir().unwrap();
         println!("{:?}", dir.to_string_lossy());
-        let wf = Workflow::from_yaml("./test_artifacts/workflows/multi-cmd.yml").unwrap();
+        let wf = Workflow::from_yaml("./test_artifacts/workflows/multi-cmd.yml")
+            .await
+            .unwrap();
         let deps = wf.dag.get_dependents("task1").unwrap();
         assert_eq!(deps.len(), 1);
         assert_eq!(deps[0], "task2");
