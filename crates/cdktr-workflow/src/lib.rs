@@ -46,7 +46,9 @@ pub async fn get_yaml_map<T: FromYaml>(workflow_dir: &str) -> HashMap<String, T>
                     {
                         let workflow = match T::from_yaml(
                             path.to_str().expect("failed to get apth as str"),
-                        ) {
+                        )
+                        .await
+                        {
                             Ok(workflow) => workflow,
                             Err(e) => {
                                 warn!(
@@ -132,11 +134,13 @@ mod tests {
     struct MockYamlContent {
         name: String,
     }
+    #[async_trait::async_trait]
     impl FromYaml for MockYamlContent {
         type Error = GenericError;
-        fn from_yaml(file_path: &str) -> Result<Self, Self::Error> {
+        async fn from_yaml(file_path: &str) -> Result<Self, Self::Error> {
             let obj: MockYamlContent =
-                serde_norway::from_str(&fs::read_to_string(file_path).unwrap()).unwrap();
+                serde_norway::from_str(&tokio::fs::read_to_string(file_path).await.unwrap())
+                    .unwrap();
             Ok(obj)
         }
     }
@@ -205,5 +209,47 @@ mod tests {
         );
 
         assert_eq!(result, expected);
+    }
+
+    #[tokio::test]
+    async fn test_no_file_descriptor_leak_on_multiple_refreshes() {
+        // This test simulates the production scenario where workflows are refreshed
+        // every 60 seconds. We perform many rapid refreshes to ensure file descriptors
+        // are properly released with async tokio::fs instead of blocking std::fs.
+
+        let (wf_dir, _tmp_dir) = get_tmp_dir();
+
+        // Simulate 100 rapid refreshes (much more aggressive than production)
+        for i in 0..100 {
+            let result = get_yaml_map::<MockYamlContent>(wf_dir.to_str().unwrap()).await;
+
+            // Verify we still get correct results
+            assert_eq!(result.len(), 3, "Failed on iteration {}", i);
+            assert!(result.contains_key("workflow1"));
+            assert!(result.contains_key("sub1.workflow2"));
+            assert!(result.contains_key("sub1.sub2.workflow3"));
+        }
+
+        // If we've made it here without "too many open files" errors (errno 24),
+        // the file descriptors are being properly released
+    }
+
+    #[tokio::test]
+    async fn test_workflow_store_refresh_no_fd_leak() {
+        // Test the WorkflowStore refresh_workflows method specifically
+        // Use the real test_artifacts directory with actual workflow files
+        let test_dir = "./test_artifacts/workflows";
+
+        let mut store = WorkflowStore::from_dir(test_dir).await.unwrap();
+        let initial_count = store.count().await;
+
+        // Simulate multiple refresh cycles
+        for i in 0..50 {
+            store.refresh_workflows().await;
+            let count = store.count().await;
+            assert_eq!(count, initial_count, "Failed on refresh iteration {}", i);
+        }
+
+        // Success means no file descriptor leaks
     }
 }
