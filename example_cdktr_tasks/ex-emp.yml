@@ -1,5 +1,0 @@
-name: Example Empty Workflow
-description: Empty tasks - so technically a valid workflow
-cron: "0 1 * * * *"
-start_time: 2025-01-20T12:30:00+00:00
-tasks:
