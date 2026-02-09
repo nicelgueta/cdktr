@@ -3,10 +3,9 @@ use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
 use cdktr_core::exceptions::GenericError;
 
 /// The event listener trait is for implementing components that
-/// listen to external events and place onto a Queue. T refers to
-/// the item that will be placed on the queue upon each event.
+/// listen to external events and send to the principal to trigger workflows
 #[async_trait]
-pub trait EventListener<T> {
+pub trait EventListener {
     async fn start_listening(&mut self) -> Result<(), GenericError>;
     async fn run_workflow(&mut self, workflow_id: &str) -> Result<(), GenericError> {
         let api = PrincipalAPI::RunTask(workflow_id.to_string());
