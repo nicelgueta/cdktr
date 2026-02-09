@@ -98,70 +98,61 @@ impl EventListener<Event> for FileWatcherListener {
 
 This listener watches a directory for file changes and triggers a workflow whenever a modification occurs. The `run_workflow()` call handles all the ZeroMQ communication with the principal.
 
-### Event Listeners in Python (python-cdktr)
+### Triggering Workflows from Python (cdktr-py)
 
-For teams more comfortable with Python, or for rapid prototyping, cdktr provides the `python-cdktr` library. This library offers a Python interface to cdktr's ZeroMQ API, making it trivial to build event listeners without writing any Rust code.
+For teams more comfortable with Python, or for rapid prototyping, cdktr provides the `cdktr-py` library. This library offers a Python interface to cdktr's ZeroMQ API, making it simple to trigger workflows from Python applications.
 
-**Example: Webhook Event Listener**
+**Example: Webhook Server**
 
-Here's a Python event listener that triggers workflows in response to HTTP webhooks:
+Here's a Python application that triggers workflows in response to HTTP webhooks:
 
 ```python
-from cdktr import EventListener, Principal
+from cdktr import Principal
 from flask import Flask, request
-import threading
 
-class WebhookListener(EventListener):
-    def __init__(self, principal_host="localhost", principal_port=5561):
-        self.principal = Principal(host=principal_host, port=principal_port)
-        self.app = Flask(__name__)
-        self.setup_routes()
+app = Flask(__name__)
+principal = Principal(host="localhost", port=5561)
 
-    def setup_routes(self):
-        @self.app.route('/trigger/<workflow_id>', methods=['POST'])
-        def trigger_workflow(workflow_id):
-            payload = request.get_json()
-            result = self.run_workflow(workflow_id)
-            if result.success:
-                return {"status": "triggered", "workflow": workflow_id}, 200
-            else:
-                return {"status": "failed", "error": result.error}, 500
-
-    def start_listening(self):
-        """Start the Flask webhook server"""
-        self.app.run(host='0.0.0.0', port=8080)
+@app.route('/trigger/<workflow_id>', methods=['POST'])
+def trigger_workflow(workflow_id):
+    payload = request.get_json()
+    result = principal.run_workflow(workflow_id)
+    if result.success:
+        return {"status": "triggered", "workflow": workflow_id}, 200
+    else:
+        return {"status": "failed", "error": result.error}, 500
 
 if __name__ == "__main__":
-    listener = WebhookListener()
-    listener.start_listening()
+    app.run(host='0.0.0.0', port=8080)
 ```
 
 This creates an HTTP endpoint at `/trigger/<workflow_id>` that accepts POST requests. When a request arrives, it triggers the specified workflow via the cdktr principal.
 
-**Example: Message Queue Event Listener**
+**Example: Message Queue Consumer**
 
-Here's a listener that consumes messages from RabbitMQ and triggers workflows:
+Here's an application that consumes messages from RabbitMQ and triggers workflows:
 
 ```python
-from cdktr import EventListener, Principal
+from cdktr import Principal
 import pika
 import json
 
-class RabbitMQListener(EventListener):
-    def __init__(self, rabbitmq_host='localhost', queue_name='cdktr-workflows',
-                 principal_host='localhost', principal_port=5561):
-        self.principal = Principal(host=principal_host, port=principal_port)
-        self.rabbitmq_host = rabbitmq_host
-        self.queue_name = queue_name
+principal = Principal(host="localhost", port=5561)
 
-    def handle_message(self, ch, method, properties, body):
-        """Callback for each RabbitMQ message"""
+def main():
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host='localhost')
+    )
+    channel = connection.channel()
+    channel.queue_declare(queue='cdktr-workflows', durable=True)
+
+    def callback(ch, method, properties, body):
         try:
             message = json.loads(body)
             workflow_id = message.get('workflow_id')
 
             if workflow_id:
-                result = self.run_workflow(workflow_id)
+                result = principal.run_workflow(workflow_id)
                 if result.success:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                 else:
@@ -170,101 +161,79 @@ class RabbitMQListener(EventListener):
             print(f"Error processing message: {e}")
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
-    def start_listening(self):
-        """Start consuming from RabbitMQ"""
-        connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self.rabbitmq_host)
-        )
-        channel = connection.channel()
-        channel.queue_declare(queue=self.queue_name, durable=True)
+    channel.basic_qos(prefetch_count=1)
+    channel.basic_consume(queue='cdktr-workflows', on_message_callback=callback)
 
-        channel.basic_qos(prefetch_count=1)
-        channel.basic_consume(
-            queue=self.queue_name,
-            on_message_callback=self.handle_message
-        )
-
-        print(f"Listening for workflow triggers on queue: {self.queue_name}")
-        channel.start_consuming()
+    print("Listening for workflow triggers...")
+    channel.start_consuming()
 
 if __name__ == "__main__":
-    listener = RabbitMQListener()
-    listener.start_listening()
+    main()
 ```
 
-**Example: Database Change Listener**
+**Example: Database Change Monitor**
 
 Monitor a PostgreSQL database for changes and trigger workflows:
 
 ```python
-from cdktr import EventListener, Principal
+from cdktr import Principal
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import select
-import time
 
-class DatabaseChangeListener(EventListener):
-    def __init__(self, db_connection_string, channel_name='workflow_triggers',
-                 principal_host='localhost', principal_port=5561):
-        self.principal = Principal(host=principal_host, port=principal_port)
-        self.db_connection_string = db_connection_string
-        self.channel_name = channel_name
+principal = Principal(host="localhost", port=5561)
 
-    def start_listening(self):
-        """Listen for PostgreSQL NOTIFY events"""
-        conn = psycopg2.connect(self.db_connection_string)
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+def main():
+    conn = psycopg2.connect("postgresql://localhost/mydb")
+    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
 
-        cursor = conn.cursor()
-        cursor.execute(f"LISTEN {self.channel_name};")
+    cursor = conn.cursor()
+    cursor.execute("LISTEN workflow_triggers;")
 
-        print(f"Listening for notifications on channel: {self.channel_name}")
+    print("Listening for database notifications...")
 
-        while True:
-            if select.select([conn], [], [], 5) == ([], [], []):
-                continue
-            else:
-                conn.poll()
-                while conn.notifies:
-                    notify = conn.notifies.pop(0)
-                    workflow_id = notify.payload
-                    print(f"Received notification: {workflow_id}")
-                    self.run_workflow(workflow_id)
+    while True:
+        if select.select([conn], [], [], 5) == ([], [], []):
+            continue
+        else:
+            conn.poll()
+            while conn.notifies:
+                notify = conn.notifies.pop(0)
+                workflow_id = notify.payload
+                print(f"Received notification: {workflow_id}")
+                principal.run_workflow(workflow_id)
 
 if __name__ == "__main__":
-    listener = DatabaseChangeListener(
-        db_connection_string="postgresql://user:pass@localhost/mydb"
-    )
-    listener.start_listening()
+    main()
 ```
 
-### The EventListener Base Class
+### The Principal API
 
-The `python-cdktr` library provides an `EventListener` base class that handles the ZeroMQ communication for you:
+The `cdktr-py` library provides a `Principal` class that handles ZeroMQ communication:
 
 ```python
-from cdktr import EventListener
+from cdktr import Principal
 
-class MyCustomListener(EventListener):
-    def run_workflow(self, workflow_id: str) -> Result:
-        """
-        Trigger a workflow on the cdktr principal.
-        Returns a Result object with .success and .error attributes.
-        """
-        # Implemented by the base class - just call it!
-        return super().run_workflow(workflow_id)
+principal = Principal(host="localhost", port=5561)
 
-    def start_listening(self):
-        """
-        Your event detection logic goes here.
-        Call self.run_workflow(workflow_id) whenever an event occurs.
-        """
-        raise NotImplementedError("Subclasses must implement start_listening()")
+# Trigger a workflow
+result = principal.run_workflow("my-workflow")
+if result.success:
+    print("Workflow triggered successfully!")
+else:
+    print(f"Failed: {result.error}")
+
+# Other API methods
+principal.ping()
+principal.list_workflows()
+principal.query_logs(workflow_id="my-workflow", limit=10)
+principal.get_recent_workflow_statuses()
+principal.get_registered_agents()
 ```
 
-## Real-World Event Listener Scenarios
+## Real-World Workflow Triggering Patterns
 
-Event listeners enable powerful workflow orchestration patterns:
+The Principal API enables powerful workflow orchestration patterns:
 
 **CI/CD Integration**: Deploy code, send a webhook to trigger a cdktr workflow that runs tests, migrations, and health checks.
 

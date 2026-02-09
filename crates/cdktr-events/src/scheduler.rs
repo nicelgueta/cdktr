@@ -3,7 +3,7 @@ use cdktr_api::models::ClientResponseMessage;
 use cdktr_api::{API, PrincipalAPI};
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::get_cdktr_setting;
-use cdktr_workflow::{Task, Workflow};
+use cdktr_workflow::Workflow;
 use chrono::{DateTime, Utc};
 use cron::Schedule;
 use log::{debug, error, info};
@@ -33,7 +33,7 @@ pub struct Scheduler {
 }
 
 #[async_trait]
-impl EventListener<Task> for Scheduler {
+impl EventListener for Scheduler {
     async fn start_listening(&mut self) -> Result<(), GenericError> {
         let poll_duration = Duration::from_millis(get_cdktr_setting!(
             CDKTR_SCHEDULER_START_POLL_FREQUENCY_MS,
@@ -206,7 +206,14 @@ impl Scheduler {
         *pqlock = Scheduler::build_schedule_queue(&incoming_workflows)?;
         debug!("PQ rebuilt");
         (*self.workflows_ptr.lock().await).extend(incoming_workflows.into_iter()); // will override where key already exists
-        let q_top = pqlock.peek().unwrap();
+        let q_top = match pqlock.peek() {
+            Some(top) => top,
+            None => {
+                return Err(GenericError::NoDataException(
+                    "No workflows have valid schedules. Scheduler cannot run".to_string(),
+                ));
+            }
+        };
         *self.next_peek.lock().await = (q_top.1.clone(), -q_top.0, false);
         Ok(())
     }

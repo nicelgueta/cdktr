@@ -5,3 +5,5 @@ target/
 __pycache__/
 .venv/
 logs/
+cdktr-py/src/cdktr/*.so
+venv/

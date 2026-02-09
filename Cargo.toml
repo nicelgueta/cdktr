@@ -1,5 +1,16 @@
 [workspace]
-members = ["crates/*"]
+members = [
+    "crates/cdktr-api",
+    "crates/cdktr-cli",
+    "crates/cdktr-core",
+    "crates/cdktr-db",
+    "crates/cdktr-events",
+    "crates/cdktr-ipc",
+    "crates/cdktr-tui",
+    "crates/cdktr-workflow",
+]
+# Python bindings excluded by default - build separately
+exclude = ["crates/cdktr-py"]
 resolver = "2"
 
 [workspace.package]
