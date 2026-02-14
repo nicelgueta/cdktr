@@ -93,7 +93,7 @@ pub async fn send_recv_with_timeout(
     let join_res = tokio::spawn(timeout(duration, async move {
         let mut req = get_zmq_req(&tcp_uri).await?;
         let send_res = req.send(zmq_msg).await;
-        match send_res {
+        let result = match send_res {
             Ok(_) => {
                 let recv_res = req.recv().await;
                 match recv_res {
@@ -106,7 +106,13 @@ pub async fn send_recv_with_timeout(
             Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
                 e.to_string(),
             ))),
+        };
+        // Explicitly close the socket to release file descriptors
+        let close_errors = req.close().await;
+        if !close_errors.is_empty() {
+            warn!("Errors closing ZMQ socket: {:?}", close_errors);
         }
+        result
     }))
     .await;
 
