@@ -6,7 +6,7 @@ use cdktr_core::{
     get_cdktr_setting,
     zmq_helpers::{get_server_tcp_uri, get_zmq_push},
 };
-use zeromq::{PushSocket, SocketSend};
+use zeromq::{PushSocket, Socket, SocketSend};
 
 use crate::log_manager::model::LogMessage;
 
@@ -148,8 +148,15 @@ impl LogsPublisher {
         Ok(())
     }
     async fn attempt_reconnect(&mut self) -> Result<(), GenericError> {
-        self.push_socket =
-            get_zmq_push(&get_server_tcp_uri(&self.prin_host, self.logs_listen_port)).await?;
+        // Close the old socket before creating a new one to prevent file descriptor leaks
+        let old_socket = std::mem::replace(
+            &mut self.push_socket,
+            get_zmq_push(&get_server_tcp_uri(&self.prin_host, self.logs_listen_port)).await?,
+        );
+        let close_errors = old_socket.close().await;
+        if !close_errors.is_empty() {
+            log::warn!("Errors closing old push socket during reconnect: {:?}", close_errors);
+        }
         Ok(())
     }
 }
