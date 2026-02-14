@@ -110,7 +110,10 @@ pub async fn send_recv_with_timeout(
         // Explicitly close the socket to release file descriptors
         let close_errors = req.close().await;
         if !close_errors.is_empty() {
-            warn!("Errors closing ZMQ socket: {:?}", close_errors);
+            warn!(
+                "Errors closing ZMQ request socket for {}: {:?}",
+                tcp_uri, close_errors
+            );
         }
         result
     }))

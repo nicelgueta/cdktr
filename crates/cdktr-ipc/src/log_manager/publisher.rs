@@ -155,7 +155,12 @@ impl LogsPublisher {
         );
         let close_errors = old_socket.close().await;
         if !close_errors.is_empty() {
-            log::warn!("Errors closing old push socket during reconnect: {:?}", close_errors);
+            log::warn!(
+                "Errors closing old push socket during reconnect to {}:{}: {:?}",
+                self.prin_host,
+                self.logs_listen_port,
+                close_errors
+            );
         }
         Ok(())
     }
