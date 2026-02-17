@@ -7,6 +7,7 @@ edition = "2024"
 zeromq = { workspace = true}
 cdktr-core = { workspace = true}
 cdktr-db = { workspace = true}
+cdktr-workflow = { workspace = true}
 duckdb = { workspace = true}
 async-trait = { workspace = true }
 env_logger = { workspace = true }

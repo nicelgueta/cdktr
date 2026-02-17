@@ -668,6 +668,7 @@ dependencies = [
  "async-trait",
  "cdktr-core",
  "cdktr-db",
+ "cdktr-workflow",
  "duckdb",
  "env_logger",
  "log",

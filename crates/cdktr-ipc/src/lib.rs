@@ -1,4 +1,3 @@
-mod client;
 // mod events; TODO: reinclude once the main runner is working
 pub mod log_manager;
 mod server;

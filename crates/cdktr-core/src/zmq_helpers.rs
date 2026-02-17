@@ -1,11 +1,11 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use crate::{
     exceptions::{GenericError, ZMQParseError},
     macros,
 };
 use log::warn;
-use tokio::time::timeout;
+use tokio::{sync::Mutex, time::timeout};
 use zeromq::{
     PubSocket, PullSocket, PushSocket, RepSocket, ReqSocket, Socket, SocketRecv, SocketSend,
     SubSocket, ZmqMessage,
@@ -85,17 +85,16 @@ pub fn get_server_tcp_uri(host: &str, port: usize) -> String {
 /// duration if no response is received it kills the spawned coroutine and
 /// returns an error
 pub async fn send_recv_with_timeout(
-    tcp_uri: String,
+    req_socket: Arc<Mutex<ReqSocket>>,
     zmq_msg: ZmqMessage,
     duration: Duration,
 ) -> Result<ZmqMessage, GenericError> {
     // spawn the timeout coroutine
     let join_res = tokio::spawn(timeout(duration, async move {
-        let mut req = get_zmq_req(&tcp_uri).await?;
-        let send_res = req.send(zmq_msg).await;
+        let send_res = req_socket.lock().await.send(zmq_msg).await;
         match send_res {
             Ok(_) => {
-                let recv_res = req.recv().await;
+                let recv_res = req_socket.lock().await.recv().await;
                 match recv_res {
                     Ok(zmq_msg) => Ok(zmq_msg),
                     Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
@@ -230,12 +229,13 @@ mod tests {
         let port = 9997;
         let endpoint = get_server_tcp_uri(&host, port);
         let mut rep = get_zmq_rep(&endpoint).await.unwrap();
+        let req = Arc::new(Mutex::new(get_zmq_req(&endpoint).await.unwrap()));
         tokio::spawn(async move {
             rep.recv().await.unwrap();
             rep.send("OK".into()).await.unwrap()
         });
         assert!(
-            send_recv_with_timeout(endpoint, ZmqMessage::from("hello"), Duration::from_secs(1))
+            send_recv_with_timeout(req, ZmqMessage::from("hello"), Duration::from_secs(1))
                 .await
                 .is_ok()
         )
@@ -247,19 +247,16 @@ mod tests {
         let port = 9996;
         let endpoint = get_server_tcp_uri(&host, port);
         let mut rep = get_zmq_rep(&endpoint).await.unwrap();
+        let req = Arc::new(Mutex::new(get_zmq_req(&endpoint).await.unwrap()));
         tokio::spawn(async move {
             rep.recv().await.unwrap();
             sleep(Duration::from_millis(500)).await;
             rep.send("OK".into()).await.unwrap()
         });
         assert!(
-            send_recv_with_timeout(
-                endpoint,
-                ZmqMessage::from("hello"),
-                Duration::from_millis(1)
-            )
-            .await
-            .is_err()
+            send_recv_with_timeout(req, ZmqMessage::from("hello"), Duration::from_millis(1))
+                .await
+                .is_err()
         )
     }
 

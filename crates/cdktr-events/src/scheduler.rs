@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use cdktr_api::models::ClientResponseMessage;
-use cdktr_api::{API, PrincipalAPI};
+use cdktr_api::{PrincipalAPI, PrincipalClient};
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::get_cdktr_setting;
 use cdktr_workflow::Workflow;
@@ -13,8 +13,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
-
-use crate::traits::EventListener;
 
 /// Main scheduling component. This component has an internal task queue for tasks
 /// that are to be scheduled within the next poll interval.
@@ -30,74 +28,14 @@ pub struct Scheduler {
     workflows_ptr: Arc<Mutex<HashMap<String, Workflow>>>,
     schedule_priority_queue_ptr: Arc<Mutex<BinaryHeap<(i64, String)>>>,
     next_peek: Arc<Mutex<(String, i64, bool)>>, // task_id, unix timestamp for start, has been logged
+    principal_client: PrincipalClient,
 }
 
-#[async_trait]
-impl EventListener for Scheduler {
-    async fn start_listening(&mut self) -> Result<(), GenericError> {
-        let poll_duration = Duration::from_millis(get_cdktr_setting!(
-            CDKTR_SCHEDULER_START_POLL_FREQUENCY_MS,
-            usize
-        ) as u64);
-        loop {
-            while !self.next_workflow_ready().await {
-                let mut next_peek_lock = self.next_peek.lock().await;
-                let logged_to_console = next_peek_lock.2;
-                if !logged_to_console {
-                    (*next_peek_lock).2 = true;
-                    info!(
-                        "Next task `{}` scheduled to run:  {}",
-                        next_peek_lock.0,
-                        DateTime::from_timestamp_millis(next_peek_lock.1)
-                            .unwrap()
-                            .to_rfc2822()
-                    );
-                };
-                drop(next_peek_lock); // release the lock before sleeping
-                sleep(poll_duration).await;
-            }
-            let workflow_id = {
-                let mut pqlock = self.schedule_priority_queue_ptr.lock().await;
-                pqlock.pop().unwrap().1
-            };
-            {
-                let next_peek_lock = self.next_peek.lock().await;
-                if next_peek_lock.0 != workflow_id {
-                    return Err(GenericError::RuntimeError(format!(
-                        "Popped wrong workflow from the priority queue. Expected {} but got {}",
-                        next_peek_lock.0, workflow_id
-                    )));
-                }
-            };
-            info!("Staging scheduled task: {}", &workflow_id);
-            self.run_workflow(&workflow_id).await?;
-
-            // add the next run of the same workflow back to priority queue
-            {
-                // lock holds for duration of usage to avoid a refresh coinciding
-                let workflows = self.workflows_ptr.lock().await;
-                let workflow = workflows.get(&workflow_id).unwrap();
-                match workflow.cron() {
-                    Some(cron) => {
-                        let next_run = Self::next_run_from_cron(cron, Ok(Utc::now()))?;
-                        // invert the timestamp to make a min heap
-                        let q_top = {
-                            let mut pqlock = self.schedule_priority_queue_ptr.lock().await;
-                            pqlock.push((-next_run.timestamp_millis(), workflow_id));
-                            // update the peek
-                            pqlock.peek().unwrap().clone()
-                        };
-                        *self.next_peek.lock().await = (q_top.1, -q_top.0, false);
-                    }
-                    None => continue,
-                };
-            }
-        }
-    }
-}
 impl Scheduler {
-    pub async fn new() -> Result<Self, GenericError> {
-        let workflows = Self::get_workflows().await?;
+    pub async fn new(principal_client: Option<PrincipalClient>) -> Result<Self, GenericError> {
+        let principal_client =
+            principal_client.unwrap_or(PrincipalClient::new("_scheduler".to_string()).await?);
+        let workflows = Self::get_workflows(&principal_client).await?;
         let workflows_len = workflows.len();
         info!(
             "Scheduler found {} workflows with active schedules",
@@ -118,6 +56,7 @@ impl Scheduler {
             workflows_ptr,
             schedule_priority_queue_ptr,
             next_peek,
+            principal_client: principal_client,
         })
     }
 
@@ -162,9 +101,11 @@ impl Scheduler {
         Ok(next_run)
     }
 
-    async fn get_workflows() -> Result<HashMap<String, Workflow>, GenericError> {
-        let api = PrincipalAPI::ListWorkflowStore;
-        let response = api.send().await?;
+    async fn get_workflows(
+        principal_client: &PrincipalClient,
+    ) -> Result<HashMap<String, Workflow>, GenericError> {
+        let request = PrincipalAPI::ListWorkflowStore;
+        let response = principal_client.send(request).await?;
         match response {
             ClientResponseMessage::SuccessWithPayload(wfs) => {
                 serde_json::from_str(&wfs).map_err(|e| {
@@ -217,6 +158,84 @@ impl Scheduler {
         *self.next_peek.lock().await = (q_top.1.clone(), -q_top.0, false);
         Ok(())
     }
+
+    pub async fn start_listening(&mut self) -> Result<(), GenericError> {
+        let poll_duration = Duration::from_millis(get_cdktr_setting!(
+            CDKTR_SCHEDULER_START_POLL_FREQUENCY_MS,
+            usize
+        ) as u64);
+        loop {
+            while !self.next_workflow_ready().await {
+                let mut next_peek_lock = self.next_peek.lock().await;
+                let logged_to_console = next_peek_lock.2;
+                if !logged_to_console {
+                    (*next_peek_lock).2 = true;
+                    info!(
+                        "Next task `{}` scheduled to run:  {}",
+                        next_peek_lock.0,
+                        DateTime::from_timestamp_millis(next_peek_lock.1)
+                            .unwrap()
+                            .to_rfc2822()
+                    );
+                };
+                drop(next_peek_lock); // release the lock before sleeping
+                sleep(poll_duration).await;
+            }
+            let workflow_id = {
+                let mut pqlock = self.schedule_priority_queue_ptr.lock().await;
+                pqlock.pop().unwrap().1
+            };
+            {
+                let next_peek_lock = self.next_peek.lock().await;
+                if next_peek_lock.0 != workflow_id {
+                    return Err(GenericError::RuntimeError(format!(
+                        "Popped wrong workflow from the priority queue. Expected {} but got {}",
+                        next_peek_lock.0, workflow_id
+                    )));
+                }
+            };
+            info!("Staging scheduled task: {}", &workflow_id);
+
+            self.run_workflow(&workflow_id).await?;
+
+            // add the next run of the same workflow back to priority queue
+            {
+                // lock holds for duration of usage to avoid a refresh coinciding
+                let workflows = self.workflows_ptr.lock().await;
+                let workflow = workflows.get(&workflow_id).unwrap();
+                match workflow.cron() {
+                    Some(cron) => {
+                        let next_run = Self::next_run_from_cron(cron, Ok(Utc::now()))?;
+                        // invert the timestamp to make a min heap
+                        let q_top = {
+                            let mut pqlock = self.schedule_priority_queue_ptr.lock().await;
+                            pqlock.push((-next_run.timestamp_millis(), workflow_id));
+                            // update the peek
+                            pqlock.peek().unwrap().clone()
+                        };
+                        *self.next_peek.lock().await = (q_top.1, -q_top.0, false);
+                    }
+                    None => continue,
+                };
+            }
+        }
+    }
+
+    async fn run_workflow(&mut self, workflow_id: &str) -> Result<(), GenericError> {
+        let request = PrincipalAPI::RunTask(workflow_id.to_string());
+        let result = self.principal_client.send(request).await;
+        match result {
+            Ok(r) => match r {
+                ClientResponseMessage::Success => Ok(()),
+                other => Err(GenericError::WorkflowError(format!(
+                    "Failed to start workflow {}. Response from principal: {}",
+                    workflow_id,
+                    other.to_string()
+                ))),
+            },
+            Err(e) => Err(e),
+        }
+    }
 }
 
 async fn refresh_loop(mut scheduler: Scheduler) -> Result<(), GenericError> {
@@ -225,7 +244,7 @@ async fn refresh_loop(mut scheduler: Scheduler) -> Result<(), GenericError> {
     loop {
         let _ = sleep(Duration::from_secs(workflow_refresh_seconds)).await;
         debug!("checking internal workflow store for new workflows defs");
-        match Scheduler::get_workflows().await {
+        match Scheduler::get_workflows(&scheduler.principal_client).await {
             Ok(wfs) => {
                 if !scheduler.workflows_match(&wfs).await {
                     info!("Found workflows to refresh from principal");
