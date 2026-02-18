@@ -10,80 +10,24 @@ use zeromq::{PushSocket, SocketSend};
 
 use crate::log_manager::model::LogMessage;
 
-pub struct TaskLogger<'a, 'b> {
-    task_name: &'a str,
-    task_instance_id: &'a str,
-    publisher: &'b mut LogsPublisher,
-}
-
-impl<'a, 'b> TaskLogger<'a, 'b> {
-    fn new(
-        publisher: &'b mut LogsPublisher,
-        task_name: &'a str,
-        task_instance_id: &'a str,
-    ) -> Self {
-        Self {
-            publisher,
-            task_name,
-            task_instance_id,
-        }
-    }
-
-    pub async fn info(&mut self, msg: &str) {
-        self.publisher
-            .pub_msg("INFO", self.task_name, self.task_instance_id, msg)
-            .await
-    }
-
-    pub async fn warn(&mut self, msg: &str) {
-        self.publisher
-            .pub_msg("WARNING", self.task_name, self.task_instance_id, msg)
-            .await
-    }
-
-    pub async fn error(&mut self, msg: &str) {
-        self.publisher
-            .pub_msg("ERROR", self.task_name, self.task_instance_id, msg)
-            .await
-    }
-}
-
 pub struct LogsPublisher {
     prin_host: String,
     logs_listen_port: usize,
-    workflow_id: String,
-    workflow_name: String,
-    workflow_instance_id: String,
     push_socket: PushSocket,
     log_queue: VecDeque<LogMessage>,
 }
 
 impl LogsPublisher {
-    pub async fn new(
-        workflow_id: String,
-        workflow_name: String,
-        workflow_instance_id: String,
-    ) -> Result<Self, GenericError> {
+    pub async fn new() -> Result<Self, GenericError> {
         let logs_listen_port = get_cdktr_setting!(CDKTR_LOGS_LISTENING_PORT, usize);
         let prin_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
         let url = &get_server_tcp_uri(&prin_host, logs_listen_port);
         Ok(LogsPublisher {
             prin_host,
             logs_listen_port,
-            workflow_id,
-            workflow_name,
-            workflow_instance_id,
             push_socket: get_zmq_push(url).await?,
             log_queue: VecDeque::new(),
         })
-    }
-
-    pub async fn get_task_logger<'a, 'b>(
-        &'b mut self,
-        task_name: &'a str,
-        task_instance_id: &'a str,
-    ) -> TaskLogger<'a, 'b> {
-        TaskLogger::new(self, task_name, task_instance_id)
     }
 
     /// Publishes a log message to the principal server
@@ -91,6 +35,9 @@ impl LogsPublisher {
     /// and attempt to resend it next time a new message is published
     pub async fn pub_msg(
         &mut self,
+        workflow_id: &str,
+        workflow_name: &str,
+        workflow_instance_id: &str,
         level: &str,
         task_name: &str,
         task_instance_id: &str,
@@ -102,9 +49,9 @@ impl LogsPublisher {
             .expect("Failed to get system time")
             .as_millis() as u64;
         let log_msg: LogMessage = LogMessage::new(
-            self.workflow_id.clone(),
-            self.workflow_name.clone(),
-            self.workflow_instance_id.clone(),
+            workflow_id.to_string(),
+            workflow_name.to_string(),
+            workflow_instance_id.to_string(),
             task_name.to_string(),
             task_instance_id.to_string(),
             timestamp_ms,
@@ -115,9 +62,9 @@ impl LogsPublisher {
             // failed to push to socket so log internally
             // needs to create msg again
             Err(_e) => self.log_queue.push_back(LogMessage::new(
-                self.workflow_id.clone(),
-                self.workflow_name.clone(),
-                self.workflow_instance_id.clone(),
+                workflow_id.to_string(),
+                workflow_name.to_string(),
+                workflow_instance_id.to_string(),
                 task_name.to_string(),
                 task_instance_id.to_string(),
                 timestamp_ms,

@@ -1,4 +1,4 @@
-use cdktr_api::{API, PrincipalAPI};
+use cdktr_api::PrincipalAPI;
 use cdktr_core::models::{FlowExecutionResult, RunStatus};
 use cdktr_core::utils::get_principal_uri;
 use cdktr_core::{exceptions::GenericError, models::traits::Executor};
@@ -15,8 +15,8 @@ use tokio::task::JoinHandle;
 use tokio::task::JoinSet;
 use tokio::time::sleep;
 
-use crate::client::PrincipalClient;
 use crate::log_manager::publisher::LogsPublisher;
+use cdktr_api::PrincipalClient;
 mod task_tracker;
 
 const WAIT_TASK_SLEEP_INTERVAL_MS: Duration = Duration::from_millis(500);
@@ -81,17 +81,26 @@ pub struct TaskManager {
     workflow_counter: Arc<Mutex<usize>>,
     principal_client: PrincipalClient,
     name_gen: Arc<Mutex<EternalSlugGenerator>>,
+    logs_publisher: Arc<Mutex<LogsPublisher>>,
 }
 
 impl TaskManager {
     pub async fn new(instance_id: String, max_concurrent_workflows: usize) -> Self {
-        let principal_client = PrincipalClient::new(instance_id.clone());
+        let principal_client = PrincipalClient::new(instance_id.clone())
+            .await
+            .expect("Failed to acquire principal client from within the Agent Task Manager");
+        let logs_publisher = Arc::new(Mutex::new(
+            LogsPublisher::new()
+                .await
+                .expect("Failed to create LogsPublisher for Agent Task Manager"),
+        ));
         Self {
             instance_id,
             max_concurrent_workflows,
             workflow_counter: Arc::new(Mutex::new(0)),
             principal_client,
             name_gen: Arc::new(Mutex::new(EternalSlugGenerator::new(2).unwrap())),
+            logs_publisher,
         }
     }
 
@@ -110,9 +119,7 @@ impl TaskManager {
         let heartbeat_handle = tokio::spawn(async move {
             loop {
                 sleep(Duration::from_secs(5)).await;
-                if let Err(e) = heartbeat_client.send_heartbeat().await {
-                    error!("Failed to send heartbeat to principal: {}", e.to_string());
-                }
+                let _ = heartbeat_client.send_heartbeat().await;
             }
         });
 
@@ -176,17 +183,23 @@ impl TaskManager {
             // spawn workflow thread so we can return to request another workflow
             let agent_id = self.instance_id.clone();
             let workflow_id = workflow.id().clone();
+            let principal_client = self.principal_client.clone();
+            let logs_publisher = self.logs_publisher.clone();
             let _wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
                 let workflow_instance_id = { name_gen_cl.lock().await.next() };
-                if PrincipalAPI::WorkflowStatusUpdate(
-                    agent_id.clone(),
-                    workflow_id.clone(),
-                    workflow_instance_id.clone(),
-                    RunStatus::RUNNING,
-                )
-                .send()
-                .await
-                .is_err()
+                if principal_client
+                    .send_with_retry(
+                        PrincipalAPI::WorkflowStatusUpdate(
+                            agent_id.clone(),
+                            workflow_id.clone(),
+                            workflow_instance_id.clone(),
+                            RunStatus::RUNNING,
+                        ),
+                        None,
+                        None,
+                    )
+                    .await
+                    .is_err()
                 {
                     error!(
                         "Failed to send status update of RUNNING to principal for: {workflow_id}/{workflow_instance_id}"
@@ -200,6 +213,9 @@ impl TaskManager {
                     );
                     return Ok(());
                 }
+                // Use the shared instance-level LogsPublisher
+                let workflow_id_clone = workflow.id().clone();
+                let workflow_name_clone = workflow.name().clone();
                 let mut read_handles = JoinSet::new();
                 while !task_tracker.is_finished() {
                     let task_id = if let Some(task_id) = task_tracker.get_next_task() {
@@ -214,17 +230,22 @@ impl TaskManager {
                     );
                     let task_execution_id = { name_gen_cl.lock().await.next() };
                     let task_name = task.name().to_string();
-                    PrincipalAPI::TaskStatusUpdate(
-                        agent_id.clone(),
-                        task_id.clone(),
-                        task_execution_id.clone(),
-                        workflow_instance_id.clone(),
-                        RunStatus::PENDING,
-                    )
-                    .send()
-                    .await?;
+                    principal_client
+                        .send_with_retry(
+                            PrincipalAPI::TaskStatusUpdate(
+                                agent_id.clone(),
+                                task_id.clone(),
+                                task_execution_id.clone(),
+                                workflow_instance_id.clone(),
+                                RunStatus::PENDING,
+                            ),
+                            None,
+                            None,
+                        )
+                        .await?;
                     let mut task_exe = loop {
                         let task_exe_result = run_in_executor(
+                            principal_client.clone(),
                             task_tracker.clone(),
                             agent_id.clone(),
                             task_id.clone(),
@@ -254,15 +275,19 @@ impl TaskManager {
                                             error!(
                                                 "Error marking task as failure - aborting workflow"
                                             );
-                                            if PrincipalAPI::WorkflowStatusUpdate(
-                                                agent_id.clone(),
-                                                workflow_id.clone(),
-                                                workflow_instance_id.clone(),
-                                                RunStatus::CRASHED,
-                                            )
-                                            .send()
-                                            .await
-                                            .is_err()
+                                            if principal_client
+                                                .send_with_retry(
+                                                    PrincipalAPI::WorkflowStatusUpdate(
+                                                        agent_id.clone(),
+                                                        workflow_id.clone(),
+                                                        workflow_instance_id.clone(),
+                                                        RunStatus::CRASHED,
+                                                    ),
+                                                    None,
+                                                    None,
+                                                )
+                                                .await
+                                                .is_err()
                                             {
                                                 error!(
                                                     "Failed to send status update of CRASHED to principal for: {workflow_id}/{workflow_instance_id}"
@@ -277,27 +302,49 @@ impl TaskManager {
                     };
                     // need to spawn the reading of the logs of the run task in order to free this thread
                     // to go back to looking at the queue
-                    let mut logs_pub = LogsPublisher::new(
-                        workflow.id().clone(),
-                        workflow.name().clone(),
-                        workflow_instance_id.clone(),
-                    )
-                    .await?;
+                    // Clone the Arc to share the LogsPublisher across tasks
+                    let logs_pub_clone = logs_publisher.clone();
+                    let task_name_clone = task_name.clone();
+                    let task_exec_id_clone = task_execution_id.clone();
+                    let wf_id_clone = workflow_id_clone.clone();
+                    let wf_name_clone = workflow_name_clone.clone();
+                    let wf_inst_id_clone = workflow_instance_id.clone();
                     read_handles.spawn(async move {
-                        let mut task_logger = logs_pub
-                            .get_task_logger(&task_name, &task_execution_id)
-                            .await;
                         while let Some(msg) = task_exe.wait_stdout().await {
                             let log_msg = format!("STDOUT {msg}");
                             info!("{}", &log_msg);
-                            task_logger.info(&log_msg).await;
+                            logs_pub_clone
+                                .lock()
+                                .await
+                                .pub_msg(
+                                    &wf_id_clone,
+                                    &wf_name_clone,
+                                    &wf_inst_id_clone,
+                                    "INFO",
+                                    &task_name_clone,
+                                    &task_exec_id_clone,
+                                    &log_msg,
+                                )
+                                .await;
                         }
                         while let Some(msg) = task_exe.wait_stderr().await {
                             let log_msg = format!("STDERR {msg}");
                             error!("{}", &log_msg);
-                            task_logger.error(&log_msg).await;
+                            logs_pub_clone
+                                .lock()
+                                .await
+                                .pub_msg(
+                                    &wf_id_clone,
+                                    &wf_name_clone,
+                                    &wf_inst_id_clone,
+                                    "ERROR",
+                                    &task_name_clone,
+                                    &task_exec_id_clone,
+                                    &log_msg,
+                                )
+                                .await;
                         }
-                        info!("Ended task {task_execution_id} ({task_name})");
+                        info!("Ended task {task_exec_id_clone} ({task_name_clone})");
                     });
                 }
                 read_handles.join_all().await;
@@ -318,15 +365,15 @@ impl TaskManager {
                             workflow.name(),
                             workflow_instance_id,
                         );
-                        if PrincipalAPI::WorkflowStatusUpdate(
-                            agent_id.clone(),
-                            workflow_id.clone(),
-                            workflow_instance_id.clone(),
-                            RunStatus::COMPLETED,
-                        )
-                        .send()
-                        .await
-                        .is_err()
+                        if principal_client
+                            .send(PrincipalAPI::WorkflowStatusUpdate(
+                                agent_id.clone(),
+                                workflow_id.clone(),
+                                workflow_instance_id.clone(),
+                                RunStatus::COMPLETED,
+                            ))
+                            .await
+                            .is_err()
                         {
                             error!(
                                 "Failed to send status update of COMPLETED to principal for: {workflow_id}/{workflow_instance_id}"
@@ -340,15 +387,15 @@ impl TaskManager {
                             workflow.name(),
                             workflow_instance_id,
                         );
-                        if PrincipalAPI::WorkflowStatusUpdate(
-                            agent_id.clone(),
-                            workflow_id.clone(),
-                            workflow_instance_id.clone(),
-                            RunStatus::FAILED,
-                        )
-                        .send()
-                        .await
-                        .is_err()
+                        if principal_client
+                            .send(PrincipalAPI::WorkflowStatusUpdate(
+                                agent_id.clone(),
+                                workflow_id.clone(),
+                                workflow_instance_id.clone(),
+                                RunStatus::FAILED,
+                            ))
+                            .await
+                            .is_err()
                         {
                             error!(
                                 "Failed to send status update of FAILED to principal for: {workflow_id}/{workflow_instance_id}"
@@ -365,6 +412,7 @@ impl TaskManager {
 /// This function takes a given task and runs it in the relevant executor depending on the type
 /// of member of the Task enum it pertains to.
 async fn run_in_executor(
+    principal_client: PrincipalClient,
     mut task_tracker: ThreadSafeTaskTracker,
     agent_id: String,
     task_id: String,
@@ -380,16 +428,16 @@ async fn run_in_executor(
         let workflow_ins_id_clone = workflow_instance_id.clone();
         let handle = tokio::spawn(async move {
             info!("Spawning task {task_exe_id_clone}");
-            if PrincipalAPI::TaskStatusUpdate(
-                agent_id.clone(),
-                task_id.clone(),
-                task_execution_id.clone(),
-                workflow_ins_id_clone.clone(),
-                RunStatus::RUNNING,
-            )
-            .send()
-            .await
-            .is_err()
+            if principal_client
+                .send(PrincipalAPI::TaskStatusUpdate(
+                    agent_id.clone(),
+                    task_id.clone(),
+                    task_execution_id.clone(),
+                    workflow_ins_id_clone.clone(),
+                    RunStatus::RUNNING,
+                ))
+                .await
+                .is_err()
             {
                 error!(
                     "Failed to send status update of RUNNING to principal for task: {task_id}/{task_execution_id}"
@@ -402,16 +450,16 @@ async fn run_in_executor(
                         "Successfully completed task: {}->{}",
                         &task_id, &task_execution_id
                     );
-                    if PrincipalAPI::TaskStatusUpdate(
-                        agent_id.clone(),
-                        task_id.clone(),
-                        task_execution_id.clone(),
-                        workflow_ins_id_clone.clone(),
-                        RunStatus::COMPLETED,
-                    )
-                    .send()
-                    .await
-                    .is_err()
+                    if principal_client
+                        .send(PrincipalAPI::TaskStatusUpdate(
+                            agent_id.clone(),
+                            task_id.clone(),
+                            task_execution_id.clone(),
+                            workflow_ins_id_clone.clone(),
+                            RunStatus::COMPLETED,
+                        ))
+                        .await
+                        .is_err()
                     {
                         error!(
                             "Failed to send status update of COMPLETED to principal for task: {task_id}/{task_execution_id}"
@@ -430,16 +478,16 @@ async fn run_in_executor(
                         "Task {}->{} experienced a critical failure. Error: {}",
                         &task_id, &task_execution_id, err_msg
                     );
-                    if PrincipalAPI::TaskStatusUpdate(
-                        agent_id.clone(),
-                        task_id.clone(),
-                        task_execution_id.clone(),
-                        workflow_ins_id_clone.clone(),
-                        RunStatus::FAILED,
-                    )
-                    .send()
-                    .await
-                    .is_err()
+                    if principal_client
+                        .send(PrincipalAPI::TaskStatusUpdate(
+                            agent_id.clone(),
+                            task_id.clone(),
+                            task_execution_id.clone(),
+                            workflow_ins_id_clone.clone(),
+                            RunStatus::FAILED,
+                        ))
+                        .await
+                        .is_err()
                     {
                         error!(
                             "Failed to send status update of FAILED to principal for task: {task_id}/{task_execution_id}"
@@ -461,16 +509,16 @@ async fn run_in_executor(
                         "Task {}->{} crashed. Error: {}",
                         &task_id, &task_execution_id, err_msg
                     );
-                    if PrincipalAPI::TaskStatusUpdate(
-                        agent_id.clone(),
-                        task_id.clone(),
-                        task_execution_id.clone(),
-                        workflow_ins_id_clone.clone(),
-                        RunStatus::FAILED,
-                    )
-                    .send()
-                    .await
-                    .is_err()
+                    if principal_client
+                        .send(PrincipalAPI::TaskStatusUpdate(
+                            agent_id.clone(),
+                            task_id.clone(),
+                            task_execution_id.clone(),
+                            workflow_ins_id_clone.clone(),
+                            RunStatus::FAILED,
+                        ))
+                        .await
+                        .is_err()
                     {
                         error!(
                             "Failed to send status update of CRASHED to principal for task: {task_id}/{task_execution_id}"

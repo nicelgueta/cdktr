@@ -1,6 +1,7 @@
+mod client;
+pub mod models;
 mod principal;
 mod traits;
-
-pub mod models;
+pub use client::PrincipalClient;
 pub use principal::PrincipalAPI;
 pub use traits::{API, APIMeta};

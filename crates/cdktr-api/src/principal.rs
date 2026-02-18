@@ -1,4 +1,5 @@
 use super::traits::{API, APIMeta};
+use bytes::Bytes;
 use zeromq::ZmqMessage;
 
 use cdktr_core::{
@@ -310,6 +311,13 @@ impl API for PrincipalAPI {
 impl TryFrom<ZmqMessage> for PrincipalAPI {
     type Error = GenericError;
     fn try_from(zmq_msg: ZmqMessage) -> Result<Self, Self::Error> {
+        let zmq_args: ZMQArgs = zmq_msg.into();
+        Self::try_from(zmq_args)
+    }
+}
+impl TryFrom<Bytes> for PrincipalAPI {
+    type Error = GenericError;
+    fn try_from(zmq_msg: Bytes) -> Result<Self, Self::Error> {
         let zmq_args: ZMQArgs = zmq_msg.into();
         Self::try_from(zmq_args)
     }
