@@ -115,7 +115,7 @@ async fn query_logs(args: LogArgs) {
         args.workflow_instance_id,
         args.verbose,
     );
-    let api_result = client.send(api).await;
+    let api_result = client.send_with_retry(api, None, None).await;
     match api_result {
         Ok(msg) => match msg {
             ClientResponseMessage::SuccessWithPayload(payload) => {

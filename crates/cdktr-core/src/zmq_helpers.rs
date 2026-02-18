@@ -4,11 +4,12 @@ use crate::{
     exceptions::{GenericError, ZMQParseError},
     macros,
 };
+use bytes::Bytes;
 use log::warn;
 use tokio::{sync::Mutex, time::timeout};
 use zeromq::{
-    PubSocket, PullSocket, PushSocket, RepSocket, ReqSocket, Socket, SocketRecv, SocketSend,
-    SubSocket, ZmqMessage,
+    PubSocket, PullSocket, PushSocket, ReqSocket, RouterSocket, Socket, SocketRecv, SocketSend,
+    SubSocket, ZmqEmptyMessageError, ZmqMessage,
 };
 
 pub static ZMQ_MESSAGE_DELIMITER: u8 = b'\x01';
@@ -21,8 +22,27 @@ pub async fn get_zmq_req(endpoint_uri: &str) -> Result<ReqSocket, GenericError> 
     Ok(req)
 }
 
-pub async fn get_zmq_rep(endpoint_uri: &str) -> Result<RepSocket, GenericError> {
-    let mut rep = RepSocket::new();
+pub async fn get_zmq_req_with_timeout(
+    endpoint_uri: &str,
+    duration: Duration,
+) -> Result<ReqSocket, GenericError> {
+    let connect_result = timeout(duration, async {
+        let mut req = ReqSocket::new();
+        req.connect(endpoint_uri)
+            .await
+            .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
+        Ok(req)
+    })
+    .await;
+
+    match connect_result {
+        Ok(result) => result,
+        Err(_) => Err(GenericError::ZMQTimeoutError),
+    }
+}
+
+pub async fn get_zmq_rep(endpoint_uri: &str) -> Result<RouterSocket, GenericError> {
+    let mut rep = RouterSocket::new();
     rep.bind(endpoint_uri)
         .await
         .map_err(|e| GenericError::ZMQParseError(ZMQParseError::ParseError(e.to_string())))?;
@@ -91,10 +111,12 @@ pub async fn send_recv_with_timeout(
 ) -> Result<ZmqMessage, GenericError> {
     // spawn the timeout coroutine
     let join_res = tokio::spawn(timeout(duration, async move {
-        let send_res = req_socket.lock().await.send(zmq_msg).await;
+        // Keep the lock held for both send and recv to maintain REQ socket state machine
+        let mut socket = req_socket.lock().await;
+        let send_res = socket.send(zmq_msg).await;
         match send_res {
             Ok(_) => {
-                let recv_res = req_socket.lock().await.recv().await;
+                let recv_res = socket.recv().await;
                 match recv_res {
                     Ok(zmq_msg) => Ok(zmq_msg),
                     Err(e) => Err(GenericError::ZMQParseError(ZMQParseError::ParseError(
@@ -176,6 +198,30 @@ pub fn format_zmq_msg_str(args: Vec<&str>) -> String {
     }
 }
 
+pub fn get_router_response(
+    identity: Bytes,
+    empty: Bytes,
+    response_str: String,
+) -> Result<ZmqMessage, ZmqEmptyMessageError> {
+    let vec_b = vec![identity, empty, Bytes::from(response_str.into_bytes())];
+    ZmqMessage::try_from(vec_b)
+}
+
+pub fn get_router_request(msg: ZmqMessage) -> Result<(Bytes, Bytes, String), ZMQParseError> {
+    let mut msg_v: Vec<Bytes> = msg.into_vec();
+    if msg_v.len() < 3 {
+        return Err(ZMQParseError::ParseError(format!(
+            "Invalid message format. Expected at least 3 frames but got {}",
+            msg_v.len()
+        )));
+    }
+    let response_str_b = msg_v.pop().unwrap();
+    let empty = msg_v.pop().unwrap();
+    let identity = msg_v.pop().unwrap();
+    let response_str = String::from_utf8_lossy(&response_str_b).to_string();
+    Ok((identity, empty, response_str))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,8 +256,10 @@ mod tests {
         let endpoint = get_server_tcp_uri(&host, port);
         let mut rep = get_zmq_rep(&endpoint).await.unwrap();
         tokio::spawn(async move {
-            rep.recv().await.unwrap();
-            rep.send("OK".into()).await.unwrap()
+            let (_identity, _empty, _response) =
+                get_router_request(rep.recv().await.unwrap()).unwrap();
+            let resp = get_router_response(_identity, _empty, "OK".to_string()).unwrap();
+            rep.send(resp).await.unwrap()
         });
         assert!(get_req(&host, port).await.is_ok());
     }
@@ -231,8 +279,10 @@ mod tests {
         let mut rep = get_zmq_rep(&endpoint).await.unwrap();
         let req = Arc::new(Mutex::new(get_zmq_req(&endpoint).await.unwrap()));
         tokio::spawn(async move {
-            rep.recv().await.unwrap();
-            rep.send("OK".into()).await.unwrap()
+            let (_identity, _empty, _response) =
+                get_router_request(rep.recv().await.unwrap()).unwrap();
+            let resp = get_router_response(_identity, _empty, "OK".to_string()).unwrap();
+            rep.send(resp).await.unwrap()
         });
         assert!(
             send_recv_with_timeout(req, ZmqMessage::from("hello"), Duration::from_secs(1))
@@ -249,9 +299,11 @@ mod tests {
         let mut rep = get_zmq_rep(&endpoint).await.unwrap();
         let req = Arc::new(Mutex::new(get_zmq_req(&endpoint).await.unwrap()));
         tokio::spawn(async move {
-            rep.recv().await.unwrap();
+            let (_identity, _empty, _response) =
+                get_router_request(rep.recv().await.unwrap()).unwrap();
             sleep(Duration::from_millis(500)).await;
-            rep.send("OK".into()).await.unwrap()
+            let resp = get_router_response(_identity, _empty, "OK".to_string()).unwrap();
+            rep.send(resp).await.unwrap()
         });
         assert!(
             send_recv_with_timeout(req, ZmqMessage::from("hello"), Duration::from_millis(1))

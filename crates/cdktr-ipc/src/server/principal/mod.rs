@@ -76,7 +76,7 @@ impl PrincipalServer {
 }
 
 #[async_trait]
-impl Server<PrincipalAPI> for PrincipalServer {
+impl Server<'_, PrincipalAPI> for PrincipalServer {
     async fn handle_client_message(
         &mut self,
         cli_msg: PrincipalAPI,

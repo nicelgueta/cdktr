@@ -43,3 +43,4 @@ topological-sort = "0.2.2"
 regex = "1.11.1"
 humantime = "2.2.0"
 duckdb = {version = "1.3.2", features = ["bundled", "appender-arrow"] }
+bytes = "1.11.1"

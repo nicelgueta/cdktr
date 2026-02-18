@@ -1,21 +1,8 @@
-use std::{sync::Arc, time::Duration};
-
-use crate::{
-    PrincipalClient,
-    models::{ClientResponseMessage, RepReqError},
-};
-use cdktr_core::{
-    exceptions::{GenericError, ZMQParseError},
-    get_cdktr_setting,
-    models::ZMQArgs,
-    utils::get_default_zmq_timeout,
-    zmq_helpers::send_recv_with_timeout,
-};
+use crate::models::RepReqError;
+use cdktr_core::models::ZMQArgs;
 
 use async_trait::async_trait;
-use log::{info, trace, warn};
-use tokio::{sync::Mutex, time::sleep};
-use zeromq::{ReqSocket, ZmqMessage};
+use zeromq::ZmqMessage;
 
 pub struct APIMeta {
     action: String,

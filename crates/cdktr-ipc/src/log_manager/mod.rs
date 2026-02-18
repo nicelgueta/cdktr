@@ -104,15 +104,12 @@ mod tests {
 
         join_set.spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
-            let mut logs_publisher = LogsPublisher::new(
-                test_workflow_id.to_string(),
-                test_workflow_name.to_string(),
-                test_workflow_instance_id.to_string(),
-            )
-            .await
-            .unwrap();
+            let mut logs_publisher = LogsPublisher::new().await.unwrap();
             let _ = logs_publisher
                 .pub_msg(
+                    test_workflow_id,
+                    test_workflow_name,
+                    test_workflow_instance_id,
                     "INFO",
                     test_task_name,
                     test_task_instance_id,
@@ -121,6 +118,9 @@ mod tests {
                 .await;
             let _ = logs_publisher
                 .pub_msg(
+                    test_workflow_id,
+                    test_workflow_name,
+                    test_workflow_instance_id,
                     "DEBUG",
                     test_task_name,
                     test_task_instance_id,
