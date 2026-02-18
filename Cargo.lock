@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "cdktr-api"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -681,7 +681,7 @@ dependencies = [
 
 [[package]]
 name = "cdktr-cli"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "cdktr-api",
  "cdktr-core",
@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "cdktr-core"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -729,7 +729,7 @@ dependencies = [
 
 [[package]]
 name = "cdktr-events"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "async-trait",
  "cdktr-api",
@@ -745,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "cdktr-ipc"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "cdktr-api",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "cdktr-tui"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "cdktr-api",
  "cdktr-core",
