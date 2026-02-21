@@ -32,7 +32,8 @@ where
             current_host, rep_port
         );
         let mut rep_socket = get_zmq_rep(&get_server_tcp_uri(current_host, rep_port)).await?;
-        let rep_socket_refresh_fequency_ms = get_cdktr_setting!(CDKTR_DEFAULT_ZMQ_REP_FREFRESH_INTERVAL_MS, usize) as u64;
+        let rep_socket_refresh_fequency_ms =
+            get_cdktr_setting!(CDKTR_DEFAULT_ZMQ_REP_FREFRESH_INTERVAL_MS, usize) as u64;
         let mut last_rep_socket_refresh_time = SystemTime::now();
         info!("SERVER: Successfully connected");
 
@@ -68,9 +69,11 @@ where
             // TODO: not an ideal solution. Need to fix reqs to re-use sockets as much as possible to avoid doing this so frequently
             if SystemTime::now()
                 .duration_since(last_rep_socket_refresh_time)
-                .expect("failed to get duration for rep socket refresh") > Duration::from_millis(rep_socket_refresh_fequency_ms) {
-                    rep_socket.backend().shutdown();
-                    last_rep_socket_refresh_time = SystemTime::now();
+                .expect("failed to get duration for rep socket refresh")
+                > Duration::from_millis(rep_socket_refresh_fequency_ms)
+            {
+                rep_socket.backend().shutdown();
+                last_rep_socket_refresh_time = SystemTime::now();
             }
         };
         Ok(exit_code)
