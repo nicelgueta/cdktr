@@ -38,26 +38,18 @@ pub struct App {
     effects: Effects,
 }
 impl App {
-    pub async fn new() -> Result<(Self, ActionReceiver), Box<dyn std::error::Error>> {
+    pub fn new() -> Result<(Self, ActionReceiver), Box<dyn std::error::Error>> {
         let (dispatcher, rx) = Dispatcher::new();
         let action_receiver = ActionReceiver::new(rx);
 
         let log_buffer = crate::logger::init_memory_logger()?;
-
-        // Create PrincipalClient for TUI
-        let client = cdktr_api::PrincipalClient::new("tui".to_string())
-            .await
-            .map_err(|e| {
-                Box::new(io::Error::new(io::ErrorKind::Other, e.to_string()))
-                    as Box<dyn std::error::Error>
-            })?;
 
         let workflows_store = WorkflowsStore::new();
         let ui_store = UIStore::new();
         let logs_store = LogsStore::new();
         let app_logs_store = AppLogsStore::new(log_buffer.clone());
         let log_viewer_store = LogViewerStore::new();
-        let mut effects = Effects::new(dispatcher.clone(), client);
+        let mut effects = Effects::new(dispatcher.clone());
         effects.set_log_viewer_store(log_viewer_store.clone());
         effects.set_workflows_store(workflows_store.clone());
 

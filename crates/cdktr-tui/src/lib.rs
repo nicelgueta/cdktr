@@ -29,7 +29,7 @@ pub async fn tui_main() -> io::Result<()> {
     let mut terminal = tui::init()?;
 
     // Create the application and action receiver (this initializes the logger)
-    let app_result = App::new().await;
+    let app_result = App::new();
 
     let (mut app, action_receiver) = match app_result {
         Ok(app) => app,
