@@ -1,4 +1,4 @@
-use cdktr_api::{PrincipalAPI, PrincipalClient, models::ClientResponseMessage};
+use cdktr_api::{API, PrincipalAPI, models::ClientResponseMessage};
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use log::error;
 use log::info;
@@ -85,15 +85,6 @@ async fn tail_logs(args: LogArgs, print_func: impl Fn(LogMessage)) {
 }
 
 async fn query_logs(args: LogArgs) {
-    // Create PrincipalClient for CLI
-    let client = match PrincipalClient::new("cdktr-cli-logs".to_string()).await {
-        Ok(client) => client,
-        Err(e) => {
-            error!("Failed to create PrincipalClient: {}", e.to_string());
-            return;
-        }
-    };
-
     let api = PrincipalAPI::QueryLogs(
         match args.end_datetime_utc {
             Some(dt) => Some(
@@ -115,7 +106,7 @@ async fn query_logs(args: LogArgs) {
         args.workflow_instance_id,
         args.verbose,
     );
-    let api_result = client.send_with_retry(api, None, None).await;
+    let api_result = api.send().await;
     match api_result {
         Ok(msg) => match msg {
             ClientResponseMessage::SuccessWithPayload(payload) => {

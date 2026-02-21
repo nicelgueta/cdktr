@@ -2,7 +2,6 @@ use crate::{
     exceptions,
     utils::{arg_str_to_vecd, vecd_to_arg_str},
 };
-use bytes::Bytes;
 use std::collections::VecDeque;
 use zeromq::ZmqMessage;
 pub mod traits;
@@ -120,13 +119,6 @@ impl From<String> for ZMQArgs {
         Self {
             inner: arg_str_to_vecd(&value),
         }
-    }
-}
-
-impl From<Bytes> for ZMQArgs {
-    fn from(value: Bytes) -> Self {
-        let s = String::from_utf8_lossy(&value).to_string();
-        Self::from(s)
     }
 }
 
