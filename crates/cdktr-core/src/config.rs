@@ -16,6 +16,9 @@ pub static CDKTR_RETRY_ATTEMPTS: usize = 20;
 /// default timeout for a zmq request
 pub static CDKTR_DEFAULT_ZMQ_TIMEOUT_MS: usize = 3_000;
 
+/// default refresh interval for the REP server
+pub static CDKTR_DEFAULT_ZMQ_REP_FREFRESH_INTERVAL_MS: usize = 3_000;
+
 /// hostname of the principal instance
 pub static CDKTR_PRINCIPAL_HOST: &'static str = "0.0.0.0";
 

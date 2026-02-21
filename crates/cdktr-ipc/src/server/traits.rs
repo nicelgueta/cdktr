@@ -1,10 +1,13 @@
+use std::time::{Duration, SystemTime};
+
 use async_trait::async_trait;
 use cdktr_api::models::ClientResponseMessage;
 use cdktr_core::exceptions::GenericError;
+use cdktr_core::get_cdktr_setting;
 use cdktr_core::zmq_helpers::{get_server_tcp_uri, get_zmq_rep};
 use log::info;
 
-use zeromq::ZmqMessage;
+use zeromq::{Socket, ZmqMessage};
 use zeromq::{SocketRecv, SocketSend};
 
 /// A standard ZMQ REP server that both the Agent and Principal instances
@@ -29,6 +32,8 @@ where
             current_host, rep_port
         );
         let mut rep_socket = get_zmq_rep(&get_server_tcp_uri(current_host, rep_port)).await?;
+        let rep_socket_refresh_fequency_ms = get_cdktr_setting!(CDKTR_DEFAULT_ZMQ_REP_FREFRESH_INTERVAL_MS, usize) as u64;
+        let mut last_rep_socket_refresh_time = SystemTime::now();
         info!("SERVER: Successfully connected");
 
         let exit_code = loop {
@@ -56,6 +61,16 @@ where
                         .await
                         .map_err(|e| GenericError::ZMQError(e.to_string()))?;
                 }
+            };
+
+            // fix to refresh the rep socket to prevent FD leak from new connections
+            // done in this loop to avoid any potential dropped messages
+            // TODO: not an ideal solution. Need to fix reqs to re-use sockets as much as possible to avoid doing this so frequently
+            if SystemTime::now()
+                .duration_since(last_rep_socket_refresh_time)
+                .expect("failed to get duration for rep socket refresh") > Duration::from_millis(rep_socket_refresh_fequency_ms) {
+                    rep_socket.backend().shutdown();
+                    last_rep_socket_refresh_time = SystemTime::now();
             }
         };
         Ok(exit_code)
