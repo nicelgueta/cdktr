@@ -6,7 +6,7 @@ use cdktr_core::{
     get_cdktr_setting,
     models::ZMQArgs,
     utils::get_default_zmq_timeout,
-    zmq_helpers::send_recv_with_timeout,
+    zmq_helpers::PrincipalConnection,
 };
 
 use async_trait::async_trait;
@@ -48,12 +48,13 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
 
     fn get_tcp_uri(&self) -> String;
 
-    /// Default implementation for sending the message to a destination REP socket
+    /// Default implementation for sending the message to a destination ROUTER socket
     async fn send(self) -> Result<ClientResponseMessage, GenericError> {
         let tcp_uri = self.get_tcp_uri();
         trace!("Requesting @ {} with msg: {}", tcp_uri, self.to_string());
-        let timeout = get_default_zmq_timeout();
-        let zmq_m = send_recv_with_timeout(tcp_uri.to_string(), self.into(), timeout)
+        let connection = PrincipalConnection::new_from_uri(tcp_uri);
+        let zmq_m = connection
+            .request(self.into())
             .await
             .map_err(|e| {
                 if let GenericError::ZMQTimeoutError = e {
@@ -62,9 +63,7 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
                     e
                 }
             })?;
-        // dbg!(&zmq_m);
         let cli_msg = ClientResponseMessage::from(zmq_m);
-        // dbg!(&cli_msg);
         Ok(cli_msg)
     }
 

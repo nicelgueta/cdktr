@@ -3,8 +3,8 @@
 use crate::actions::Action;
 use crate::dispatcher::Dispatcher;
 use crate::stores::{LogViewerStore, WorkflowsStore};
-use cdktr_api::{API, PrincipalAPI, models::WorkflowStatusUpdate};
-use cdktr_core::get_cdktr_setting;
+use cdktr_api::{PrincipalAPI, models::{ClientResponseMessage, WorkflowStatusUpdate}};
+use cdktr_core::{get_cdktr_setting, zmq_helpers::PrincipalConnection};
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use cdktr_workflow::Workflow;
 use chrono::Utc;
@@ -18,14 +18,18 @@ pub struct Effects {
     dispatcher: Dispatcher,
     log_viewer_store: Option<LogViewerStore>,
     workflows_store: Option<WorkflowsStore>,
+    connection: PrincipalConnection,
 }
 
 impl Effects {
     pub fn new(dispatcher: Dispatcher) -> Self {
+        let host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
+        let port = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize);
         Self {
             dispatcher,
             log_viewer_store: None,
             workflows_store: None,
+            connection: PrincipalConnection::new(&host, port),
         }
     }
 
@@ -48,13 +52,14 @@ impl Effects {
     /// Spawn a background task to monitor registered agents
     fn spawn_agent_monitor(&self) {
         let dispatcher = self.dispatcher.clone();
+        let connection = self.connection.clone();
         let interval_ms = get_cdktr_setting!(CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS, usize) as u64;
 
         task::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_millis(interval_ms)).await;
 
-                match fetch_registered_agents().await {
+                match fetch_registered_agents(connection.clone()).await {
                     Ok(agents) => {
                         dispatcher.dispatch(Action::RegisteredAgentsUpdated(agents));
                     }
@@ -70,13 +75,14 @@ impl Effects {
     /// Spawn a background task to monitor recent workflow statuses
     fn spawn_workflow_status_monitor(&self) {
         let dispatcher = self.dispatcher.clone();
+        let connection = self.connection.clone();
         let interval_ms = get_cdktr_setting!(CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS, usize) as u64;
 
         task::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_millis(interval_ms)).await;
 
-                match fetch_recent_workflow_statuses().await {
+                match fetch_recent_workflow_statuses(connection.clone()).await {
                     Ok(status_updates) => {
                         dispatcher.dispatch(Action::RecentWorkflowStatusesUpdated(status_updates));
                     }
@@ -92,12 +98,13 @@ impl Effects {
     /// Spawn a background task to ping the principal and update status
     fn spawn_status_monitor(&self) {
         let dispatcher = self.dispatcher.clone();
+        let connection = self.connection.clone();
         let interval_ms = get_cdktr_setting!(CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS, usize) as u64;
 
         task::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_millis(interval_ms)).await;
-                let is_online = ping_principal().await;
+                let is_online = ping_principal(connection.clone()).await;
                 dispatcher.dispatch(Action::PrincipalStatusUpdated(is_online));
             }
         });
@@ -106,6 +113,7 @@ impl Effects {
     /// Spawn a background task to refresh workflows periodically
     fn spawn_workflow_refresh(&self) {
         let dispatcher = self.dispatcher.clone();
+        let connection = self.connection.clone();
         let interval_ms = get_cdktr_setting!(CDKTR_TUI_STATUS_REFRESH_INTERVAL_MS, usize) as u64;
 
         task::spawn(async move {
@@ -113,7 +121,7 @@ impl Effects {
                 tokio::time::sleep(Duration::from_millis(interval_ms)).await;
 
                 log::debug!("Auto-refreshing workflows from principal...");
-                match fetch_workflows_from_backend().await {
+                match fetch_workflows_from_backend(connection.clone()).await {
                     Ok(workflows) => {
                         log::debug!("Auto-refresh: loaded {} workflows", workflows.len());
                         dispatcher.dispatch(Action::WorkflowListLoaded(workflows));
@@ -158,10 +166,11 @@ impl Effects {
     /// Fetch workflows from the backend via ZMQ
     fn fetch_workflows(&self) {
         let dispatcher = self.dispatcher.clone();
+        let connection = self.connection.clone();
 
         task::spawn(async move {
             log::info!("Fetching workflows from backend...");
-            let result = fetch_workflows_from_backend().await;
+            let result = fetch_workflows_from_backend(connection).await;
 
             match result {
                 Ok(workflows) => {
@@ -210,6 +219,7 @@ impl Effects {
     /// Query logs from the backend based on time range
     fn query_logs(&self) {
         let dispatcher = self.dispatcher.clone();
+        let connection = self.connection.clone();
 
         // Get time range and workflow_id from log viewer store
         let (start_ts, end_ts, workflow_id, verbose) =
@@ -233,7 +243,7 @@ impl Effects {
         task::spawn(async move {
             log::info!("Querying logs from {} to {}", start_ts, end_ts);
 
-            match query_logs_from_backend(start_ts, end_ts, workflow_id, verbose).await {
+            match query_logs_from_backend(start_ts, end_ts, workflow_id, verbose, connection).await {
                 Ok(logs) => {
                     log::info!("Successfully queried {} log entries", logs.len());
                     dispatcher.dispatch(Action::QueryLogsResult(logs));
@@ -253,18 +263,20 @@ async fn query_logs_from_backend(
     end_ts: u64,
     workflow_id: Option<String>,
     verbose: bool,
+    connection: PrincipalConnection,
 ) -> Result<Vec<String>, String> {
-    let api_msg = PrincipalAPI::QueryLogs(
+    let msg = PrincipalAPI::QueryLogs(
         Some(end_ts),
         Some(start_ts),
-        workflow_id, // Use the workflow_id from the viewer
-        None,        // workflow_instance_id
-        verbose,     // verbose
-    );
+        workflow_id,
+        None,
+        verbose,
+    )
+    .into();
 
-    match api_msg.send().await {
-        Ok(response) => {
-            let payload = response.payload();
+    match connection.request(msg).await {
+        Ok(zmq_m) => {
+            let payload = ClientResponseMessage::from(zmq_m).payload();
             log::debug!("Got log query payload: {} bytes", payload.len());
 
             match serde_json::from_str::<Vec<String>>(&payload) {
@@ -277,12 +289,12 @@ async fn query_logs_from_backend(
 }
 
 /// Fetch workflows from the backend (ZMQ call to PrincipalAPI)
-async fn fetch_workflows_from_backend() -> Result<Vec<Workflow>, String> {
-    let api_msg = PrincipalAPI::ListWorkflowStore;
+async fn fetch_workflows_from_backend(connection: PrincipalConnection) -> Result<Vec<Workflow>, String> {
+    let msg = PrincipalAPI::ListWorkflowStore.into();
 
-    match api_msg.send().await {
-        Ok(response) => {
-            let payload = response.payload();
+    match connection.request(msg).await {
+        Ok(zmq_m) => {
+            let payload = ClientResponseMessage::from(zmq_m).payload();
 
             log::debug!("Got payload from backend: {:?}", payload);
 
@@ -302,20 +314,16 @@ async fn fetch_workflows_from_backend() -> Result<Vec<Workflow>, String> {
 }
 
 /// Ping the principal to check if it's online
-async fn ping_principal() -> bool {
-    let api_msg = PrincipalAPI::Ping;
-    match api_msg.send().await {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+async fn ping_principal(connection: PrincipalConnection) -> bool {
+    connection.request(PrincipalAPI::Ping.into()).await.is_ok()
 }
 
 /// Fetch the latest status updates for recent workflows
-async fn fetch_recent_workflow_statuses() -> Result<Vec<WorkflowStatusUpdate>, String> {
-    let api_msg = PrincipalAPI::GetRecentWorkflowStatuses;
-    match api_msg.send().await {
-        Ok(response) => {
-            let payload = response.payload();
+async fn fetch_recent_workflow_statuses(connection: PrincipalConnection) -> Result<Vec<WorkflowStatusUpdate>, String> {
+    let msg = PrincipalAPI::GetRecentWorkflowStatuses.into();
+    match connection.request(msg).await {
+        Ok(zmq_m) => {
+            let payload = ClientResponseMessage::from(zmq_m).payload();
 
             match serde_json::from_str::<Vec<WorkflowStatusUpdate>>(&payload) {
                 Ok(status_updates) => Ok(status_updates),
@@ -327,11 +335,11 @@ async fn fetch_recent_workflow_statuses() -> Result<Vec<WorkflowStatusUpdate>, S
 }
 
 /// Fetch the list of registered agents
-async fn fetch_registered_agents() -> Result<Vec<cdktr_api::models::AgentInfo>, String> {
-    let api_msg = PrincipalAPI::GetRegisteredAgents;
-    match api_msg.send().await {
-        Ok(response) => {
-            let payload = response.payload();
+async fn fetch_registered_agents(connection: PrincipalConnection) -> Result<Vec<cdktr_api::models::AgentInfo>, String> {
+    let msg = PrincipalAPI::GetRegisteredAgents.into();
+    match connection.request(msg).await {
+        Ok(zmq_m) => {
+            let payload = ClientResponseMessage::from(zmq_m).payload();
 
             match serde_json::from_str::<Vec<cdktr_api::models::AgentInfo>>(&payload) {
                 Ok(agents) => Ok(agents),

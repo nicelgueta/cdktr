@@ -1,4 +1,3 @@
-use cdktr_api::{API, PrincipalAPI};
 use cdktr_core::models::{FlowExecutionResult, RunStatus};
 use cdktr_core::utils::get_principal_uri;
 use cdktr_core::{exceptions::GenericError, models::traits::Executor};
@@ -14,6 +13,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::task::JoinSet;
 use tokio::time::sleep;
+use zeromq::PushSocket;
 
 use crate::client::PrincipalClient;
 use crate::log_manager::publisher::LogsPublisher;
@@ -81,17 +81,22 @@ pub struct TaskManager {
     workflow_counter: Arc<Mutex<usize>>,
     principal_client: PrincipalClient,
     name_gen: Arc<Mutex<EternalSlugGenerator>>,
+    logs_socket: Arc<Mutex<PushSocket>>,
 }
 
 impl TaskManager {
     pub async fn new(instance_id: String, max_concurrent_workflows: usize) -> Self {
         let principal_client = PrincipalClient::new(instance_id.clone());
+        let logs_socket = LogsPublisher::connect()
+            .await
+            .expect("Failed to connect logs PUSH socket");
         Self {
             instance_id,
             max_concurrent_workflows,
             workflow_counter: Arc::new(Mutex::new(0)),
             principal_client,
             name_gen: Arc::new(Mutex::new(EternalSlugGenerator::new(2).unwrap())),
+            logs_socket,
         }
     }
 
@@ -152,6 +157,7 @@ impl TaskManager {
                 }
             }
             let workflow_counter = self.workflow_counter.clone();
+            let logs_socket = self.logs_socket.clone();
             let workflow_result = self
                 .principal_client
                 .wait_next_workflow(WAIT_TASK_SLEEP_INTERVAL_MS)
@@ -171,25 +177,23 @@ impl TaskManager {
                 }
             };
 
-            debug!("MAX WF -> {}", self.max_concurrent_workflows);
-            let name_gen_cl = self.name_gen.clone();
-            // spawn workflow thread so we can return to request another workflow
+            let client = self.principal_client.clone();
             let agent_id = self.instance_id.clone();
             let workflow_id = workflow.id().clone();
+            let name_gen_cl = self.name_gen.clone();
             let _wf_handle: JoinHandle<Result<(), GenericError>> = tokio::spawn(async move {
                 let workflow_instance_id = { name_gen_cl.lock().await.next() };
-                if PrincipalAPI::WorkflowStatusUpdate(
-                    agent_id.clone(),
-                    workflow_id.clone(),
-                    workflow_instance_id.clone(),
-                    RunStatus::RUNNING,
-                )
-                .send()
-                .await
-                .is_err()
+                if let Err(e) = client
+                    .notify_workflow_status(
+                        &agent_id,
+                        &workflow_id,
+                        &workflow_instance_id,
+                        RunStatus::RUNNING,
+                    )
+                    .await
                 {
                     error!(
-                        "Failed to send status update of RUNNING to principal for: {workflow_id}/{workflow_instance_id}"
+                        "Failed to send status update of RUNNING to principal for: {workflow_id}/{workflow_instance_id}. Error: {e}"
                     )
                 };
                 let mut task_tracker = ThreadSafeTaskTracker::from_workflow(&workflow)?;
@@ -214,18 +218,19 @@ impl TaskManager {
                     );
                     let task_execution_id = { name_gen_cl.lock().await.next() };
                     let task_name = task.name().to_string();
-                    PrincipalAPI::TaskStatusUpdate(
-                        agent_id.clone(),
-                        task_id.clone(),
-                        task_execution_id.clone(),
-                        workflow_instance_id.clone(),
-                        RunStatus::PENDING,
-                    )
-                    .send()
-                    .await?;
+                    client
+                        .notify_task_status(
+                            &agent_id,
+                            &task_id,
+                            &task_execution_id,
+                            &workflow_instance_id,
+                            RunStatus::PENDING,
+                        )
+                        .await?;
                     let mut task_exe = loop {
                         let task_exe_result = run_in_executor(
                             task_tracker.clone(),
+                            client.clone(),
                             agent_id.clone(),
                             task_id.clone(),
                             task.clone(),
@@ -254,18 +259,17 @@ impl TaskManager {
                                             error!(
                                                 "Error marking task as failure - aborting workflow"
                                             );
-                                            if PrincipalAPI::WorkflowStatusUpdate(
-                                                agent_id.clone(),
-                                                workflow_id.clone(),
-                                                workflow_instance_id.clone(),
-                                                RunStatus::CRASHED,
-                                            )
-                                            .send()
-                                            .await
-                                            .is_err()
+                                            if let Err(e) = client
+                                                .notify_workflow_status(
+                                                    &agent_id,
+                                                    &workflow_id,
+                                                    &workflow_instance_id,
+                                                    RunStatus::CRASHED,
+                                                )
+                                                .await
                                             {
                                                 error!(
-                                                    "Failed to send status update of CRASHED to principal for: {workflow_id}/{workflow_instance_id}"
+                                                    "Failed to send status update of CRASHED to principal for: {workflow_id}/{workflow_instance_id}. Error: {e}"
                                                 )
                                             };
                                             return Err(e);
@@ -281,8 +285,8 @@ impl TaskManager {
                         workflow.id().clone(),
                         workflow.name().clone(),
                         workflow_instance_id.clone(),
-                    )
-                    .await?;
+                        logs_socket.clone(),
+                    );
                     read_handles.spawn(async move {
                         let mut task_logger = logs_pub
                             .get_task_logger(&task_name, &task_execution_id)
@@ -318,18 +322,17 @@ impl TaskManager {
                             workflow.name(),
                             workflow_instance_id,
                         );
-                        if PrincipalAPI::WorkflowStatusUpdate(
-                            agent_id.clone(),
-                            workflow_id.clone(),
-                            workflow_instance_id.clone(),
-                            RunStatus::COMPLETED,
-                        )
-                        .send()
-                        .await
-                        .is_err()
+                        if let Err(e) = client
+                            .notify_workflow_status(
+                                &agent_id,
+                                &workflow_id,
+                                &workflow_instance_id,
+                                RunStatus::COMPLETED,
+                            )
+                            .await
                         {
                             error!(
-                                "Failed to send status update of COMPLETED to principal for: {workflow_id}/{workflow_instance_id}"
+                                "Failed to send status update of COMPLETED to principal for: {workflow_id}/{workflow_instance_id}. Error: {e}"
                             )
                         };
                         Ok(())
@@ -340,18 +343,17 @@ impl TaskManager {
                             workflow.name(),
                             workflow_instance_id,
                         );
-                        if PrincipalAPI::WorkflowStatusUpdate(
-                            agent_id.clone(),
-                            workflow_id.clone(),
-                            workflow_instance_id.clone(),
-                            RunStatus::FAILED,
-                        )
-                        .send()
-                        .await
-                        .is_err()
+                        if let Err(e) = client
+                            .notify_workflow_status(
+                                &agent_id,
+                                &workflow_id,
+                                &workflow_instance_id,
+                                RunStatus::FAILED,
+                            )
+                            .await
                         {
                             error!(
-                                "Failed to send status update of FAILED to principal for: {workflow_id}/{workflow_instance_id}"
+                                "Failed to send status update of FAILED to principal for: {workflow_id}/{workflow_instance_id}. Error: {e}"
                             )
                         };
                         Ok(())
@@ -366,6 +368,7 @@ impl TaskManager {
 /// of member of the Task enum it pertains to.
 async fn run_in_executor(
     mut task_tracker: ThreadSafeTaskTracker,
+    client: PrincipalClient,
     agent_id: String,
     task_id: String,
     task: Task,
@@ -376,23 +379,20 @@ async fn run_in_executor(
         let (stdout_tx, stdout_rx) = mpsc::channel(32);
         let (stderr_tx, stderr_rx) = mpsc::channel(32);
         let executable_task = task.get_exe_task();
-        let task_exe_id_clone = task_execution_id.clone();
-        let workflow_ins_id_clone = workflow_instance_id.clone();
         let handle = tokio::spawn(async move {
-            info!("Spawning task {task_exe_id_clone}");
-            if PrincipalAPI::TaskStatusUpdate(
-                agent_id.clone(),
-                task_id.clone(),
-                task_execution_id.clone(),
-                workflow_ins_id_clone.clone(),
-                RunStatus::RUNNING,
-            )
-            .send()
-            .await
-            .is_err()
+            info!("Spawning task {task_execution_id}");
+            if let Err(e) = client
+                .notify_task_status(
+                    &agent_id,
+                    &task_id,
+                    &task_execution_id,
+                    &workflow_instance_id,
+                    RunStatus::RUNNING,
+                )
+                .await
             {
                 error!(
-                    "Failed to send status update of RUNNING to principal for task: {task_id}/{task_execution_id}"
+                    "Failed to send status update of RUNNING to principal for task: {task_id}/{task_execution_id}. Error: {e}"
                 )
             };
             let flow_result = executable_task.run(stdout_tx, stderr_tx).await;
@@ -402,19 +402,18 @@ async fn run_in_executor(
                         "Successfully completed task: {}->{}",
                         &task_id, &task_execution_id
                     );
-                    if PrincipalAPI::TaskStatusUpdate(
-                        agent_id.clone(),
-                        task_id.clone(),
-                        task_execution_id.clone(),
-                        workflow_ins_id_clone.clone(),
-                        RunStatus::COMPLETED,
-                    )
-                    .send()
-                    .await
-                    .is_err()
+                    if let Err(e) = client
+                        .notify_task_status(
+                            &agent_id,
+                            &task_id,
+                            &task_execution_id,
+                            &workflow_instance_id,
+                            RunStatus::COMPLETED,
+                        )
+                        .await
                     {
                         error!(
-                            "Failed to send status update of COMPLETED to principal for task: {task_id}/{task_execution_id}"
+                            "Failed to send status update of COMPLETED to principal for task: {task_id}/{task_execution_id}. Error: {e}"
                         )
                     };
                     match task_tracker.mark_success(&task_id) {
@@ -430,19 +429,18 @@ async fn run_in_executor(
                         "Task {}->{} experienced a critical failure. Error: {}",
                         &task_id, &task_execution_id, err_msg
                     );
-                    if PrincipalAPI::TaskStatusUpdate(
-                        agent_id.clone(),
-                        task_id.clone(),
-                        task_execution_id.clone(),
-                        workflow_ins_id_clone.clone(),
-                        RunStatus::FAILED,
-                    )
-                    .send()
-                    .await
-                    .is_err()
+                    if let Err(e) = client
+                        .notify_task_status(
+                            &agent_id,
+                            &task_id,
+                            &task_execution_id,
+                            &workflow_instance_id,
+                            RunStatus::FAILED,
+                        )
+                        .await
                     {
                         error!(
-                            "Failed to send status update of FAILED to principal for task: {task_id}/{task_execution_id}"
+                            "Failed to send status update of FAILED to principal for task: {task_id}/{task_execution_id}. Error: {e}"
                         )
                     };
                     match task_tracker.mark_failed(&task_id) {
@@ -451,7 +449,7 @@ async fn run_in_executor(
                             Ok(())
                         }
                         Err(e) => Err(TaskManagerError::FailedTaskError(format!(
-                            "Failed to mark task as success. Error: {}",
+                            "Failed to mark task as failure. Error: {}",
                             e.to_string()
                         ))),
                     }
@@ -461,19 +459,18 @@ async fn run_in_executor(
                         "Task {}->{} crashed. Error: {}",
                         &task_id, &task_execution_id, err_msg
                     );
-                    if PrincipalAPI::TaskStatusUpdate(
-                        agent_id.clone(),
-                        task_id.clone(),
-                        task_execution_id.clone(),
-                        workflow_ins_id_clone.clone(),
-                        RunStatus::FAILED,
-                    )
-                    .send()
-                    .await
-                    .is_err()
+                    if let Err(e) = client
+                        .notify_task_status(
+                            &agent_id,
+                            &task_id,
+                            &task_execution_id,
+                            &workflow_instance_id,
+                            RunStatus::FAILED,
+                        )
+                        .await
                     {
                         error!(
-                            "Failed to send status update of CRASHED to principal for task: {task_id}/{task_execution_id}"
+                            "Failed to send status update of CRASHED to principal for task: {task_id}/{task_execution_id}. Error: {e}"
                         )
                     };
                     match task_tracker.mark_failed(&task_id) {
@@ -482,7 +479,7 @@ async fn run_in_executor(
                             Ok(())
                         }
                         Err(e) => Err(TaskManagerError::FailedTaskError(format!(
-                            "Failed to mark task as success. Error: {}",
+                            "Failed to mark task as failure. Error: {}",
                             e.to_string()
                         ))),
                     }

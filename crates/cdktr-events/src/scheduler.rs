@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use cdktr_api::models::ClientResponseMessage;
-use cdktr_api::{API, PrincipalAPI};
+use cdktr_api::PrincipalAPI;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::get_cdktr_setting;
+use cdktr_core::zmq_helpers::PrincipalConnection;
 use cdktr_workflow::Workflow;
 use chrono::{DateTime, Utc};
 use cron::Schedule;
@@ -30,6 +31,7 @@ pub struct Scheduler {
     workflows_ptr: Arc<Mutex<HashMap<String, Workflow>>>,
     schedule_priority_queue_ptr: Arc<Mutex<BinaryHeap<(i64, String)>>>,
     next_peek: Arc<Mutex<(String, i64, bool)>>, // task_id, unix timestamp for start, has been logged
+    connection: PrincipalConnection,
 }
 
 #[async_trait]
@@ -94,10 +96,25 @@ impl EventListener for Scheduler {
             }
         }
     }
+
+    async fn run_workflow(&mut self, workflow_id: &str) -> Result<(), GenericError> {
+        let msg = PrincipalAPI::RunTask(workflow_id.to_string()).into();
+        let response = self.connection.request(msg).await?;
+        match ClientResponseMessage::from(response) {
+            ClientResponseMessage::Success => Ok(()),
+            other => Err(GenericError::WorkflowError(format!(
+                "Failed to start workflow {}. Response from principal: {}",
+                workflow_id, other.to_string()
+            ))),
+        }
+    }
 }
 impl Scheduler {
     pub async fn new() -> Result<Self, GenericError> {
-        let workflows = Self::get_workflows().await?;
+        let host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
+        let port = get_cdktr_setting!(CDKTR_PRINCIPAL_PORT, usize);
+        let connection = PrincipalConnection::new(&host, port);
+        let workflows = Self::get_workflows(&connection).await?;
         let workflows_len = workflows.len();
         info!(
             "Scheduler found {} workflows with active schedules",
@@ -118,6 +135,7 @@ impl Scheduler {
             workflows_ptr,
             schedule_priority_queue_ptr,
             next_peek,
+            connection,
         })
     }
 
@@ -162,10 +180,10 @@ impl Scheduler {
         Ok(next_run)
     }
 
-    async fn get_workflows() -> Result<HashMap<String, Workflow>, GenericError> {
-        let api = PrincipalAPI::ListWorkflowStore;
-        let response = api.send().await?;
-        match response {
+    async fn get_workflows(connection: &PrincipalConnection) -> Result<HashMap<String, Workflow>, GenericError> {
+        let msg = PrincipalAPI::ListWorkflowStore.into();
+        let response = connection.request(msg).await?;
+        match ClientResponseMessage::from(response) {
             ClientResponseMessage::SuccessWithPayload(wfs) => {
                 serde_json::from_str(&wfs).map_err(|e| {
                     GenericError::ParseError(format!(
@@ -225,7 +243,7 @@ async fn refresh_loop(mut scheduler: Scheduler) -> Result<(), GenericError> {
     loop {
         let _ = sleep(Duration::from_secs(workflow_refresh_seconds)).await;
         debug!("checking internal workflow store for new workflows defs");
-        match Scheduler::get_workflows().await {
+        match Scheduler::get_workflows(&scheduler.connection).await {
             Ok(wfs) => {
                 if !scheduler.workflows_match(&wfs).await {
                     info!("Found workflows to refresh from principal");
