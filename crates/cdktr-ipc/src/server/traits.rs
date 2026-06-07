@@ -4,7 +4,7 @@ use cdktr_core::exceptions::GenericError;
 use cdktr_core::zmq_helpers::{get_server_tcp_uri, get_zmq_router};
 use log::{error, info, warn};
 
-use zeromq::{ZmqMessage};
+use zeromq::ZmqMessage;
 use zeromq::{SocketRecv, SocketSend};
 
 /// Server trait implemented by the principal to handle incoming requests.
@@ -105,10 +105,7 @@ mod tests {
         ) -> (ClientResponseMessage, usize) {
             // Echo the payload back; exit on "QUIT"
             let exit = if cli_msg.0 == "QUIT" { 1 } else { 0 };
-            (
-                ClientResponseMessage::SuccessWithPayload(cli_msg.0),
-                exit,
-            )
+            (ClientResponseMessage::SuccessWithPayload(cli_msg.0), exit)
         }
     }
 
@@ -145,4 +142,3 @@ mod tests {
         let _ = dealer.recv().await;
     }
 }
-

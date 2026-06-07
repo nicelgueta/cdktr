@@ -3,7 +3,10 @@
 use crate::actions::Action;
 use crate::dispatcher::Dispatcher;
 use crate::stores::{LogViewerStore, WorkflowsStore};
-use cdktr_api::{PrincipalAPI, models::{ClientResponseMessage, WorkflowStatusUpdate}};
+use cdktr_api::{
+    PrincipalAPI,
+    models::{ClientResponseMessage, WorkflowStatusUpdate},
+};
 use cdktr_core::{get_cdktr_setting, zmq_helpers::PrincipalConnection};
 use cdktr_ipc::log_manager::{client::LogsClient, model::LogMessage};
 use cdktr_workflow::Workflow;
@@ -243,7 +246,8 @@ impl Effects {
         task::spawn(async move {
             log::info!("Querying logs from {} to {}", start_ts, end_ts);
 
-            match query_logs_from_backend(start_ts, end_ts, workflow_id, verbose, connection).await {
+            match query_logs_from_backend(start_ts, end_ts, workflow_id, verbose, connection).await
+            {
                 Ok(logs) => {
                     log::info!("Successfully queried {} log entries", logs.len());
                     dispatcher.dispatch(Action::QueryLogsResult(logs));
@@ -265,14 +269,8 @@ async fn query_logs_from_backend(
     verbose: bool,
     connection: PrincipalConnection,
 ) -> Result<Vec<String>, String> {
-    let msg = PrincipalAPI::QueryLogs(
-        Some(end_ts),
-        Some(start_ts),
-        workflow_id,
-        None,
-        verbose,
-    )
-    .into();
+    let msg =
+        PrincipalAPI::QueryLogs(Some(end_ts), Some(start_ts), workflow_id, None, verbose).into();
 
     match connection.request(msg).await {
         Ok(zmq_m) => {
@@ -289,7 +287,9 @@ async fn query_logs_from_backend(
 }
 
 /// Fetch workflows from the backend (ZMQ call to PrincipalAPI)
-async fn fetch_workflows_from_backend(connection: PrincipalConnection) -> Result<Vec<Workflow>, String> {
+async fn fetch_workflows_from_backend(
+    connection: PrincipalConnection,
+) -> Result<Vec<Workflow>, String> {
     let msg = PrincipalAPI::ListWorkflowStore.into();
 
     match connection.request(msg).await {
@@ -319,7 +319,9 @@ async fn ping_principal(connection: PrincipalConnection) -> bool {
 }
 
 /// Fetch the latest status updates for recent workflows
-async fn fetch_recent_workflow_statuses(connection: PrincipalConnection) -> Result<Vec<WorkflowStatusUpdate>, String> {
+async fn fetch_recent_workflow_statuses(
+    connection: PrincipalConnection,
+) -> Result<Vec<WorkflowStatusUpdate>, String> {
     let msg = PrincipalAPI::GetRecentWorkflowStatuses.into();
     match connection.request(msg).await {
         Ok(zmq_m) => {
@@ -335,7 +337,9 @@ async fn fetch_recent_workflow_statuses(connection: PrincipalConnection) -> Resu
 }
 
 /// Fetch the list of registered agents
-async fn fetch_registered_agents(connection: PrincipalConnection) -> Result<Vec<cdktr_api::models::AgentInfo>, String> {
+async fn fetch_registered_agents(
+    connection: PrincipalConnection,
+) -> Result<Vec<cdktr_api::models::AgentInfo>, String> {
     let msg = PrincipalAPI::GetRegisteredAgents.into();
     match connection.request(msg).await {
         Ok(zmq_m) => {

@@ -53,16 +53,13 @@ pub trait API: Into<ZmqMessage> + TryFrom<ZmqMessage> + TryFrom<String> + TryFro
         let tcp_uri = self.get_tcp_uri();
         trace!("Requesting @ {} with msg: {}", tcp_uri, self.to_string());
         let connection = PrincipalConnection::new_from_uri(tcp_uri);
-        let zmq_m = connection
-            .request(self.into())
-            .await
-            .map_err(|e| {
-                if let GenericError::ZMQTimeoutError = e {
-                    GenericError::PrincipalTimeoutError
-                } else {
-                    e
-                }
-            })?;
+        let zmq_m = connection.request(self.into()).await.map_err(|e| {
+            if let GenericError::ZMQTimeoutError = e {
+                GenericError::PrincipalTimeoutError
+            } else {
+                e
+            }
+        })?;
         let cli_msg = ClientResponseMessage::from(zmq_m);
         Ok(cli_msg)
     }

@@ -5,7 +5,7 @@ use crate::{
     macros,
     utils::get_default_zmq_timeout,
 };
-use log::{info, error, warn};
+use log::{error, info, warn};
 use tokio::{
     sync::{mpsc, oneshot},
     time::timeout,
@@ -234,7 +234,10 @@ pub fn format_zmq_msg_str(args: Vec<&str>) -> String {
     }
 }
 
-type ConnectionRequest = (ZmqMessage, oneshot::Sender<Result<ZmqMessage, GenericError>>);
+type ConnectionRequest = (
+    ZmqMessage,
+    oneshot::Sender<Result<ZmqMessage, GenericError>>,
+);
 
 /// A cheaply-cloneable handle to a persistent DEALER socket actor task.
 ///
@@ -266,9 +269,9 @@ impl PrincipalConnection {
             .send((msg, reply_tx))
             .await
             .map_err(|_| GenericError::ZMQError("Connection actor has stopped".to_string()))?;
-        reply_rx
-            .await
-            .map_err(|_| GenericError::ZMQError("Connection actor reply channel closed".to_string()))?
+        reply_rx.await.map_err(|_| {
+            GenericError::ZMQError("Connection actor reply channel closed".to_string())
+        })?
     }
 }
 

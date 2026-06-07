@@ -1,10 +1,6 @@
 use async_trait::async_trait;
 use cdktr_api::{PrincipalAPI, models::ClientResponseMessage};
-use cdktr_core::{
-    exceptions::GenericError,
-    get_cdktr_setting,
-    zmq_helpers::PrincipalConnection,
-};
+use cdktr_core::{exceptions::GenericError, get_cdktr_setting, zmq_helpers::PrincipalConnection};
 
 /// The event listener trait is for implementing components that
 /// listen to external events and send to the principal to trigger workflows

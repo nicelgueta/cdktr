@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use cdktr_api::models::ClientResponseMessage;
 use cdktr_api::PrincipalAPI;
+use cdktr_api::models::ClientResponseMessage;
 use cdktr_core::exceptions::GenericError;
 use cdktr_core::get_cdktr_setting;
 use cdktr_core::zmq_helpers::PrincipalConnection;
@@ -104,7 +104,8 @@ impl EventListener for Scheduler {
             ClientResponseMessage::Success => Ok(()),
             other => Err(GenericError::WorkflowError(format!(
                 "Failed to start workflow {}. Response from principal: {}",
-                workflow_id, other.to_string()
+                workflow_id,
+                other.to_string()
             ))),
         }
     }
@@ -180,7 +181,9 @@ impl Scheduler {
         Ok(next_run)
     }
 
-    async fn get_workflows(connection: &PrincipalConnection) -> Result<HashMap<String, Workflow>, GenericError> {
+    async fn get_workflows(
+        connection: &PrincipalConnection,
+    ) -> Result<HashMap<String, Workflow>, GenericError> {
         let msg = PrincipalAPI::ListWorkflowStore.into();
         let response = connection.request(msg).await?;
         match ClientResponseMessage::from(response) {

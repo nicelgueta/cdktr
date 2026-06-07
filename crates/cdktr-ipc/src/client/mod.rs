@@ -1,12 +1,9 @@
 mod connection;
 pub use connection::PrincipalConnection;
 
-use cdktr_api::{models::ClientResponseMessage, PrincipalAPI};
+use cdktr_api::{PrincipalAPI, models::ClientResponseMessage};
 use cdktr_core::{
-    exceptions::GenericError,
-    get_cdktr_setting,
-    models::RunStatus,
-    utils::get_default_zmq_timeout,
+    exceptions::GenericError, get_cdktr_setting, models::RunStatus, utils::get_default_zmq_timeout,
 };
 use cdktr_workflow::Workflow;
 use log::{debug, error, info, warn};
