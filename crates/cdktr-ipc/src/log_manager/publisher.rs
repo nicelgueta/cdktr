@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use cdktr_core::{
@@ -6,6 +7,7 @@ use cdktr_core::{
     get_cdktr_setting,
     zmq_helpers::{get_server_tcp_uri, get_zmq_push},
 };
+use tokio::sync::Mutex;
 use zeromq::{PushSocket, SocketSend};
 
 use crate::log_manager::model::LogMessage;
@@ -54,28 +56,40 @@ pub struct LogsPublisher {
     workflow_id: String,
     workflow_name: String,
     workflow_instance_id: String,
-    push_socket: PushSocket,
+    push_socket: Arc<Mutex<PushSocket>>,
     log_queue: VecDeque<LogMessage>,
 }
 
 impl LogsPublisher {
-    pub async fn new(
+    /// Create a `LogsPublisher` that writes through a shared `PushSocket`.
+    /// Call `LogsPublisher::connect().await` once per process to obtain the
+    /// shared socket, then pass clones of the `Arc` to each publisher.
+    pub fn new(
         workflow_id: String,
         workflow_name: String,
         workflow_instance_id: String,
-    ) -> Result<Self, GenericError> {
+        push_socket: Arc<Mutex<PushSocket>>,
+    ) -> Self {
         let logs_listen_port = get_cdktr_setting!(CDKTR_LOGS_LISTENING_PORT, usize);
         let prin_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
-        let url = &get_server_tcp_uri(&prin_host, logs_listen_port);
-        Ok(LogsPublisher {
+        LogsPublisher {
             prin_host,
             logs_listen_port,
             workflow_id,
             workflow_name,
             workflow_instance_id,
-            push_socket: get_zmq_push(url).await?,
+            push_socket,
             log_queue: VecDeque::new(),
-        })
+        }
+    }
+
+    /// Connect a single PUSH socket to the log manager.  Call once per agent
+    /// process and share the returned `Arc` across all `LogsPublisher` instances.
+    pub async fn connect() -> Result<Arc<Mutex<PushSocket>>, GenericError> {
+        let logs_listen_port = get_cdktr_setting!(CDKTR_LOGS_LISTENING_PORT, usize);
+        let prin_host = get_cdktr_setting!(CDKTR_PRINCIPAL_HOST);
+        let url = get_server_tcp_uri(&prin_host, logs_listen_port);
+        Ok(Arc::new(Mutex::new(get_zmq_push(&url).await?)))
     }
 
     pub async fn get_task_logger<'a, 'b>(
@@ -111,7 +125,8 @@ impl LogsPublisher {
             level.to_string(),
             msg.to_string(),
         );
-        match self.push_socket.send(log_msg.into()).await {
+        let mut sock = self.push_socket.lock().await;
+        match sock.send(log_msg.into()).await {
             // failed to push to socket so log internally
             // needs to create msg again
             Err(_e) => self.log_queue.push_back(LogMessage::new(
@@ -134,22 +149,27 @@ impl LogsPublisher {
     async fn check_and_clear_local_messages(&mut self) -> Result<(), GenericError> {
         if self.log_queue.len() > 0 {
             self.attempt_reconnect().await?;
+            let mut sock = self.push_socket.lock().await;
             while self.log_queue.len() > 0 {
                 let log_msg = self
                     .log_queue
                     .pop_front()
                     .expect("Message queue is > 0 but pop front fails");
-                match self.push_socket.send(log_msg.clone().into()).await {
+                match sock.send(log_msg.clone().into()).await {
                     Ok(()) => (),
-                    Err(_e) => self.log_queue.push_front(log_msg),
+                    Err(_e) => {
+                        self.log_queue.push_front(log_msg);
+                        break;
+                    }
                 }
             }
         }
         Ok(())
     }
-    async fn attempt_reconnect(&mut self) -> Result<(), GenericError> {
-        self.push_socket =
+    async fn attempt_reconnect(&self) -> Result<(), GenericError> {
+        let new_socket =
             get_zmq_push(&get_server_tcp_uri(&self.prin_host, self.logs_listen_port)).await?;
+        *self.push_socket.lock().await = new_socket;
         Ok(())
     }
 }

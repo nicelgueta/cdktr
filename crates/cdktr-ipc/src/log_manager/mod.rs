@@ -104,13 +104,13 @@ mod tests {
 
         join_set.spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
+            let push_socket = LogsPublisher::connect().await.unwrap();
             let mut logs_publisher = LogsPublisher::new(
                 test_workflow_id.to_string(),
                 test_workflow_name.to_string(),
                 test_workflow_instance_id.to_string(),
-            )
-            .await
-            .unwrap();
+                push_socket,
+            );
             let _ = logs_publisher
                 .pub_msg(
                     "INFO",

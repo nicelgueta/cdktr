@@ -7,3 +7,4 @@ __pycache__/
 logs/
 cdktr-py/src/cdktr/*.so
 venv/
+agent_docs/

@@ -40,6 +40,8 @@ pub async fn start_principal(
     instance_id: String,
     no_scheduler: bool,
 ) -> Result<(), GenericError> {
+    let pid = std::process::id().to_string();
+    info!("Starting principal instance with PID {}", pid);
     let db_path = get_cdktr_setting!(CDKTR_DB_PATH);
     let db_path_str = if db_path.contains("$HOME") {
         db_path.replace(
